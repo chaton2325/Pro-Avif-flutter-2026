@@ -2,6 +2,7 @@ import 'package:mongo_dart/mongo_dart.dart';
 import '../models/user.dart';
 import '../models/farm.dart';
 import '../models/audit_log.dart';
+import '../models/lot.dart';
 
 class MongoService {
   static final MongoService _instance = MongoService._internal();
@@ -9,6 +10,7 @@ class MongoService {
   DbCollection? _userCollection;
   DbCollection? _farmCollection;
   DbCollection? _auditCollection;
+  DbCollection? _lotCollection;
   String? connectionError;
   User? currentUser;
 
@@ -27,6 +29,7 @@ class MongoService {
       _userCollection = _db!.collection('users');
       _farmCollection = _db!.collection('fermes');
       _auditCollection = _db!.collection('audit_logs');
+      _lotCollection = _db!.collection('lots');
       connectionError = null;
       
       await _ensureAdminExists();
@@ -170,6 +173,24 @@ class MongoService {
     final farm = await _farmCollection?.findOne(where.id(id));
     await _farmCollection?.remove(where.id(id));
     await _logAction('delete', 'fermes', 'Suppression de la ferme: ${farm?['name']}');
+  }
+
+  // Lots CRUD
+  Future<List<Lot>> getLots() async {
+    if (_lotCollection == null) return [];
+    final lots = await _lotCollection!.find(where.sortBy('createdAt', descending: true)).toList();
+    return lots.map((l) => Lot.fromMap(l)).toList();
+  }
+
+  Future<void> addLot(Lot lot) async {
+    await _lotCollection?.insertOne(lot.toMap());
+    await _logAction('create', 'lots', 'Création du lot: ${lot.number}');
+  }
+
+  Future<void> deleteLot(ObjectId id) async {
+    final lot = await _lotCollection?.findOne(where.id(id));
+    await _lotCollection?.remove(where.id(id));
+    await _logAction('delete', 'lots', 'Suppression du lot: ${lot?['number']}');
   }
 
   // Audit Logs

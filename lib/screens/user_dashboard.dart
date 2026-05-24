@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_nav_bar/google_nav_bar.dart';
+import 'package:intl/intl.dart';
 import '../models/user.dart';
 import '../models/farm.dart';
 import '../services/mongo_service.dart';
 import 'login_screen.dart';
+import 'new_weighing_screen.dart';
 
 class UserDashboard extends StatefulWidget {
   final User user;
@@ -20,6 +23,11 @@ class _UserDashboardState extends State<UserDashboard> {
   bool _isLoading = true;
   int _currentIndex = 0;
   
+  // Real-time clock
+  late Timer _timer;
+  String _currentTime = '';
+  String _currentDateStr = '';
+
   // Settings controllers
   late String _selectedLanguage;
   final TextEditingController _precisionController = TextEditingController();
@@ -29,13 +37,25 @@ class _UserDashboardState extends State<UserDashboard> {
     super.initState();
     _selectedLanguage = widget.user.language;
     _precisionController.text = widget.user.scalePrecision.toString();
+    _updateTime();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) => _updateTime());
     _loadData();
   }
 
   @override
   void dispose() {
+    _timer.cancel();
     _precisionController.dispose();
     super.dispose();
+  }
+
+  void _updateTime() {
+    final now = DateTime.now();
+    if (!mounted) return;
+    setState(() {
+      _currentTime = DateFormat('HH:mm:ss').format(now);
+      _currentDateStr = DateFormat('dd/MM/yyyy').format(now);
+    });
   }
 
   void _loadData() async {
@@ -109,7 +129,7 @@ class _UserDashboardState extends State<UserDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Card (Integrated Profile + Farm)
+          // Header Card (Integrated Profile + Farm + Clock)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -128,27 +148,39 @@ class _UserDashboardState extends State<UserDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Colors.white.withValues(alpha: 0.2),
-                      child: const Icon(Icons.person, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
                       children: [
-                        const Text('Bienvenue,', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                        Text(
-                          widget.user.name,
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: Colors.white.withValues(alpha: 0.2),
+                          child: const Icon(Icons.person, color: Colors.white, size: 24),
                         ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Bienvenue,', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text(
+                              widget.user.name,
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(_currentTime, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                        Text(_currentDateStr, style: const TextStyle(color: Colors.white70, fontSize: 10)),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                const Text('SITE DE PRODUCTION', style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+                const Text('SITE DE PRODUCTION (BÂTIMENT)', style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
                 const SizedBox(height: 2),
                 Row(
                   children: [
@@ -182,7 +214,12 @@ class _UserDashboardState extends State<UserDashboard> {
           const SizedBox(height: 12),
           Row(
             children: [
-              _buildQuickAction(Icons.add_shopping_cart, 'Nouvelle Pesée', Colors.blue),
+              _buildQuickAction(
+                Icons.add_shopping_cart, 
+                'Nouvelle Pesée', 
+                Colors.blue,
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NewWeighingScreen(user: widget.user))),
+              ),
               const SizedBox(width: 16),
               _buildQuickAction(Icons.bar_chart, 'Rapports', Colors.green),
             ],
@@ -214,21 +251,24 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  Widget _buildQuickAction(IconData icon, String label, Color color) {
+  Widget _buildQuickAction(IconData icon, String label, Color color, {VoidCallback? onTap}) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 30),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 30),
+              const SizedBox(height: 8),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
         ),
       ),
     );
