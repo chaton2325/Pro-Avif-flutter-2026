@@ -4,6 +4,7 @@ import '../models/user.dart';
 import '../models/lot.dart';
 import '../models/farm.dart';
 import '../services/mongo_service.dart';
+import 'weight_entry_screen.dart';
 
 class NewWeighingScreen extends StatefulWidget {
   final User user;
@@ -215,9 +216,21 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
                     child: ElevatedButton(
                       onPressed: () {
                         if (_formKey.currentState!.validate()) {
-                          // TODO: Next step
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Configuration validée. Passage à l\'étape suivante...')),
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => WeightEntryScreen(
+                                user: widget.user,
+                                lot: _selectedLot!,
+                                operator: _operatorController.text,
+                                building: _assignedFarm?.name ?? 'Inconnu',
+                                room: _selectedRoom!,
+                                age: int.parse(_ageController.text),
+                                minWeight: double.parse(_lowerIntervalController.text),
+                                maxWeight: double.parse(_upperIntervalController.text),
+                                precision: _currentPrecision,
+                              ),
+                            ),
                           );
                         }
                       },
