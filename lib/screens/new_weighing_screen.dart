@@ -157,9 +157,51 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      Expanded(child: _buildTextField(_lowerIntervalController, 'Minimum', Icons.arrow_downward, keyboardType: TextInputType.number)),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _lowerIntervalController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: 'Minimum',
+                            prefixIcon: const Icon(Icons.arrow_downward, color: Colors.orange, size: 20),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                          ),
+                          validator: (val) {
+                            if (val == null || val.isEmpty) return 'Champ requis';
+                            final min = double.tryParse(val);
+                            final max = double.tryParse(_upperIntervalController.text);
+                            if (min != null && max != null && min >= max) {
+                              return 'Doit être < Max';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
                       const SizedBox(width: 16),
-                      Expanded(child: _buildTextField(_upperIntervalController, 'Maximum', Icons.arrow_upward, keyboardType: TextInputType.number)),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _upperIntervalController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: 'Maximum',
+                            prefixIcon: const Icon(Icons.arrow_upward, color: Colors.orange, size: 20),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                          ),
+                          validator: (val) {
+                            if (val == null || val.isEmpty) return 'Champ requis';
+                            final max = double.tryParse(val);
+                            final min = double.tryParse(_lowerIntervalController.text);
+                            if (max != null && min != null && max <= min) {
+                              return 'Doit être > Min';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
                     ],
                   ),
 
