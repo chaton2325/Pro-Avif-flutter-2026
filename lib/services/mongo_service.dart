@@ -116,6 +116,26 @@ class MongoService {
     await _logAction('update', 'users', 'Changement de mot de passe pour: $userName');
   }
 
+  Future<void> updateUserPreferences(ObjectId userId, String language, int precision) async {
+    await _userCollection?.update(
+      where.id(userId),
+      modify.set('language', language).set('scalePrecision', precision),
+    );
+    if (currentUser?.id == userId) {
+      currentUser = User(
+        id: currentUser!.id,
+        name: currentUser!.name,
+        password: currentUser!.password,
+        role: currentUser!.role,
+        farmId: currentUser!.farmId,
+        isActive: currentUser!.isActive,
+        language: language,
+        scalePrecision: precision,
+      );
+    }
+    await _logAction('update', 'users', 'Mise à jour des préférences (Langue: $language, Précision: $precision)');
+  }
+
   Future<void> deleteUser(ObjectId id) async {
     final user = await _userCollection?.findOne(where.id(id));
     await _userCollection?.remove(where.id(id));
