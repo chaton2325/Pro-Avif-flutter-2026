@@ -8,9 +8,9 @@ void main() async {
   final mongoService = MongoService();
   try {
     await mongoService.connect();
-    print("Connexion à MongoDB réussie");
+    print("Connexion à l'API réussie");
   } catch (e) {
-    print("Échec de la connexion à MongoDB : $e");
+    print("Échec de la connexion à l'API : $e");
   }
 
   runApp(const MyApp());

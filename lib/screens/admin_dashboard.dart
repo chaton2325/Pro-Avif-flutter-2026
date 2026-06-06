@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_nav_bar/google_nav_bar.dart';
-import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import '../models/user.dart';
 import '../models/farm.dart';
 import '../models/audit_log.dart';
@@ -118,7 +117,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final nameController = TextEditingController();
     final passwordController = TextEditingController();
     String selectedRole = 'user';
-    mongo.ObjectId? selectedFarmId;
+    String? selectedFarmId;
 
     showDialog(
       context: context,
@@ -143,10 +142,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   onChanged: (val) => setDialogState(() => selectedRole = val!),
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<mongo.ObjectId>(
+                DropdownButtonFormField<String>(
                   hint: const Text('Allouer à une ferme'),
                   value: selectedFarmId,
-                  items: _farms.map((f) => DropdownMenuItem(value: f.id, child: Text(f.name))).toList(),
+                  items: [
+                    const DropdownMenuItem<String>(value: null, child: Text('Aucune ferme')),
+                    ..._farms
+                        .where((f) => f.id != null)
+                        .fold<Map<String, Farm>>({}, (map, f) => map..putIfAbsent(f.id!, () => f))
+                        .values
+                        .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
+                        .toList(),
+                  ],
                   onChanged: (val) => setDialogState(() => selectedFarmId = val),
                 ),
               ],
@@ -528,7 +535,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
                               TextButton.icon(icon: Icon(user.isActive ? Icons.block : Icons.check_circle, color: user.isActive ? Colors.red : Colors.green), label: Text(user.isActive ? 'Désactiver' : 'Activer', style: TextStyle(color: user.isActive ? Colors.red : Colors.green)), onPressed: () async { await _mongoService.toggleUserStatus(user); _refreshData(); }),
-                              TextButton.icon(icon: const Icon(Icons.lock_reset, color: Colors.blue), label: const Text('Mot de passe', style: TextStyle(color: Colors.blue)), onPressed: () => _showChangePasswordDialog(user)),
+                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showEditUserDialog(user)),
                               IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () async { await _mongoService.deleteUser(user.id!); _refreshData(); }),
                             ],
                           ),
@@ -540,6 +547,84 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
         ),
       ],
+    );
+  }
+
+  void _showEditUserDialog(User user) {
+    final nameController = TextEditingController(text: user.name);
+    final passwordController = TextEditingController();
+    String selectedRole = user.role;
+    String? selectedFarmId = user.farmId;
+
+    // Safety check: ensure selectedFarmId exists in the farms list
+    if (selectedFarmId != null && !_farms.any((f) => f.id == selectedFarmId)) {
+      selectedFarmId = null;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Modifier ${user.name}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nom')),
+                TextField(controller: passwordController, decoration: const InputDecoration(labelText: 'Nouveau MDP (laisser vide si inchangé)'), obscureText: true),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedRole,
+                  decoration: const InputDecoration(labelText: 'Rôle'),
+                  items: const [
+                    DropdownMenuItem(value: 'user', child: Text('Simple Utilisateur')),
+                    DropdownMenuItem(value: 'admin', child: Text('Administrateur')),
+                  ],
+                  onChanged: (val) => setDialogState(() => selectedRole = val!),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  hint: const Text('Allouer à une ferme'),
+                  value: selectedFarmId,
+                  items: [
+                    const DropdownMenuItem<String>(value: null, child: Text('Aucune ferme')),
+                    ..._farms
+                        .where((f) => f.id != null)
+                        .fold<Map<String, Farm>>({}, (map, f) => map..putIfAbsent(f.id!, () => f))
+                        .values
+                        .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
+                        .toList(),
+                  ],
+                  onChanged: (val) => setDialogState(() => selectedFarmId = val),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              onPressed: () async {
+                final updatedUser = User(
+                  id: user.id,
+                  name: nameController.text,
+                  password: passwordController.text.isEmpty ? user.password : passwordController.text,
+                  role: selectedRole,
+                  farmId: selectedFarmId,
+                  isActive: user.isActive,
+                  language: user.language,
+                  scalePrecision: user.scalePrecision,
+                );
+                await _mongoService.updateUser(updatedUser);
+                _refreshData();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+              },
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

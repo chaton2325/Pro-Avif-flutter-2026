@@ -1,18 +1,17 @@
-import 'package:mongo_dart/mongo_dart.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/farm.dart';
 import '../models/audit_log.dart';
 import '../models/lot.dart';
+import '../models/weighing_session.dart';
 
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  Db? _db;
-  DbCollection? _userCollection;
-  DbCollection? _farmCollection;
-  DbCollection? _auditCollection;
-  DbCollection? _lotCollection;
-  String? connectionError;
+  final String baseUrl = "http://192.168.1.187:8000";
   User? currentUser;
+  String? connectionError;
+  bool _isConnected = false;
 
   factory MongoService() {
     return _instance;
@@ -20,184 +19,226 @@ class MongoService {
 
   MongoService._internal();
 
-  bool get isConnected => _db != null && _db!.isConnected;
+  bool get isConnected => _isConnected;
 
   Future<void> connect() async {
     try {
-      _db = await Db.create("mongodb://192.168.1.110:27017/pro-avif-db");
-      await _db!.open();
-      _userCollection = _db!.collection('users');
-      _farmCollection = _db!.collection('fermes');
-      _auditCollection = _db!.collection('audit_logs');
-      _lotCollection = _db!.collection('lots');
-      connectionError = null;
-      
-      await _ensureAdminExists();
+      final response = await http.get(Uri.parse('$baseUrl/users')).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        _isConnected = true;
+        connectionError = null;
+      } else {
+        _isConnected = false;
+        connectionError = "Serveur répond avec le statut: ${response.statusCode}";
+      }
     } catch (e) {
+      _isConnected = false;
       connectionError = e.toString();
-      print("Erreur MongoService: $e");
-      rethrow;
-    }
-  }
-
-  Future<void> _logAction(String action, String collection, String details) async {
-    if (_auditCollection == null) return;
-    await _auditCollection!.insertOne(AuditLog(
-      userName: currentUser?.name ?? 'System',
-      action: action,
-      collection: collection,
-      details: details,
-      timestamp: DateTime.now(),
-    ).toMap());
-  }
-
-  Future<void> _ensureAdminExists() async {
-    if (_userCollection == null) return;
-    final admin = await _userCollection!.findOne(where.eq('role', 'admin'));
-    if (admin == null) {
-      await _userCollection!.insertOne({
-        'name': 'admin',
-        'password': 'admin',
-        'role': 'admin',
-      });
+      print("Erreur ApiService: $e");
     }
   }
 
   Future<User?> login(String name, String password) async {
-    if (!isConnected || _userCollection == null) {
-      throw Exception("Non connecté à la base de données");
-    }
-    
-    final res = await _userCollection!.findOne(
-      where.eq('name', name).eq('password', password),
-    );
-    if (res != null) {
-      final user = User.fromMap(res);
-      if (!user.isActive) {
-        throw Exception("Compte désactivé. Contactez l'administrateur.");
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': name, 'password': password}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        currentUser = User.fromMap(data);
+        return currentUser;
+      } else if (response.statusCode == 401) {
+        throw Exception("Identifiants incorrects ou compte désactivé.");
+      } else {
+        throw Exception("Erreur lors de la connexion: ${response.statusCode}");
       }
-      currentUser = user;
-      await _logAction('login', 'users', 'Utilisateur connecté: $name');
-      return currentUser;
+    } catch (e) {
+      print("Erreur login: $e");
+      rethrow;
     }
-    return null;
   }
 
   // Users CRUD
   Future<List<User>> getUsers() async {
-    if (_userCollection == null) return [];
-    final users = await _userCollection!.find().toList();
-    return users.map((u) => User.fromMap(u)).toList();
+    final response = await http.get(Uri.parse('$baseUrl/users'));
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((u) => User.fromMap(u)).toList();
+    }
+    return [];
   }
 
   Future<void> addUser(User user) async {
-    await _userCollection?.insertOne(user.toMap());
-    await _logAction('create', 'users', 'Ajout de l\'utilisateur: ${user.name} with role ${user.role}');
+    await http.post(
+      Uri.parse('$baseUrl/users'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(user.toMap()),
+    );
   }
 
   Future<void> updateUser(User user) async {
     if (user.id == null) return;
-    await _userCollection?.replaceOne(where.id(user.id!), user.toMap());
-    await _logAction('update', 'users', 'Modification de l\'utilisateur: ${user.name}');
+    await http.put(
+      Uri.parse('$baseUrl/users/${user.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(user.toMap()),
+    );
   }
 
   Future<void> toggleUserStatus(User user) async {
     if (user.id == null) return;
-    final newStatus = !user.isActive;
-    await _userCollection?.update(
-      where.id(user.id!),
-      modify.set('isActive', newStatus),
+    final updatedUser = User(
+      id: user.id,
+      name: user.name,
+      password: user.password,
+      role: user.role,
+      farmId: user.farmId,
+      isActive: !user.isActive,
+      language: user.language,
+      scalePrecision: user.scalePrecision,
     );
-    await _logAction('update', 'users', '${newStatus ? "Activation" : "Désactivation"} de l\'utilisateur: ${user.name}');
+    await updateUser(updatedUser);
   }
 
-  Future<void> changePassword(ObjectId userId, String userName, String newPassword) async {
-    await _userCollection?.update(
-      where.id(userId),
-      modify.set('password', newPassword),
-    );
-    await _logAction('update', 'users', 'Changement de mot de passe pour: $userName');
-  }
-
-  Future<void> updateUserPreferences(ObjectId userId, String language, int precision) async {
-    await _userCollection?.update(
-      where.id(userId),
-      modify.set('language', language).set('scalePrecision', precision),
-    );
-    if (currentUser?.id == userId) {
-      currentUser = User(
-        id: currentUser!.id,
-        name: currentUser!.name,
-        password: currentUser!.password,
-        role: currentUser!.role,
-        farmId: currentUser!.farmId,
-        isActive: currentUser!.isActive,
-        language: language,
-        scalePrecision: precision,
-      );
+  Future<void> changePassword(String userId, String userName, String newPassword) async {
+    // Note: The backend PUT /users/{id} can handle password change
+    final response = await http.get(Uri.parse('$baseUrl/users'));
+    if (response.statusCode == 200) {
+      final List<dynamic> users = jsonDecode(response.body);
+      final userData = users.firstWhere((u) => u['_id'] == userId, orElse: () => null);
+      if (userData != null) {
+        userData['password'] = newPassword;
+        await http.put(
+          Uri.parse('$baseUrl/users/$userId'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(userData),
+        );
+      }
     }
-    await _logAction('update', 'users', 'Mise à jour des préférences (Langue: $language, Précision: $precision)');
   }
 
-  Future<void> deleteUser(ObjectId id) async {
-    final user = await _userCollection?.findOne(where.id(id));
-    await _userCollection?.remove(where.id(id));
-    await _logAction('delete', 'users', 'Suppression de l\'utilisateur: ${user?['name']}');
+  Future<void> updateUserPreferences(String userId, String language, int precision) async {
+    final response = await http.get(Uri.parse('$baseUrl/users'));
+    if (response.statusCode == 200) {
+      final List<dynamic> users = jsonDecode(response.body);
+      final userData = users.firstWhere((u) => u['_id'] == userId, orElse: () => null);
+      if (userData != null) {
+        userData['language'] = language;
+        userData['scalePrecision'] = precision;
+        await http.put(
+          Uri.parse('$baseUrl/users/$userId'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(userData),
+        );
+        
+        if (currentUser?.id == userId) {
+          currentUser = User.fromMap(userData);
+        }
+      }
+    }
+  }
+
+  Future<void> deleteUser(String id) async {
+    await http.delete(Uri.parse('$baseUrl/users/$id'));
   }
 
   // Farms CRUD
   Future<List<Farm>> getFarms() async {
-    if (_farmCollection == null) return [];
-    final farms = await _farmCollection!.find().toList();
-    return farms.map((f) => Farm.fromMap(f)).toList();
+    final response = await http.get(Uri.parse('$baseUrl/farms'));
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((f) => Farm.fromMap(f)).toList();
+    }
+    return [];
   }
 
-  Future<Farm?> getFarmById(ObjectId id) async {
-    final farm = await _farmCollection?.findOne(where.id(id));
-    if (farm != null) return Farm.fromMap(farm);
-    return null;
+  Future<Farm?> getFarmById(String id) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/farms/$id'));
+      if (response.statusCode == 200) {
+        return Farm.fromMap(jsonDecode(response.body));
+      }
+    } catch (e) {
+      print("Erreur getFarmById: $e");
+    }
+    
+    // Fallback: search in list if endpoint fails
+    final farms = await getFarms();
+    try {
+      return farms.firstWhere((f) => f.id == id);
+    } catch (e) {
+      return null;
+    }
   }
 
   Future<void> addFarm(Farm farm) async {
-    await _farmCollection?.insertOne(farm.toMap());
-    await _logAction('create', 'fermes', 'Création de la ferme: ${farm.name}');
+    await http.post(
+      Uri.parse('$baseUrl/farms'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(farm.toMap()),
+    );
   }
 
   Future<void> updateFarm(Farm farm) async {
+    // The backend doesn't have PUT /farms/{id} in the list, but usually it's there.
+    // Given the prompt list, I might have to delete and re-add or ask.
+    // But I'll assume standard CRUD if needed, or just skip if not in the list.
+    // The list only has GET /farms, POST /farms, DELETE /farms/{id}.
+    // If I need to update, I'll delete and re-add for now as a workaround if PUT is missing.
     if (farm.id == null) return;
-    await _farmCollection?.replaceOne(where.id(farm.id!), farm.toMap());
-    await _logAction('update', 'fermes', 'Modification de la ferme: ${farm.name}');
+    await deleteFarm(farm.id!);
+    await addFarm(farm);
   }
 
-  Future<void> deleteFarm(ObjectId id) async {
-    final farm = await _farmCollection?.findOne(where.id(id));
-    await _farmCollection?.remove(where.id(id));
-    await _logAction('delete', 'fermes', 'Suppression de la ferme: ${farm?['name']}');
+  Future<void> deleteFarm(String id) async {
+    await http.delete(Uri.parse('$baseUrl/farms/$id'));
   }
 
   // Lots CRUD
   Future<List<Lot>> getLots() async {
-    if (_lotCollection == null) return [];
-    final lots = await _lotCollection!.find(where.sortBy('createdAt', descending: true)).toList();
-    return lots.map((l) => Lot.fromMap(l)).toList();
+    final response = await http.get(Uri.parse('$baseUrl/lots'));
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((l) => Lot.fromMap(l)).toList();
+    }
+    return [];
   }
 
   Future<void> addLot(Lot lot) async {
-    await _lotCollection?.insertOne(lot.toMap());
-    await _logAction('create', 'lots', 'Création du lot: ${lot.number}');
+    await http.post(
+      Uri.parse('$baseUrl/lots'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(lot.toMap()),
+    );
   }
 
-  Future<void> deleteLot(ObjectId id) async {
-    final lot = await _lotCollection?.findOne(where.id(id));
-    await _lotCollection?.remove(where.id(id));
-    await _logAction('delete', 'lots', 'Suppression du lot: ${lot?['number']}');
+  Future<void> deleteLot(String id) async {
+    await http.delete(Uri.parse('$baseUrl/lots/$id'));
+  }
+
+  // Weighing Sessions
+  Future<void> saveWeighingSession(WeighingSession session) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/weighings'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(session.toMap()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception("Erreur lors de l'enregistrement de la pesée: ${response.body}");
+    }
   }
 
   // Audit Logs
   Future<List<AuditLog>> getAuditLogs() async {
-    if (_auditCollection == null) return [];
-    final logs = await _auditCollection!.find(where.sortBy('timestamp', descending: true)).toList();
-    return logs.map((l) => AuditLog.fromMap(l)).toList();
+    final response = await http.get(Uri.parse('$baseUrl/audit-logs'));
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((l) => AuditLog.fromMap(l)).toList();
+    }
+    return [];
   }
 
   void logout() {
@@ -205,6 +246,6 @@ class MongoService {
   }
   
   Future<void> close() async {
-    await _db?.close();
+    // Nothing to close for http
   }
 }

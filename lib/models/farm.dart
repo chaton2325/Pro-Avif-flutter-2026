@@ -1,7 +1,5 @@
-import 'package:mongo_dart/mongo_dart.dart';
-
 class Farm {
-  final ObjectId? id;
+  final String? id;
   final String name;
   final List<String> rooms;
 
@@ -13,7 +11,7 @@ class Farm {
 
   Map<String, dynamic> toMap() {
     return {
-      '_id': id,
+      'id': id,
       'name': name,
       'rooms': rooms,
     };
@@ -21,7 +19,7 @@ class Farm {
 
   factory Farm.fromMap(Map<String, dynamic> map) {
     return Farm(
-      id: map['_id'] as ObjectId?,
+      id: map['_id'] as String?,
       name: map['name'] as String,
       rooms: List<String>.from(map['rooms'] ?? []),
     );

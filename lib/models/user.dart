@@ -1,11 +1,9 @@
-import 'package:mongo_dart/mongo_dart.dart';
-
 class User {
-  final ObjectId? id;
+  final String? id;
   final String name;
   final String password;
   final String role; // 'admin' or 'user'
-  final ObjectId? farmId;
+  final String? farmId;
   final bool isActive;
   final String language; // 'fr' or 'en'
   final int scalePrecision; // e.g., 1, 2, 3 decimal places
@@ -23,7 +21,7 @@ class User {
 
   Map<String, dynamic> toMap() {
     return {
-      '_id': id,
+      'id': id,
       'name': name,
       'password': password,
       'role': role,
@@ -35,12 +33,19 @@ class User {
   }
 
   factory User.fromMap(Map<String, dynamic> map) {
+    String? farmIdStr;
+    if (map['farmId'] is String) {
+      farmIdStr = map['farmId'];
+    } else if (map['farmId'] is Map && map['farmId'].containsKey('\$oid')) {
+      farmIdStr = map['farmId']['\$oid'];
+    }
+
     return User(
-      id: map['_id'] as ObjectId?,
+      id: map['_id'] as String?,
       name: map['name'] as String,
-      password: map['password'] as String,
+      password: map['password'] as String? ?? '',
       role: map['role'] as String,
-      farmId: map['farmId'] as ObjectId?,
+      farmId: farmIdStr,
       isActive: map['isActive'] as bool? ?? true,
       language: map['language'] as String? ?? 'fr',
       scalePrecision: map['scalePrecision'] as int? ?? 2,

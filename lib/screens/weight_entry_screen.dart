@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/user.dart';
 import '../models/lot.dart';
+import '../services/session_storage.dart';
+import 'weighing_summary_screen.dart';
 
 class WeightEntryScreen extends StatefulWidget {
   final User user;
@@ -12,6 +14,7 @@ class WeightEntryScreen extends StatefulWidget {
   final double minWeight;
   final double maxWeight;
   final int precision;
+  final List<double>? initialWeights;
 
   const WeightEntryScreen({
     super.key,
@@ -24,6 +27,7 @@ class WeightEntryScreen extends StatefulWidget {
     required this.minWeight,
     required this.maxWeight,
     required this.precision,
+    this.initialWeights,
   });
 
   @override
@@ -33,8 +37,29 @@ class WeightEntryScreen extends StatefulWidget {
 class _WeightEntryScreenState extends State<WeightEntryScreen> {
   final TextEditingController _weightController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final List<double> _weights = [];
+  late List<double> _weights;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _weights = widget.initialWeights != null ? List.from(widget.initialWeights!) : [];
+  }
+
+  void _persistLocally() {
+    SessionStorage.saveSession(
+      user: widget.user,
+      lot: widget.lot,
+      operator: widget.operator,
+      building: widget.building,
+      room: widget.room,
+      age: widget.age,
+      minWeight: widget.minWeight,
+      maxWeight: widget.maxWeight,
+      precision: widget.precision,
+      weights: _weights,
+    );
+  }
 
   void _addWeight() {
     final String valueStr = _weightController.text.trim();
@@ -47,13 +72,11 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
       return;
     }
 
-    // 1. Check Interval
     if (weight < widget.minWeight || weight > widget.maxWeight) {
       _setTemporaryError("Hors intervalle (${widget.minWeight} - ${widget.maxWeight})");
       return;
     }
 
-    // 2. Check Precision (Multiple of widget.precision)
     if (weight % widget.precision != 0) {
       _setTemporaryError("Doit être un multiple de ${widget.precision}");
       return;
@@ -65,7 +88,8 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
       _errorMessage = null;
     });
 
-    // Auto-scroll to bottom after frame
+    _persistLocally();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -75,6 +99,25 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
         );
       }
     });
+  }
+
+  void _navigateToSummary() {
+    if (_weights.isEmpty) return;
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WeighingSummaryScreen(
+          user: widget.user,
+          lot: widget.lot,
+          operator: widget.operator,
+          building: widget.building,
+          room: widget.room,
+          age: widget.age,
+          weights: _weights,
+        ),
+      ),
+    );
   }
 
   void _setTemporaryError(String msg) {
@@ -87,6 +130,7 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
     setState(() {
       _weights.removeAt(index);
     });
+    _persistLocally();
   }
 
   @override
@@ -236,16 +280,12 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: _weights.isEmpty ? null : () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Poids enregistrés localement.')),
-                  );
-                },
+                onPressed: _weights.isEmpty ? null : _navigateToSummary,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('ENREGISTRER LA SESSION', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                child: const Text('SUIVANT (RÉSUMÉ)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ),

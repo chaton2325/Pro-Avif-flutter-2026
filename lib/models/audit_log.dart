@@ -1,7 +1,5 @@
-import 'package:mongo_dart/mongo_dart.dart';
-
 class AuditLog {
-  final ObjectId? id;
+  final String? id;
   final String userName;
   final String action; // 'create', 'update', 'delete', 'login'
   final String collection;
@@ -19,23 +17,23 @@ class AuditLog {
 
   Map<String, dynamic> toMap() {
     return {
-      '_id': id,
+      'id': id,
       'userName': userName,
       'action': action,
       'collection': collection,
       'details': details,
-      'timestamp': timestamp,
+      'timestamp': timestamp.toIso8601String(),
     };
   }
 
   factory AuditLog.fromMap(Map<String, dynamic> map) {
     return AuditLog(
-      id: map['_id'] as ObjectId?,
+      id: map['_id'] as String?,
       userName: map['userName'] as String,
       action: map['action'] as String,
       collection: map['collection'] as String,
       details: map['details'] as String,
-      timestamp: map['timestamp'] as DateTime,
+      timestamp: DateTime.parse(map['timestamp'] as String),
     );
   }
 }

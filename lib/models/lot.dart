@@ -1,7 +1,5 @@
-import 'package:mongo_dart/mongo_dart.dart';
-
 class Lot {
-  final ObjectId? id;
+  final String? id;
   final String number;
   final DateTime createdAt;
 
@@ -13,17 +11,17 @@ class Lot {
 
   Map<String, dynamic> toMap() {
     return {
-      '_id': id,
+      'id': id,
       'number': number,
-      'createdAt': createdAt,
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 
   factory Lot.fromMap(Map<String, dynamic> map) {
     return Lot(
-      id: map['_id'] as ObjectId?,
+      id: map['_id'] as String?,
       number: map['number'] as String,
-      createdAt: map['createdAt'] as DateTime,
+      createdAt: DateTime.parse(map['createdAt'] as String),
     );
   }
 }
