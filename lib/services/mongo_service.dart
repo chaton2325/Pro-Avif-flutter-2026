@@ -273,17 +273,36 @@ class MongoService {
     return 0;
   }
 
-  Future<List<WeighingSession>> getUserWeighings(String userId) async {
+  Future<Map<String, dynamic>> getPaginatedWeighings({
+    int skip = 0,
+    int limit = 20,
+    String? farmName,
+    String? lotId,
+    String? operator,
+    String sortBy = 'timestamp',
+    String order = 'desc',
+  }) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/weighings/user/$userId'));
+      final queryParams = {
+        'skip': skip.toString(),
+        'limit': limit.toString(),
+        'sort_by': sortBy,
+        'order': order,
+        if (farmName != null && farmName.isNotEmpty) 'farmName': farmName,
+        if (lotId != null && lotId.isNotEmpty) 'lotId': lotId,
+        if (operator != null && operator.isNotEmpty) 'operator': operator,
+      };
+      
+      final uri = Uri.parse('$baseUrl/weighings/all').replace(queryParameters: queryParams);
+      final response = await http.get(uri);
+      
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.map((s) => WeighingSession.fromMap(s)).toList();
+        return jsonDecode(response.body);
       }
     } catch (e) {
-      print("Erreur historique: $e");
+      print("Erreur getPaginatedWeighings: $e");
     }
-    return [];
+    return {'total_count': 0, 'data': [], 'limit': limit, 'skip': skip};
   }
 
   // Audit Logs

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'services/mongo_service.dart';
+import 'services/sync_service.dart';
 import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   final mongoService = MongoService();
+  final syncService = SyncService();
+  
+  syncService.startObserving();
+  
   try {
     await mongoService.connect();
     print("Connexion à l'API réussie");

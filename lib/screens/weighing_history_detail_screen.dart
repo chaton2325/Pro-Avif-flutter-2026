@@ -8,13 +8,15 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Re-calculate statistics locally for display
     double sum = session.weights.reduce((a, b) => a + b);
     double averageWeight = sum / session.weights.length;
     double plus10 = averageWeight * 1.10;
     double minus10 = averageWeight * 0.90;
     int homogeneousCount = session.weights.where((w) => w >= minus10 && w <= plus10).length;
     double homogeneityPercentage = (homogeneousCount / session.weights.length) * 100;
+    
+    // Use session value if available, otherwise use local calculation
+    double finalHomogeneity = session.homogeneity > 0 ? session.homogeneity : homogeneityPercentage;
 
     return Scaffold(
       appBar: AppBar(
@@ -77,15 +79,15 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
                           const Text('HOMOGÉNÉITÉ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
                           const SizedBox(height: 5),
                           Text(
-                            '${homogeneityPercentage.toStringAsFixed(1)} %',
+                            '${finalHomogeneity.toStringAsFixed(1)} %',
                             style: TextStyle(
                               fontSize: 32, 
                               fontWeight: FontWeight.bold, 
-                              color: homogeneityPercentage >= 80 ? Colors.green : Colors.orange,
+                              color: finalHomogeneity >= 80 ? Colors.green : Colors.orange,
                             ),
                           ),
                           Text(
-                            '$homogeneousCount sujets homogènes / ${session.weights.length}',
+                            '$homogeneousCount sujets homogènes',
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                           ),
                         ],
@@ -95,7 +97,6 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
 
             // All Weights Grid
             Text('Détail des Poids (${session.weights.length} sujets)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),

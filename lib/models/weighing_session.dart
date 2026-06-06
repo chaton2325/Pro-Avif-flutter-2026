@@ -9,6 +9,7 @@ class WeighingSession {
   final List<double> weights;
   final DateTime timestamp;
   final bool isSync;
+  final double homogeneity;
 
   WeighingSession({
     this.id,
@@ -21,6 +22,7 @@ class WeighingSession {
     required this.weights,
     required this.timestamp,
     this.isSync = true,
+    this.homogeneity = 0.0,
   });
 
   Map<String, dynamic> toMap() {
@@ -34,6 +36,7 @@ class WeighingSession {
       'weights': weights,
       'timestamp': timestamp.toIso8601String(),
       'isSync': isSync,
+      'homogeneity': homogeneity,
     };
   }
 
@@ -49,6 +52,7 @@ class WeighingSession {
       weights: List<double>.from(map['weights'].map((x) => x.toDouble())),
       timestamp: DateTime.parse(map['timestamp'] as String),
       isSync: map['isSync'] as bool? ?? true,
+      homogeneity: (map['homogeneity'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
