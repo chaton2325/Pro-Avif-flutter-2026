@@ -2,16 +2,19 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/lot.dart';
 import '../models/user.dart';
+import '../models/weighing_session.dart';
 
 class SessionStorage {
   static const String _key = 'pending_weighing_sessions_v2';
+  static const String _offlineKey = 'offline_completed_sessions';
 
-  /// Generates a unique key for a session to avoid duplicates
+  /// Generates a unique key for an interrupted session
   static String _generateSessionId(String userId, String lotNumber, String room, String building) {
     return '${userId}_${lotNumber}_${building}_${room}'.replaceAll(' ', '_');
   }
 
-  /// Save or update a session in the list
+  // --- INTERRUPTED SESSIONS LOGIC (Drafts) ---
+
   static Future<void> saveSession({
     required User user,
     required Lot lot,
@@ -29,7 +32,11 @@ class SessionStorage {
     Map<String, dynamic> sessions = {};
     
     if (existingJson != null) {
-      sessions = jsonDecode(existingJson);
+      try {
+        sessions = jsonDecode(existingJson);
+      } catch (e) {
+        sessions = {};
+      }
     }
 
     final sessionId = _generateSessionId(user.id!, lot.number, room, building);
@@ -52,30 +59,68 @@ class SessionStorage {
     await prefs.setString(_key, jsonEncode(sessions));
   }
 
-  /// Retrieve all pending sessions for a specific user
   static Future<List<Map<String, dynamic>>> getSessionsForUser(String userId) async {
     final prefs = await SharedPreferences.getInstance();
-    final String? json = prefs.getString(_key);
-    if (json == null) return [];
+    final String? jsonStr = prefs.getString(_key);
+    if (jsonStr == null) return [];
     
-    Map<String, dynamic> allSessions = jsonDecode(json);
-    return allSessions.values
-        .where((s) => s['userId'] == userId)
-        .cast<Map<String, dynamic>>()
-        .toList()
-      ..sort((a, b) => b['timestamp'].compareTo(a['timestamp']));
+    try {
+      Map<String, dynamic> allSessions = jsonDecode(jsonStr);
+      return allSessions.values
+          .where((s) => s['userId'] == userId)
+          .cast<Map<String, dynamic>>()
+          .toList()
+        ..sort((a, b) => b['timestamp'].compareTo(a['timestamp']));
+    } catch (e) {
+      return [];
+    }
   }
 
-  /// Delete a specific session after successful upload or manual deletion
   static Future<void> clearSession(String userId, String lotNumber, String room, String building) async {
     final sessionId = _generateSessionId(userId, lotNumber, room, building);
     final prefs = await SharedPreferences.getInstance();
-    final String? json = prefs.getString(_key);
-    if (json == null) return;
+    final String? jsonStr = prefs.getString(_key);
+    if (jsonStr == null) return;
 
-    Map<String, dynamic> sessions = jsonDecode(json);
-    sessions.remove(sessionId);
+    try {
+      Map<String, dynamic> sessions = jsonDecode(jsonStr);
+      sessions.remove(sessionId);
+      await prefs.setString(_key, jsonEncode(sessions));
+    } catch (e) {}
+  }
+
+  // --- OFFLINE COMPLETED SESSIONS LOGIC (Ready for sync) ---
+
+  static Future<void> saveOfflineSession(WeighingSession session) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonStr = prefs.getString(_offlineKey);
+    List<dynamic> list = [];
+    if (jsonStr != null) {
+      try {
+        list = jsonDecode(jsonStr);
+      } catch (e) {
+        list = [];
+      }
+    }
+    list.add(session.toMap());
+    await prefs.setString(_offlineKey, jsonEncode(list));
+  }
+
+  static Future<List<WeighingSession>> getOfflineSessions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonStr = prefs.getString(_offlineKey);
+    if (jsonStr == null) return [];
     
-    await prefs.setString(_key, jsonEncode(sessions));
+    try {
+      final List<dynamic> list = jsonDecode(jsonStr);
+      return list.map((item) => WeighingSession.fromMap(item)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<void> clearOfflineSessions() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_offlineKey);
   }
 }

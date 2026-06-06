@@ -16,16 +16,17 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   void _login() async {
-    if (!MongoService().isConnected) {
+    final mongoService = MongoService();
+    if (!mongoService.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur de connexion : ${MongoService().connectionError ?? "Base de données non joignable"}'),
+          content: Text('Erreur de connexion : ${mongoService.connectionError ?? "Base de données non joignable"}'),
           backgroundColor: Colors.red,
         ),
       );
       setState(() => _isLoading = true);
       try {
-        await MongoService().connect();
+        await mongoService.connect();
       } catch (e) {
         if (!mounted) return;
         setState(() => _isLoading = false);
@@ -37,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final user = await MongoService().login(
+      final user = await mongoService.login(
         _nameController.text,
         _passwordController.text,
       );
@@ -46,6 +47,15 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = false);
 
       if (user != null) {
+        // Sync offline data after login
+        mongoService.syncOfflineSessions().then((count) {
+          if (count > 0 && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('$count pesées synchronisées avec succès !'), backgroundColor: Colors.green),
+            );
+          }
+        });
+
         if (user.role == 'admin') {
           Navigator.pushReplacement(
             context,

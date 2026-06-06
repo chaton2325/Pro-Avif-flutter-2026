@@ -11,6 +11,7 @@ import 'login_screen.dart';
 import 'new_weighing_screen.dart';
 import 'weight_entry_screen.dart';
 import 'pending_sessions_screen.dart';
+import 'user_history_screen.dart';
 
 class UserDashboard extends StatefulWidget {
   final User user;
@@ -198,7 +199,12 @@ class _UserDashboardState extends State<UserDashboard> {
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NewWeighingScreen(user: widget.user))).then((_) => _checkPendingSessions()),
               ),
               const SizedBox(width: 16),
-              _buildQuickAction(Icons.bar_chart, 'Rapports', Colors.green),
+              _buildQuickAction(
+                Icons.history, 
+                'Mon Historique', 
+                Colors.green,
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserHistoryScreen(user: widget.user))),
+              ),
             ],
           ),
           const SizedBox(height: 100),

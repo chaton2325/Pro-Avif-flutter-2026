@@ -5,6 +5,7 @@ import '../models/farm.dart';
 import '../models/audit_log.dart';
 import '../models/lot.dart';
 import '../models/weighing_session.dart';
+import './session_storage.dart';
 
 class MongoService {
   static final MongoService _instance = MongoService._internal();
@@ -221,14 +222,68 @@ class MongoService {
 
   // Weighing Sessions
   Future<void> saveWeighingSession(WeighingSession session) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/weighings'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(session.toMap()),
-    );
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception("Erreur lors de l'enregistrement de la pesée: ${response.body}");
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/weighings'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(session.toMap()),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception("Serveur erreur: ${response.statusCode}");
+      }
+    } catch (e) {
+      // Offline mode: save locally if server unreachable
+      print("Mode Hors-Ligne: Sauvegarde locale de la pesée");
+      final offlineSession = WeighingSession(
+        userId: session.userId,
+        lotId: session.lotId,
+        operator: session.operator,
+        farmName: session.farmName,
+        roomName: session.roomName,
+        age: session.age,
+        weights: session.weights,
+        timestamp: session.timestamp,
+        isSync: false, // Mark as NOT synced
+      );
+      await SessionStorage.saveOfflineSession(offlineSession);
+      throw Exception("OFFLINE_SAVED"); // Special error to notify UI
     }
+  }
+
+  Future<int> syncOfflineSessions() async {
+    final offlineSessions = await SessionStorage.getOfflineSessions();
+    if (offlineSessions.isEmpty) return 0;
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/weighings/bulk'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(offlineSessions.map((s) => s.toMap()).toList()),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        await SessionStorage.clearOfflineSessions();
+        return data['inserted_count'] ?? offlineSessions.length;
+      }
+    } catch (e) {
+      print("Échec de la synchronisation: $e");
+    }
+    return 0;
+  }
+
+  Future<List<WeighingSession>> getUserWeighings(String userId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/weighings/user/$userId'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((s) => WeighingSession.fromMap(s)).toList();
+      }
+    } catch (e) {
+      print("Erreur historique: $e");
+    }
+    return [];
   }
 
   // Audit Logs

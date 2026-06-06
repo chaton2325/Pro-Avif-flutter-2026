@@ -98,6 +98,7 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
 
     try {
       final session = WeighingSession(
+        userId: widget.user.id!,
         lotId: widget.lot.id ?? widget.lot.number,
         operator: widget.operator,
         farmName: widget.building,
@@ -120,17 +121,39 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
         const SnackBar(content: Text('Session enregistrée avec succès !'), backgroundColor: Colors.green),
       );
       
-      Navigator.of(context).pop();
-      Navigator.of(context).pop();
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
+      _popToDashboard();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors de l\'enregistrement: $e'), backgroundColor: Colors.red),
-      );
+      
+      if (e.toString().contains("OFFLINE_SAVED")) {
+        await SessionStorage.clearSession(
+          widget.user.id!,
+          widget.lot.number,
+          widget.room,
+          widget.building,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mode Hors-Ligne : Pesée sauvegardée localement. Elle sera synchronisée à votre prochaine connexion.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+        _popToDashboard();
+      } else {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors de l\'enregistrement: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _popToDashboard() {
+    Navigator.of(context).pop(); // Summary
+    Navigator.of(context).pop(); // Entry
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop(); // NewWeighing
     }
   }
 
