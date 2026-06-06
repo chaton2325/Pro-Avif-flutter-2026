@@ -58,6 +58,41 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
     _homogeneityPercentage = (_homogeneousCount / widget.weights.length) * 100;
   }
 
+  Future<void> _confirmAndSave() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 10),
+            Text('Confirmation', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: const Text(
+          'Êtes-vous sûr de vouloir enregistrer définitivement cette session de pesée ?\n\nCette action est irréversible.',
+          style: TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ANNULER', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('OUI, ENREGISTRER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      _saveSession();
+    }
+  }
+
   Future<void> _saveSession() async {
     setState(() => _isSaving = true);
 
@@ -85,11 +120,10 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
         const SnackBar(content: Text('Session enregistrée avec succès !'), backgroundColor: Colors.green),
       );
       
-      // Go back to dashboard (Pop Summary -> Pop Entry -> Pop NewWeighing)
-      Navigator.of(context).pop(); // Back to Entry
-      Navigator.of(context).pop(); // Back to NewWeighing (if from there) or Dashboard
+      Navigator.of(context).pop();
+      Navigator.of(context).pop();
       if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop(); // Ensure we are at Dashboard
+        Navigator.of(context).pop();
       }
     } catch (e) {
       if (!mounted) return;
@@ -112,7 +146,6 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Session Info Card
             _buildSectionTitle('Informations Générales'),
             Card(
               elevation: 2,
@@ -132,8 +165,6 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // Statistics Card
             _buildSectionTitle('Statistiques de Performance'),
             Card(
               color: Colors.orange.shade50,
@@ -182,36 +213,58 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // Weights List (Preview)
-            _buildSectionTitle('Détail des Poids'),
+            _buildSectionTitle('Détail des Poids (${widget.weights.length} sujets)'),
             Container(
-              height: 150,
+              height: 200,
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
               ),
-              child: SingleChildScrollView(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: widget.weights.map((w) => Chip(
-                    label: Text('${w.toStringAsFixed(0)}g', style: const TextStyle(fontSize: 11)),
-                    backgroundColor: (w >= _minus10 && w <= _plus10) ? Colors.green.shade50 : Colors.red.shade50,
-                  )).toList(),
+              child: Scrollbar(
+                thumbVisibility: true,
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 60,
+                    mainAxisSpacing: 4,
+                    crossAxisSpacing: 4,
+                    childAspectRatio: 2,
+                  ),
+                  itemCount: widget.weights.length,
+                  itemBuilder: (context, index) {
+                    final w = widget.weights[index];
+                    final isHomogeneous = (w >= _minus10 && w <= _plus10);
+                    return Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isHomogeneous ? Colors.green.shade50 : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: isHomogeneous ? Colors.green.shade200 : Colors.red.shade200,
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        '${w.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: isHomogeneous ? Colors.green.shade800 : Colors.red.shade800,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
             const SizedBox(height: 40),
-
-            // Final Save Button
             SizedBox(
               width: double.infinity,
               height: 60,
               child: ElevatedButton(
-                onPressed: _isSaving ? null : _saveSession,
+                onPressed: _isSaving ? null : () => _confirmAndSave(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
