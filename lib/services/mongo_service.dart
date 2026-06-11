@@ -9,7 +9,7 @@ import './session_storage.dart';
 
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "http://192.168.0.117:8000";
+  final String baseUrl = "http://192.168.1.187:8000";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -330,6 +330,9 @@ class MongoService {
         if (endDate != null) 'endDate': endDate,
       };
       final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
+      
+      print("🔍 API CALL: $uri");
+      
       final response = await http.get(uri);
       
       if (response.statusCode == 200) {
@@ -337,6 +340,34 @@ class MongoService {
       }
     } catch (e) {
       print("Erreur getHomogeneityAnalysis: $e");
+    }
+    return {};
+  }
+
+  Future<Map<String, dynamic>> getClusteringAnalysis(String farmName) async {
+    try {
+      final uri = Uri.parse('$baseUrl/weighings/analysis/clustering').replace(queryParameters: {'farmName': farmName});
+      final response = await http.get(uri);
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print("Erreur getClusteringAnalysis: $e");
+    }
+    return {};
+  }
+
+  Future<Map<String, dynamic>> getPredictiveClustering(String weighingId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/weighings/predict/clustering').replace(queryParameters: {'weighingId': weighingId});
+      final response = await http.get(uri);
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print("Erreur getPredictiveClustering: $e");
     }
     return {};
   }

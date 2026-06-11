@@ -8,6 +8,7 @@ import '../services/mongo_service.dart';
 import 'login_screen.dart';
 import 'admin_history_screen.dart';
 import 'admin_analysis_screen.dart';
+import 'admin_ml_clustering_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -516,7 +517,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminAnalysisScreen())),
                 ),
                 const SizedBox(width: 16),
-                const Expanded(child: SizedBox()), // Spacer to keep layout balanced
+                _buildQuickAction(
+                  Icons.psychology, 
+                  'Optimisation IA', 
+                  Colors.purple,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminMLClusteringScreen())),
+                ),
               ],
             ),
             const SizedBox(height: 32),

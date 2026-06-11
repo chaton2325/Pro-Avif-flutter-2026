@@ -134,7 +134,6 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
     if (picked != null) {
       setState(() => _startDate = picked);
-      _loadAnalysisData();
     }
   }
 
@@ -147,10 +146,8 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
     if (picked != null) {
       setState(() {
-        // Set to end of day
         _endDate = DateTime(picked.year, picked.month, picked.day, 23, 59, 59);
       });
-      _loadAnalysisData();
     }
   }
 
@@ -230,7 +227,6 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
                     _startDate = DateTime.now().subtract(const Duration(days: 30));
                     _endDate = DateTime.now();
                   }
-                  _loadAnalysisData();
                 },
               ),
             ],
@@ -260,6 +256,16 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  onPressed: _loadAnalysisData,
+                  child: const Text('APPLIQUER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
               ],
             ),
           ],
@@ -282,24 +288,32 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   }
 
   Widget _buildAnalysisView() {
-    return SingleChildScrollView(
+    return ListView.builder(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildChartSection(),
-          const SizedBox(height: 24),
-          _buildRegressionSummary(),
-          const SizedBox(height: 40),
-        ],
-      ),
+      itemCount: _analysisData.keys.length,
+      itemBuilder: (context, index) {
+        final room = _analysisData.keys.elementAt(index);
+        final color = _roomColors[index % _roomColors.length];
+        final points = _analysisData[room]!;
+        
+        return Column(
+          children: [
+            _buildIndividualChartSection(room, points, color),
+            const SizedBox(height: 24),
+            _buildIndividualRegressionSummary(room, color),
+            const SizedBox(height: 32),
+            if (index < _analysisData.keys.length - 1) const Divider(),
+            if (index < _analysisData.keys.length - 1) const SizedBox(height: 32),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildChartSection() {
+  Widget _buildIndividualChartSection(String room, List<dynamic> points, Color color) {
     return Container(
-      height: 400,
-      padding: const EdgeInsets.fromLTRB(8, 16, 16, 16),
+      height: 350,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -307,93 +321,123 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
       ),
       child: Column(
         children: [
-          const Text('Évolution de l\'Homogénéité (%)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(width: 12, height: 12, color: color),
+              const SizedBox(width: 8),
+              Text('Évolution : $room', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
           const SizedBox(height: 20),
           Expanded(
             child: LineChart(
               LineChartData(
-                lineBarsData: _buildLineBars(),
+                lineBarsData: _buildIndividualLineBars(room, points, color),
                 titlesData: _buildTitles(),
                 gridData: const FlGridData(show: true, drawVerticalLine: false),
                 borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade300)),
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
                     getTooltipColor: (touchedSpot) => Colors.blueGrey.withValues(alpha: 0.8),
-                    getTooltipItems: (List<LineBarSpot> touchedSpots) {
-                      return touchedSpots.map((spot) {
-                        return LineTooltipItem(
-                          '${spot.y.toStringAsFixed(1)}%',
-                          const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                        );
-                      }).toList();
-                    },
                   ),
                 ),
+                minY: 0,
+                maxY: 100,
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          _buildLegend(),
         ],
       ),
     );
   }
 
-  List<LineChartBarData> _buildLineBars() {
+  List<LineChartBarData> _buildIndividualLineBars(String room, List<dynamic> points, Color color) {
     List<LineChartBarData> bars = [];
-    int colorIndex = 0;
     
-    _analysisData.forEach((room, points) {
-      final color = _roomColors[colorIndex % _roomColors.length];
-      
-      // Real points curve or scatter
-      bars.add(LineChartBarData(
-        spots: points.map((p) {
-          double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
-          double y = (p['homogeneity'] as num).toDouble();
-          return FlSpot(x, y);
-        }).toList(),
-        isCurved: _showLines,
-        color: _showLines ? color : Colors.transparent, // Hide line if not toggled
-        barWidth: _showLines ? 3 : 0,
-        dotData: FlDotData(
-          show: true,
-          getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
-            radius: 4,
-            color: color,
-            strokeWidth: 1,
-            strokeColor: Colors.white,
-          ),
+    // Real points curve or scatter
+    bars.add(LineChartBarData(
+      spots: points.map((p) {
+        double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
+        double y = (p['homogeneity'] as num).toDouble();
+        return FlSpot(x, y);
+      }).toList(),
+      isCurved: _showLines,
+      color: _showLines ? color : Colors.transparent,
+      barWidth: _showLines ? 3 : 0,
+      dotData: FlDotData(
+        show: true,
+        getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+          radius: 4,
+          color: color,
+          strokeWidth: 1,
+          strokeColor: Colors.white,
         ),
+      ),
+    ));
+    
+    // Regression dashed line
+    if (_regressions.containsKey(room)) {
+      final reg = _regressions[room]!;
+      final firstX = DateTime.parse(points.first['date']).millisecondsSinceEpoch.toDouble();
+      final lastX = DateTime.parse(points.last['date']).millisecondsSinceEpoch.toDouble();
+      
+      double y1 = reg['a']! * (firstX / 1000.0) + reg['b']!;
+      double y2 = reg['a']! * (lastX / 1000.0) + reg['b']!;
+      
+      bars.add(LineChartBarData(
+        spots: [
+          FlSpot(firstX, y1),
+          FlSpot(lastX, y2),
+        ],
+        isCurved: false,
+        color: color.withValues(alpha: 0.6),
+        barWidth: 2,
+        dashArray: [5, 5],
+        dotData: const FlDotData(show: false),
       ));
-      
-      // Regression dashed line
-      if (_regressions.containsKey(room)) {
-        final reg = _regressions[room]!;
-        final firstX = DateTime.parse(points.first['date']).millisecondsSinceEpoch.toDouble();
-        final lastX = DateTime.parse(points.last['date']).millisecondsSinceEpoch.toDouble();
-        
-        // y = ax + b
-        double y1 = reg['a']! * (firstX / 1000.0) + reg['b']!;
-        double y2 = reg['a']! * (lastX / 1000.0) + reg['b']!;
-        
-        bars.add(LineChartBarData(
-          spots: [
-            FlSpot(firstX, y1),
-            FlSpot(lastX, y2),
-          ],
-          isCurved: false,
-          color: color.withValues(alpha: 0.6), // More visible regression line
-          barWidth: 2,
-          dashArray: [5, 5],
-          dotData: const FlDotData(show: false),
-        ));
-      }
-      
-      colorIndex++;
-    });
+    }
     
     return bars;
+  }
+
+  Widget _buildIndividualRegressionSummary(String room, Color color) {
+    if (!_regressions.containsKey(room)) return const SizedBox();
+    
+    final e = _regressions.entries.firstWhere((element) => element.key == room);
+    final slope = e.value['a']!;
+    final isImproving = slope > 0;
+    final weeklyGrowth = slope * 60 * 60 * 24 * 7;
+    
+    return Card(
+      elevation: 0,
+      color: isImproving ? Colors.green.shade50 : Colors.red.shade50,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: Icon(
+          isImproving ? Icons.trending_up : Icons.trending_down,
+          color: isImproving ? Colors.green : Colors.red,
+        ),
+        title: Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(
+          isImproving 
+            ? 'Amélioration de l\'uniformité.' 
+            : 'Dégradation de l\'uniformité.',
+          style: const TextStyle(fontSize: 12),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '${weeklyGrowth > 0 ? "+" : ""}${weeklyGrowth.toStringAsFixed(1)}%',
+              style: TextStyle(fontWeight: FontWeight.bold, color: isImproving ? Colors.green : Colors.red),
+            ),
+            const Text('par semaine', style: TextStyle(fontSize: 10, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
   }
 
   FlTitlesData _buildTitles() {
@@ -444,72 +488,6 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
           },
         ),
       ),
-    );
-  }
-
-  Widget _buildLegend() {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 4,
-      alignment: WrapAlignment.center,
-      children: List.generate(_analysisData.keys.length, (index) {
-        final room = _analysisData.keys.elementAt(index);
-        final color = _roomColors[index % _roomColors.length];
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 10, height: 10, color: color),
-            const SizedBox(width: 4),
-            Text(room, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          ],
-        );
-      }),
-    );
-  }
-
-  Widget _buildRegressionSummary() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Tendance par Salle', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
-        ..._regressions.entries.map((e) {
-          final slope = e.value['a']!;
-          final isImproving = slope > 0;
-          // Growth per week (slope is per second)
-          final weeklyGrowth = slope * 60 * 60 * 24 * 7;
-          
-          return Card(
-            elevation: 0,
-            color: isImproving ? Colors.green.shade50 : Colors.red.shade50,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              leading: Icon(
-                isImproving ? Icons.trending_up : Icons.trending_down,
-                color: isImproving ? Colors.green : Colors.red,
-              ),
-              title: Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(
-                isImproving 
-                  ? 'Amélioration de l\'uniformité.' 
-                  : 'Dégradation de l\'uniformité.',
-                style: const TextStyle(fontSize: 12),
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${weeklyGrowth > 0 ? "+" : ""}${weeklyGrowth.toStringAsFixed(1)}%',
-                    style: TextStyle(fontWeight: FontWeight.bold, color: isImproving ? Colors.green : Colors.red),
-                  ),
-                  const Text('par semaine', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                ],
-              ),
-            ),
-          );
-        }),
-      ],
     );
   }
 }

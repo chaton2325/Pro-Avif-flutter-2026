@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/weighing_session.dart';
+import '../services/mongo_service.dart';
+import 'admin_ml_relocation_screen.dart';
 
 class WeighingHistoryDetailScreen extends StatelessWidget {
   final WeighingSession session;
@@ -50,6 +52,31 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
+
+            // AI Decision Button
+            if (session.isSync) 
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (_) => AdminMLRelocationScreen(
+                      weighingId: session.id ?? "", 
+                      lotNumber: session.lotNumber ?? session.lotId,
+                    ))
+                  ),
+                  icon: const Icon(Icons.psychology, color: Colors.white),
+                  label: const Text('DÉCISION IA RELOCALISATION', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                ),
+              ),
+            
+            if (session.isSync) const SizedBox(height: 24),
 
             // Statistics Card
             const Text('Statistiques', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),
