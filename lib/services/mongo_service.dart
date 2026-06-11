@@ -318,6 +318,29 @@ class MongoService {
     return {'total_count': 0, 'data': [], 'limit': limit, 'skip': skip};
   }
 
+  Future<Map<String, dynamic>> getHomogeneityAnalysis(
+    String farmName, {
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      final queryParams = {
+        'farmName': farmName,
+        if (startDate != null) 'startDate': startDate,
+        if (endDate != null) 'endDate': endDate,
+      };
+      final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
+      final response = await http.get(uri);
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print("Erreur getHomogeneityAnalysis: $e");
+    }
+    return {};
+  }
+
   // Audit Logs
   Future<List<AuditLog>> getAuditLogs() async {
     final response = await http.get(Uri.parse('$baseUrl/audit-logs'));

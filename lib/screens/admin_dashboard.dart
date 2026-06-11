@@ -7,6 +7,7 @@ import '../models/lot.dart';
 import '../services/mongo_service.dart';
 import 'login_screen.dart';
 import 'admin_history_screen.dart';
+import 'admin_analysis_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -496,12 +497,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
             Row(
               children: [
                 _buildStatCard('Lots', _lots.length.toString(), Icons.inventory_2, Colors.purple),
+                const SizedBox(width: 16),
                 _buildQuickAction(
                   Icons.analytics, 
                   'Historique Global', 
                   Colors.indigo,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminHistoryScreen())),
                 ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                _buildQuickAction(
+                  Icons.show_chart, 
+                  'Analyse Qualité', 
+                  Colors.orange,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminAnalysisScreen())),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(child: SizedBox()), // Spacer to keep layout balanced
               ],
             ),
             const SizedBox(height: 32),
