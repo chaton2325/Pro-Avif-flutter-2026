@@ -23,8 +23,11 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
   Lot? _selectedLot;
   Farm? _assignedFarm;
   String? _selectedRoom;
+  String? _selectedSex;
   bool _isLoading = true;
   late int _currentPrecision;
+
+  final List<String> _sexOptions = ['Mâle/Coq', 'Femelle/Poule', 'Mélangé'];
 
   // Form Controllers
   final TextEditingController _operatorController = TextEditingController();
@@ -38,6 +41,7 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
     super.initState();
     _operatorController.text = widget.user.name;
     _currentPrecision = widget.user.scalePrecision;
+    _selectedSex = _sexOptions[0]; // Default to 'Mâle'
     _loadInitialData();
   }
 
@@ -82,7 +86,7 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
           controller: controller,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-            labelText: 'Nombre de décimales',
+            labelText: 'Précision',
             hintText: 'Ex: 2',
           ),
         ),
@@ -139,6 +143,9 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
 
                   // Operator
                   _buildTextField(_operatorController, 'Opérateur de saisie', Icons.person),
+                  const SizedBox(height: 16),
+
+                  _buildDropdownSex(),
                   const SizedBox(height: 16),
 
                   _buildSectionTitle('LOCALISATION & AGE'),
@@ -229,6 +236,7 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
                                 minWeight: double.parse(_lowerIntervalController.text),
                                 maxWeight: double.parse(_upperIntervalController.text),
                                 precision: _currentPrecision,
+                                sex: _selectedSex,
                               ),
                             ),
                           );
@@ -254,6 +262,25 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
         fontWeight: FontWeight.bold,
         letterSpacing: 1.2,
       ),
+    );
+  }
+
+  Widget _buildDropdownSex() {
+    return DropdownButtonFormField<String>(
+      value: _selectedSex,
+      decoration: InputDecoration(
+        labelText: 'Sélectionner le sexe',
+        prefixIcon: const Icon(Icons.transgender, color: Colors.orange, size: 20),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+      ),
+      items: _sexOptions.map((sex) => DropdownMenuItem(
+        value: sex,
+        child: Text(sex),
+      )).toList(),
+      onChanged: (val) => setState(() => _selectedSex = val),
+      validator: (val) => val == null ? 'Veuillez sélectionner le sexe' : null,
     );
   }
 
@@ -353,7 +380,7 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('PRÉCISION ACTUELLE', style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
-                  Text('$_currentPrecision décimales', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('$_currentPrecision', style: const TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
             ],

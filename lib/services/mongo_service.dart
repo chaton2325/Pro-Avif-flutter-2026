@@ -9,7 +9,7 @@ import './session_storage.dart';
 
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "http://192.168.1.187:8000";
+  final String baseUrl = "http://192.168.0.117:8000";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -223,10 +223,13 @@ class MongoService {
   // Weighing Sessions
   Future<void> saveWeighingSession(WeighingSession session) async {
     try {
+      final payload = jsonEncode(session.toMap());
+      print("Sending WeighingSession payload: $payload");
+      
       final response = await http.post(
         Uri.parse('$baseUrl/weighings'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(session.toMap()),
+        body: payload,
       ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode != 200 && response.statusCode != 201) {
@@ -241,9 +244,13 @@ class MongoService {
         operator: session.operator,
         farmName: session.farmName,
         roomName: session.roomName,
+        sex: session.sex,
+        lowerInterval: session.lowerInterval,
+        upperInterval: session.upperInterval,
         age: session.age,
         weights: session.weights,
         timestamp: session.timestamp,
+        homogeneity: session.homogeneity,
         isSync: false, // Mark as NOT synced
       );
       await SessionStorage.saveOfflineSession(offlineSession);
@@ -279,6 +286,9 @@ class MongoService {
     String? farmName,
     String? lotId,
     String? operator,
+    String? sex,
+    double? lowerInterval,
+    double? upperInterval,
     String sortBy = 'timestamp',
     String order = 'desc',
   }) async {
@@ -291,6 +301,9 @@ class MongoService {
         if (farmName != null && farmName.isNotEmpty) 'farmName': farmName,
         if (lotId != null && lotId.isNotEmpty) 'lotId': lotId,
         if (operator != null && operator.isNotEmpty) 'operator': operator,
+        if (sex != null && sex.isNotEmpty) 'sex': sex,
+        if (lowerInterval != null) 'lowerInterval': lowerInterval.toString(),
+        if (upperInterval != null) 'upperInterval': upperInterval.toString(),
       };
       
       final uri = Uri.parse('$baseUrl/weighings/all').replace(queryParameters: queryParams);

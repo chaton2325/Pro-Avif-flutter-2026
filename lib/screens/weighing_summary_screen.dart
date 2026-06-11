@@ -11,6 +11,9 @@ class WeighingSummaryScreen extends StatefulWidget {
   final String operator;
   final String building;
   final String room;
+  final String? sex;
+  final double lowerInterval;
+  final double upperInterval;
   final int age;
   final List<double> weights;
 
@@ -21,6 +24,9 @@ class WeighingSummaryScreen extends StatefulWidget {
     required this.operator,
     required this.building,
     required this.room,
+    this.sex,
+    required this.lowerInterval,
+    required this.upperInterval,
     required this.age,
     required this.weights,
   });
@@ -100,12 +106,17 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
       final session = WeighingSession(
         userId: widget.user.id!,
         lotId: widget.lot.id ?? widget.lot.number,
+        lotNumber: widget.lot.number,
         operator: widget.operator,
         farmName: widget.building,
         roomName: widget.room,
+        sex: widget.sex,
+        lowerInterval: widget.lowerInterval,
+        upperInterval: widget.upperInterval,
         age: widget.age,
         weights: widget.weights,
         timestamp: DateTime.now(),
+        homogeneity: _homogeneityPercentage,
       );
 
       await _mongoService.saveWeighingSession(session);
@@ -181,6 +192,8 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
                     _buildInfoRow('Lot', widget.lot.number, Icons.inventory_2),
                     _buildInfoRow('Bâtiment', widget.building, Icons.agriculture),
                     _buildInfoRow('Salle', widget.room, Icons.room),
+                    _buildInfoRow('Sexe', widget.sex ?? 'Non spécifié', Icons.transgender),
+                    _buildInfoRow('Intervalle', '${widget.lowerInterval.toStringAsFixed(0)}g - ${widget.upperInterval.toStringAsFixed(0)}g', Icons.compare_arrows),
                     _buildInfoRow('Âge', '${widget.age} semaines', Icons.calendar_today),
                     _buildInfoRow('Nombre de sujets', '${widget.weights.length}', Icons.numbers),
                   ],

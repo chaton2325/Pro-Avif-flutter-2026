@@ -66,7 +66,7 @@ class _UserHistoryScreenState extends State<UserHistoryScreen> {
     // 1. Search Filter
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((s) => 
-        s.lotId.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+        (s.lotNumber ?? s.lotId).toLowerCase().contains(_searchQuery.toLowerCase()) ||
         s.farmName.toLowerCase().contains(_searchQuery.toLowerCase())
       ).toList();
     }
@@ -260,7 +260,7 @@ class _UserHistoryScreenState extends State<UserHistoryScreen> {
                           children: [
                             Flexible(
                               child: Text(
-                                'LOT: ${session.lotId}',
+                                'LOT: ${session.lotNumber ?? session.lotId}',
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -277,7 +277,7 @@ class _UserHistoryScreenState extends State<UserHistoryScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${session.farmName} • ${session.roomName}',
+                          '${session.farmName} • ${session.roomName}${session.sex != null ? ' • ${session.sex}' : ''}',
                           style: TextStyle(color: Colors.grey[600], fontSize: 13),
                           overflow: TextOverflow.ellipsis,
                         ),

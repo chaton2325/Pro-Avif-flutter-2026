@@ -81,7 +81,15 @@ class _AdminHistoryScreenState extends State<AdminHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('HISTORIQUE GLOBAL')),
+      appBar: AppBar(
+        title: const Text('HISTORIQUE GLOBAL'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _loadSessions(clear: true),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           _buildSortBar(),
@@ -146,11 +154,51 @@ class _AdminHistoryScreenState extends State<AdminHistoryScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: ListTile(
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WeighingHistoryDetailScreen(session: session))),
-        title: Text('Lot: ${session.lotId}', style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('${session.farmName} • ${session.operator} • ${DateFormat('dd/MM HH:mm').format(session.timestamp)}'),
-        trailing: Text(
-          '${session.homogeneity.toStringAsFixed(1)}%',
-          style: TextStyle(fontWeight: FontWeight.bold, color: session.homogeneity >= 80 ? Colors.green : Colors.orange),
+        title: Text('Lot: ${session.lotNumber ?? session.lotId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text('${session.farmName} • ${session.operator}'),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                if (session.sex != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      session.sex!,
+                      style: TextStyle(fontSize: 10, color: Colors.blue.shade800, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  DateFormat('dd/MM HH:mm').format(session.timestamp),
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
+          ],
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '${session.homogeneity.toStringAsFixed(1)}%',
+              style: TextStyle(
+                fontWeight: FontWeight.bold, 
+                fontSize: 16,
+                color: session.homogeneity >= 80 ? Colors.green : Colors.orange,
+              ),
+            ),
+            const Text('Homog.', style: TextStyle(fontSize: 10, color: Colors.grey)),
+          ],
         ),
       ),
     );

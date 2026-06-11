@@ -20,7 +20,7 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('PESÉE LOT: ${session.lotId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text('PESÉE LOT: ${session.lotNumber ?? session.lotId}', style: const TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -37,8 +37,11 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     _buildInfoRow('Opérateur', session.operator, Icons.person),
+                    _buildInfoRow('Lot', session.lotNumber ?? session.lotId, Icons.inventory_2),
                     _buildInfoRow('Bâtiment', session.farmName, Icons.agriculture),
                     _buildInfoRow('Salle', session.roomName, Icons.room),
+                    _buildInfoRow('Sexe', session.sex ?? 'Inconnu', Icons.transgender),
+                    _buildInfoRow('Intervalle', '${session.lowerInterval ?? 0}g - ${session.upperInterval ?? 0}g', Icons.compare_arrows),
                     _buildInfoRow('Âge', '${session.age} semaines', Icons.calendar_today),
                     _buildInfoRow('Date', '${session.timestamp.day}/${session.timestamp.month}/${session.timestamp.year} ${session.timestamp.hour}:${session.timestamp.minute.toString().padLeft(2, '0')}', Icons.access_time),
                     _buildInfoRow('Status', session.isSync ? 'Synchronisé' : 'Stockage Local', session.isSync ? Icons.cloud_done : Icons.cloud_off),

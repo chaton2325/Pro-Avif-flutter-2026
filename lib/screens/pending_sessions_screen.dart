@@ -42,6 +42,7 @@ class _PendingSessionsScreenState extends State<PendingSessionsScreen> {
           operator: sessionData['operator'],
           building: sessionData['building'],
           room: sessionData['room'],
+          sex: sessionData['sex'],
           age: sessionData['age'],
           minWeight: sessionData['minWeight'].toDouble(),
           maxWeight: sessionData['maxWeight'].toDouble(),

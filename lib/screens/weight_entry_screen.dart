@@ -11,6 +11,7 @@ class WeightEntryScreen extends StatefulWidget {
   final String building;
   final String room;
   final int age;
+  final String? sex;
   final double minWeight;
   final double maxWeight;
   final int precision;
@@ -24,6 +25,7 @@ class WeightEntryScreen extends StatefulWidget {
     required this.building,
     required this.room,
     required this.age,
+    this.sex,
     required this.minWeight,
     required this.maxWeight,
     required this.precision,
@@ -53,6 +55,9 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
       operator: widget.operator,
       building: widget.building,
       room: widget.room,
+      sex: widget.sex,
+      lowerInterval: widget.minWeight,
+      upperInterval: widget.maxWeight,
       age: widget.age,
       minWeight: widget.minWeight,
       maxWeight: widget.maxWeight,
@@ -114,6 +119,9 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
           building: widget.building,
           room: widget.room,
           age: widget.age,
+          sex: widget.sex,
+          lowerInterval: widget.minWeight,
+          upperInterval: widget.maxWeight,
           weights: _weights,
         ),
       ),
