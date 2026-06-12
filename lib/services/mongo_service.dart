@@ -322,12 +322,14 @@ class MongoService {
     required String farmName,
     required String roomName,
     required String sex,
+    String? lotNumber,
   }) async {
     try {
       final queryParams = {
         'farmName': farmName,
         'roomName': roomName,
         'sex': sex,
+        if (lotNumber != null) 'lotNumber': lotNumber,
       };
       final uri = Uri.parse('$baseUrl/weighings/analysis/latest').replace(queryParameters: queryParams);
       final response = await http.get(uri);
@@ -345,12 +347,16 @@ class MongoService {
     String farmName, {
     String? startDate,
     String? endDate,
+    String? lotNumber,
+    String? sex,
   }) async {
     try {
       final queryParams = {
         'farmName': farmName,
         if (startDate != null) 'startDate': startDate,
         if (endDate != null) 'endDate': endDate,
+        if (lotNumber != null) 'lotNumber': lotNumber,
+        if (sex != null) 'sex': sex,
       };
       final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
       
@@ -423,6 +429,7 @@ class MongoService {
     required String sourceRoom,
     required String targetRoom,
     required String sex,
+    required String lotNumber,
     required int clusterId,
   }) async {
     try {
@@ -431,6 +438,7 @@ class MongoService {
         'sourceRoom': sourceRoom,
         'targetRoom': targetRoom,
         'sex': sex,
+        'lotNumber': lotNumber,
         'clusterId': clusterId.toString(),
       };
       final uri = Uri.parse('$baseUrl/weighings/predict/simulate-move').replace(queryParameters: queryParams);

@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../services/mongo_service.dart';
 import '../models/farm.dart';
+import '../models/lot.dart';
 
 class AdminPredictiveAnalysisScreen extends StatefulWidget {
   final String? initialWeighingId;
@@ -23,7 +24,9 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
   
   // Selection state
   List<Farm> _farms = [];
+  List<Lot> _lots = [];
   Farm? _selectedFarm;
+  Lot? _selectedLot;
   String? _selectedRoom;
   String _selectedSex = 'Mâle';
   
@@ -41,7 +44,14 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
-      _farms = await _mongoService.getFarms();
+      final futures = await Future.wait([
+        _mongoService.getFarms(),
+        _mongoService.getLots(),
+      ]);
+      
+      _farms = futures[0] as List<Farm>;
+      _lots = futures[1] as List<Lot>;
+
       if (_farms.isNotEmpty) {
         _selectedFarm = _farms.first;
         if (_selectedFarm!.rooms.isNotEmpty) {
@@ -53,8 +63,12 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
           }
         }
       }
+
+      if (_lots.isNotEmpty) {
+        _selectedLot = _lots.first;
+      }
       
-      if (_selectedFarm != null && _selectedRoom != null) {
+      if (_selectedFarm != null && _selectedRoom != null && _selectedLot != null) {
         await _fetchAnalysisData();
       } else {
         setState(() => _isLoading = false);
@@ -65,13 +79,15 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
   }
 
   Future<void> _fetchAnalysisData() async {
-    if (_selectedFarm == null || _selectedRoom == null) return;
+    final lot = _selectedLot;
+    if (_selectedFarm == null || _selectedRoom == null || lot == null) return;
     setState(() => _isLoading = true);
     try {
       final data = await _mongoService.getLatestAnalysis(
         farmName: _selectedFarm!.name,
         roomName: _selectedRoom!,
         sex: _selectedSex,
+        lotNumber: lot.number,
       );
       
       setState(() {
@@ -87,7 +103,7 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
   }
 
   Future<void> _runSimulation() async {
-    if (_selectedFarm == null || _simSourceRoom == null || _simTargetRoom == null || _selectedClusterId == null) return;
+    if (_selectedFarm == null || _simSourceRoom == null || _simTargetRoom == null || _selectedClusterId == null || _selectedLot == null) return;
     
     setState(() => _isLoading = true);
     try {
@@ -96,6 +112,7 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
         sourceRoom: _simSourceRoom!,
         targetRoom: _simTargetRoom!,
         sex: _selectedSex,
+        lotNumber: _selectedLot!.number,
         clusterId: _selectedClusterId!,
       );
       
@@ -262,6 +279,25 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
                 _selectedFarm = val;
                 _selectedRoom = val?.rooms.first;
                 _simSourceRoom = _selectedRoom;
+                _simulationResult = null;
+              });
+              _fetchAnalysisData();
+            },
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<Lot>(
+            value: _selectedLot,
+            dropdownColor: Colors.white,
+            decoration: InputDecoration(
+              labelText: 'Numéro de Lot',
+              prefixIcon: const Icon(Icons.inventory_2_rounded, color: Colors.indigo, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              filled: true, fillColor: Colors.grey.shade50,
+            ),
+            items: _lots.map((l) => DropdownMenuItem(value: l, child: Text(l.number))).toList(),
+            onChanged: (val) {
+              setState(() {
+                _selectedLot = val;
                 _simulationResult = null;
               });
               _fetchAnalysisData();

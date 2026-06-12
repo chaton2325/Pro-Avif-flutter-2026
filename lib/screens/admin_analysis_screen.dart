@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../models/farm.dart';
+import '../models/lot.dart';
 import '../services/mongo_service.dart';
 
 class AdminAnalysisScreen extends StatefulWidget {
@@ -15,7 +16,10 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   final MongoService _mongoService = MongoService();
   
   List<Farm> _farms = [];
+  List<Lot> _lots = [];
   Farm? _selectedFarm;
+  Lot? _selectedLot;
+  String? _selectedSex; 
   bool _isLoadingFarms = true;
   bool _isLoadingData = false;
   
@@ -46,12 +50,17 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
 
   Future<void> _loadInitialData() async {
     try {
-      final farms = await _mongoService.getFarms();
+      final results = await Future.wait([
+        _mongoService.getFarms(),
+        _mongoService.getLots(),
+      ]);
       setState(() {
-        _farms = farms;
+        _farms = results[0] as List<Farm>;
+        _lots = results[1] as List<Lot>;
         _isLoadingFarms = false;
-        if (farms.isNotEmpty) {
-          _selectedFarm = farms.first;
+        if (_farms.isNotEmpty) _selectedFarm = _farms.first;
+        if (_lots.isNotEmpty) _selectedLot = _lots.first;
+        if (_selectedFarm != null && _selectedLot != null) {
           _loadAnalysisData();
         }
       });
@@ -61,12 +70,14 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   }
 
   Future<void> _loadAnalysisData() async {
-    if (_selectedFarm == null) return;
+    if (_selectedFarm == null || _selectedLot == null) return;
     
     setState(() => _isLoadingData = true);
     try {
       final data = await _mongoService.getHomogeneityAnalysis(
         _selectedFarm!.name,
+        lotNumber: _selectedLot!.number,
+        sex: _selectedSex,
         startDate: _isAllHistory ? null : _startDate?.toIso8601String(),
         endDate: _isAllHistory ? null : _endDate?.toIso8601String(),
       );
@@ -117,73 +128,93 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
 
   Widget _buildControls() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
       ),
       child: Column(
         children: [
-          DropdownButtonFormField<Farm>(
-            value: _selectedFarm,
-            dropdownColor: Colors.white,
-            decoration: InputDecoration(
-              labelText: 'Site de production',
-              prefixIcon: const Icon(Icons.location_on, color: Colors.indigo),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              filled: true,
-              fillColor: Colors.grey.shade50,
-            ),
-            items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name))).toList(),
-            onChanged: (val) {
-              setState(() => _selectedFarm = val);
-              _loadAnalysisData();
-            },
-          ),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            title: const Text('Afficher les lignes de liaison', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-            value: _showLines,
-            activeColor: Colors.indigo,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (val) => setState(() => _showLines = val),
-          ),
-          const SizedBox(height: 4),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('Tout l\'historique', style: TextStyle(fontSize: 11)),
-                  selected: _isAllHistory,
-                  onSelected: (val) {
-                    setState(() => _isAllHistory = true);
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<Farm>(
+                  value: _selectedFarm,
+                  isDense: true,
+                  dropdownColor: Colors.white,
+                  decoration: InputDecoration(
+                    labelText: 'Site',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name, style: const TextStyle(fontSize: 12)))).toList(),
+                  onChanged: (val) {
+                    setState(() => _selectedFarm = val);
                     _loadAnalysisData();
                   },
                 ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Sélectionner Période', style: TextStyle(fontSize: 11)),
-                  selected: !_isAllHistory,
-                  onSelected: (val) {
-                    setState(() => _isAllHistory = false);
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<Lot>(
+                  value: _selectedLot,
+                  isDense: true,
+                  dropdownColor: Colors.white,
+                  decoration: InputDecoration(
+                    labelText: 'Lot',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  items: _lots.map((l) => DropdownMenuItem(value: l, child: Text(l.number, style: const TextStyle(fontSize: 12)))).toList(),
+                  onChanged: (val) {
+                    setState(() => _selectedLot = val);
+                    _loadAnalysisData();
                   },
                 ),
-                const SizedBox(width: 12),
-                if (!_isAllHistory) ...[
-                  _buildDateBtn(_startDate, 'Début', () async {
-                    final d = await showDatePicker(context: context, initialDate: _startDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now());
-                    if (d != null) { setState(() => _startDate = d); _loadAnalysisData(); }
-                  }),
-                  const SizedBox(width: 8),
-                  _buildDateBtn(_endDate, 'Fin', () async {
-                    final d = await showDatePicker(context: context, initialDate: _endDate ?? DateTime.now(), firstDate: _startDate ?? DateTime(2020), lastDate: DateTime.now());
-                    if (d != null) { setState(() => _endDate = DateTime(d.year, d.month, d.day, 23, 59, 59)); _loadAnalysisData(); }
-                  }),
-                ],
-              ],
-            ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String?>(
+                  value: _selectedSex,
+                  isDense: true,
+                  dropdownColor: Colors.white,
+                  decoration: InputDecoration(
+                    labelText: 'Sexe',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Tout', style: TextStyle(fontSize: 12))),
+                    ...['Mâle', 'Femelle'].map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12))))
+                  ].toList(),
+                  onChanged: (val) {
+                    setState(() => _selectedSex = val);
+                    _loadAnalysisData();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SwitchListTile(
+                  title: const Text('Lignes', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  value: _showLines,
+                  activeColor: Colors.indigo,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (val) => setState(() => _showLines = val),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -421,5 +452,4 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
       ),
     );
   }
-
 }
