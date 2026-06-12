@@ -372,6 +372,31 @@ class MongoService {
     return {};
   }
 
+  Future<Map<String, dynamic>> simulateMove({
+    required String farmName,
+    required String sourceRoom,
+    required String targetRoom,
+    required int clusterId,
+  }) async {
+    try {
+      final queryParams = {
+        'farmName': farmName,
+        'sourceRoom': sourceRoom,
+        'targetRoom': targetRoom,
+        'clusterId': clusterId.toString(),
+      };
+      final uri = Uri.parse('$baseUrl/weighings/predict/simulate-move').replace(queryParameters: queryParams);
+      final response = await http.post(uri);
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print("Erreur simulateMove: $e");
+    }
+    return {};
+  }
+
   // Audit Logs
   Future<List<AuditLog>> getAuditLogs() async {
     final response = await http.get(Uri.parse('$baseUrl/audit-logs'));

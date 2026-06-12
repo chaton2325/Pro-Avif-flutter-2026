@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/weighing_session.dart';
 import '../services/mongo_service.dart';
-import 'admin_ml_relocation_screen.dart';
+import 'admin_predictive_analysis_screen.dart';
 
 class WeighingHistoryDetailScreen extends StatelessWidget {
   final WeighingSession session;
@@ -60,9 +60,8 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: () => Navigator.push(
                     context, 
-                    MaterialPageRoute(builder: (_) => AdminMLRelocationScreen(
-                      weighingId: session.id ?? "", 
-                      lotNumber: session.lotNumber ?? session.lotId,
+                    MaterialPageRoute(builder: (_) => AdminPredictiveAnalysisScreen(
+                      initialWeighingId: session.id ?? "", 
                     ))
                   ),
                   icon: const Icon(Icons.psychology, color: Colors.white),
