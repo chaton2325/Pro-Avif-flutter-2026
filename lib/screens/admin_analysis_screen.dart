@@ -142,6 +142,14 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
             },
           ),
           const SizedBox(height: 12),
+          SwitchListTile(
+            title: const Text('Afficher les lignes de liaison', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            value: _showLines,
+            activeColor: Colors.indigo,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (val) => setState(() => _showLines = val),
+          ),
+          const SizedBox(height: 4),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -213,54 +221,33 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   }
 
   Widget _buildChartSection() {
+    List<Widget> children = [];
+    
+    // 1. Vue d'ensemble (toutes les courbes)
+    children.add(_buildChartContainer(
+      title: 'VUE D\'ENSEMBLE',
+      bars: _buildAllLineBars(),
+      dataValues: _analysisData.values,
+      seriesNames: _analysisData.keys.toList(),
+      showLegend: true,
+    ));
+    
+    // 2. Graphiques individuels par salle/sexe
+    int i = 0;
+    _analysisData.forEach((seriesName, points) {
+      children.add(_buildChartContainer(
+        title: seriesName.toUpperCase(),
+        bars: _buildLineBarsForSeries(seriesName, points, i),
+        dataValues: [points],
+        seriesNames: [seriesName],
+        showLegend: false,
+      ));
+      i++;
+    });
+    
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Container(
-            height: 400,
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(12, 32, 24, 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))],
-            ),
-            child: LineChart(
-              LineChartData(
-                lineBarsData: _buildAllLineBars(),
-                titlesData: _buildTitles(),
-                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)),
-                borderData: FlBorderData(show: false),
-                lineTouchData: LineTouchData(
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (touchedSpot) => Colors.indigo.shade900,
-                    getTooltipItems: (List<LineBarSpot> touchedSpots) {
-                      return touchedSpots.map((s) {
-                        final seriesName = _analysisData.keys.elementAt(s.barIndex);
-                        return LineTooltipItem(
-                          '$seriesName\n',
-                          const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                          children: [
-                            TextSpan(
-                              text: '${s.y.toStringAsFixed(1)}%',
-                              style: TextStyle(color: s.bar.color, fontSize: 11, fontWeight: FontWeight.w900),
-                            ),
-                          ],
-                        );
-                      }).toList();
-                    },
-                  ),
-                ),
-                minY: 0,
-                maxY: 100,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildLegend(),
-        ],
-      ),
+      child: Column(children: children),
     );
   }
 
@@ -268,8 +255,16 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     List<LineChartBarData> bars = [];
     int i = 0;
     _analysisData.forEach((seriesName, points) {
-      final color = _seriesColors[i % _seriesColors.length];
-      bars.add(LineChartBarData(
+      bars.addAll(_buildLineBarsForSeries(seriesName, points, i));
+      i++;
+    });
+    return bars;
+  }
+
+  List<LineChartBarData> _buildLineBarsForSeries(String seriesName, List<dynamic> points, int colorIndex) {
+    final color = _seriesColors[colorIndex % _seriesColors.length];
+    return [
+      LineChartBarData(
         spots: points.map((p) {
           double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
           double y = (p['homogeneity'] as num).toDouble();
@@ -277,31 +272,96 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
         }).toList(),
         isCurved: true,
         color: color,
-        barWidth: 4,
+        barWidth: _showLines ? 4 : 0,
         isStrokeCapRound: true,
         dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 5, color: color, strokeWidth: 2, strokeColor: Colors.white)),
-        belowBarData: BarAreaData(show: true, color: color.withOpacity(0.02)),
-      ));
-      i++;
-    });
-    return bars;
+        belowBarData: BarAreaData(show: _showLines, color: color.withOpacity(0.02)),
+      )
+    ];
   }
 
-  Widget _buildLegend() {
+  Widget _buildChartContainer({
+    required String title,
+    required List<LineChartBarData> bars,
+    required Iterable<List<dynamic>> dataValues,
+    required List<String> seriesNames,
+    bool showLegend = true,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
+          child: Text(
+            title,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.indigo.shade900, letterSpacing: 0.5),
+          ),
+        ),
+        Container(
+          height: 350,
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 32, 24, 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))],
+          ),
+          child: LineChart(
+            LineChartData(
+              lineBarsData: bars,
+              titlesData: _buildTitles(dataValues),
+              gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)),
+              borderData: FlBorderData(show: false),
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipColor: (touchedSpot) => Colors.indigo.shade900,
+                  getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                    return touchedSpots.map((s) {
+                      final name = seriesNames[s.barIndex];
+                      return LineTooltipItem(
+                        '$name\n',
+                        const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        children: [
+                          TextSpan(
+                            text: '${s.y.toStringAsFixed(1)}%',
+                            style: TextStyle(color: s.bar.color, fontSize: 11, fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      );
+                    }).toList();
+                  },
+                ),
+              ),
+              minY: 0,
+              maxY: 100,
+            ),
+          ),
+        ),
+        if (showLegend) ...[
+          const SizedBox(height: 16),
+          _buildLegend(seriesNames),
+        ],
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+
+  Widget _buildLegend(List<String> seriesNames) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
       child: Wrap(
         spacing: 16,
         runSpacing: 12,
-        children: _analysisData.keys.toList().asMap().entries.map((e) {
-          final color = _seriesColors[e.key % _seriesColors.length];
+        children: seriesNames.map((name) {
+          int index = _analysisData.keys.toList().indexOf(name);
+          final color = _seriesColors[index % _seriesColors.length];
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
               const SizedBox(width: 8),
-              Text(e.value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
+              Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
             ],
           );
         }).toList(),
@@ -309,17 +369,21 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
   }
 
-  FlTitlesData _buildTitles() {
+  FlTitlesData _buildTitles(Iterable<List<dynamic>> dataValues) {
     double minX = double.maxFinite;
     double maxX = double.minPositive;
-    
-    _analysisData.values.forEach((points) {
+    bool hasData = false;
+
+    for (var points in dataValues) {
       for (var p in points) {
         double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
+        hasData = true;
       }
-    });
+    }
+
+    if (!hasData) return const FlTitlesData();
 
     double? bottomInterval;
     if (maxX > minX) bottomInterval = (maxX - minX) / 4.0;
@@ -357,4 +421,5 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
       ),
     );
   }
+
 }
