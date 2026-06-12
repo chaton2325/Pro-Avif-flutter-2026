@@ -318,6 +318,29 @@ class MongoService {
     return {'total_count': 0, 'data': [], 'limit': limit, 'skip': skip};
   }
 
+  Future<Map<String, dynamic>> getLatestAnalysis({
+    required String farmName,
+    required String roomName,
+    required String sex,
+  }) async {
+    try {
+      final queryParams = {
+        'farmName': farmName,
+        'roomName': roomName,
+        'sex': sex,
+      };
+      final uri = Uri.parse('$baseUrl/weighings/analysis/latest').replace(queryParameters: queryParams);
+      final response = await http.get(uri);
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print("Erreur getLatestAnalysis: $e");
+    }
+    return {};
+  }
+
   Future<Map<String, dynamic>> getHomogeneityAnalysis(
     String farmName, {
     String? startDate,
@@ -358,9 +381,32 @@ class MongoService {
     return {};
   }
 
-  Future<Map<String, dynamic>> getPredictiveClustering(String weighingId) async {
+  Future<List<dynamic>> getRoomHomogeneityHistory(String farmName, String roomName) async {
     try {
-      final uri = Uri.parse('$baseUrl/weighings/predict/clustering').replace(queryParameters: {'weighingId': weighingId});
+      final queryParams = { 'farmName': farmName };
+      final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
+      final response = await http.get(uri);
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        // The data is a Map<String, List<dynamic>> where keys are room names
+        if (data.containsKey(roomName)) {
+          return List<dynamic>.from(data[roomName]);
+        }
+      }
+    } catch (e) {
+      print("Erreur getRoomHomogeneityHistory: $e");
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> getPredictiveClustering(String weighingId, {String? sex}) async {
+    try {
+      final queryParams = {
+        'weighingId': weighingId,
+        if (sex != null) 'sex': sex,
+      };
+      final uri = Uri.parse('$baseUrl/weighings/predict/clustering').replace(queryParameters: queryParams);
       final response = await http.get(uri);
       
       if (response.statusCode == 200) {
@@ -376,6 +422,7 @@ class MongoService {
     required String farmName,
     required String sourceRoom,
     required String targetRoom,
+    required String sex,
     required int clusterId,
   }) async {
     try {
@@ -383,18 +430,17 @@ class MongoService {
         'farmName': farmName,
         'sourceRoom': sourceRoom,
         'targetRoom': targetRoom,
+        'sex': sex,
         'clusterId': clusterId.toString(),
       };
       final uri = Uri.parse('$baseUrl/weighings/predict/simulate-move').replace(queryParameters: queryParams);
       final response = await http.post(uri);
       
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
+      return jsonDecode(response.body);
     } catch (e) {
       print("Erreur simulateMove: $e");
     }
-    return {};
+    return {'error': 'Erreur de connexion au serveur'};
   }
 
   // Audit Logs

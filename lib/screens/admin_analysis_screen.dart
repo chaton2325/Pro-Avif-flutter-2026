@@ -21,21 +21,20 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   
   // Date filtering
   bool _isAllHistory = true;
-  bool _showLines = true; // Toggle for line vs scatter
+  bool _showLines = true;
   DateTime? _startDate;
   DateTime? _endDate;
   
   Map<String, List<dynamic>> _analysisData = {};
-  Map<String, Map<String, double>> _regressions = {};
   
-  final List<Color> _roomColors = [
-    Colors.blue,
-    Colors.green,
+  final List<Color> _seriesColors = [
+    Colors.indigo,
+    Colors.pink,
+    Colors.teal,
     Colors.orange,
     Colors.purple,
+    Colors.blue,
     Colors.red,
-    Colors.teal,
-    Colors.indigo,
     Colors.amber,
   ];
 
@@ -79,8 +78,6 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
         formattedData[key] = list;
       });
       
-      _calculateRegressions(formattedData);
-      
       setState(() {
         _analysisData = formattedData;
         _isLoadingData = false;
@@ -90,85 +87,28 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     }
   }
 
-  void _calculateRegressions(Map<String, List<dynamic>> data) {
-    _regressions.clear();
-    data.forEach((room, points) {
-      if (points.length < 2) return;
-      
-      int n = points.length;
-      double sumX = 0; // Sum of timestamps
-      double sumY = 0; // Sum of homogeneity
-      double sumXY = 0; // Sum of timestamp * homogeneity
-      double sumX2 = 0; // Sum of timestamp^2
-      
-      for (var p in points) {
-        // Use seconds for timestamp to avoid excessive values
-        double x = DateTime.parse(p['date']).millisecondsSinceEpoch / 1000.0;
-        double y = (p['homogeneity'] as num).toDouble();
-        
-        sumX += x;
-        sumY += y;
-        sumXY += x * y;
-        sumX2 += x * x;
-      }
-      
-      // Slope formula: (n*Σxy - Σx*Σy) / (n*Σx² - (Σx)²)
-      double denominator = (n * sumX2 - sumX * sumX);
-      if (denominator == 0) return;
-      
-      double a = (n * sumXY - sumX * sumY) / denominator;
-      
-      // Intercept formula: (Σy - a*Σx) / n
-      double b = (sumY - a * sumX) / n;
-      
-      _regressions[room] = {'a': a, 'b': b};
-    });
-  }
-
-  Future<void> _selectStartDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _startDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) {
-      setState(() => _startDate = picked);
-    }
-  }
-
-  Future<void> _selectEndDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _endDate ?? DateTime.now(),
-      firstDate: _startDate ?? DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) {
-      setState(() {
-        _endDate = DateTime(picked.year, picked.month, picked.day, 23, 59, 59);
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
       appBar: AppBar(
-        title: const Text('ANALYSE D\'HOMOGÉNÉITÉ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: const Text('ÉVOLUTION DE L\'HOMOGÉNÉITÉ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.5, fontSize: 16)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.indigo.shade900,
         centerTitle: true,
       ),
       body: _isLoadingFarms 
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
           : Column(
               children: [
                 _buildControls(),
                 Expanded(
                   child: _isLoadingData 
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
                       : _analysisData.isEmpty 
                           ? _buildNoData()
-                          : _buildAnalysisView(),
+                          : _buildChartSection(),
                 ),
               ],
             ),
@@ -178,15 +118,22 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   Widget _buildControls() {
     return Container(
       padding: const EdgeInsets.all(16),
-      color: Colors.white,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+      ),
       child: Column(
         children: [
           DropdownButtonFormField<Farm>(
             value: _selectedFarm,
+            dropdownColor: Colors.white,
             decoration: InputDecoration(
-              labelText: 'Choisir un site (Ferme)',
-              prefixIcon: const Icon(Icons.agriculture, color: Colors.orange),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              labelText: 'Site de production',
+              prefixIcon: const Icon(Icons.location_on, color: Colors.indigo),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              filled: true,
+              fillColor: Colors.grey.shade50,
             ),
             items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name))).toList(),
             onChanged: (val) {
@@ -195,81 +142,59 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
             },
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              const Text('Vue:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(width: 8),
-              FilterChip(
-                label: const Text('Courbes', style: TextStyle(fontSize: 10)),
-                selected: _showLines,
-                onSelected: (val) => setState(() => _showLines = val),
-                selectedColor: Colors.orange.withValues(alpha: 0.2),
-                checkmarkColor: Colors.orange,
-              ),
-              const SizedBox(width: 8),
-              const Text('Période:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Tout', style: TextStyle(fontSize: 10)),
-                selected: _isAllHistory,
-                onSelected: (val) {
-                  setState(() => _isAllHistory = true);
-                  _loadAnalysisData();
-                },
-              ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Par période', style: TextStyle(fontSize: 11)),
-                selected: !_isAllHistory,
-                onSelected: (val) {
-                  setState(() => _isAllHistory = false);
-                  if (_startDate == null) {
-                    _startDate = DateTime.now().subtract(const Duration(days: 30));
-                    _endDate = DateTime.now();
-                  }
-                },
-              ),
-            ],
-          ),
-          if (!_isAllHistory) ...[
-            const SizedBox(height: 8),
-            Row(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _selectStartDate,
-                    icon: const Icon(Icons.calendar_today, size: 14),
-                    label: Text(
-                      _startDate == null ? 'Début' : DateFormat('dd/MM/yy').format(_startDate!),
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ),
+                ChoiceChip(
+                  label: const Text('Tout l\'historique', style: TextStyle(fontSize: 11)),
+                  selected: _isAllHistory,
+                  onSelected: (val) {
+                    setState(() => _isAllHistory = true);
+                    _loadAnalysisData();
+                  },
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _selectEndDate,
-                    icon: const Icon(Icons.calendar_today, size: 14),
-                    label: Text(
-                      _endDate == null ? 'Fin' : DateFormat('dd/MM/yy').format(_endDate!),
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ),
+                ChoiceChip(
+                  label: const Text('Sélectionner Période', style: TextStyle(fontSize: 11)),
+                  selected: !_isAllHistory,
+                  onSelected: (val) {
+                    setState(() => _isAllHistory = false);
+                  },
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  onPressed: _loadAnalysisData,
-                  child: const Text('APPLIQUER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                ),
+                const SizedBox(width: 12),
+                if (!_isAllHistory) ...[
+                  _buildDateBtn(_startDate, 'Début', () async {
+                    final d = await showDatePicker(context: context, initialDate: _startDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now());
+                    if (d != null) { setState(() => _startDate = d); _loadAnalysisData(); }
+                  }),
+                  const SizedBox(width: 8),
+                  _buildDateBtn(_endDate, 'Fin', () async {
+                    final d = await showDatePicker(context: context, initialDate: _endDate ?? DateTime.now(), firstDate: _startDate ?? DateTime(2020), lastDate: DateTime.now());
+                    if (d != null) { setState(() => _endDate = DateTime(d.year, d.month, d.day, 23, 59, 59)); _loadAnalysisData(); }
+                  }),
+                ],
               ],
             ),
-          ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDateBtn(DateTime? date, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(8)),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_month, size: 14, color: Colors.indigo),
+            const SizedBox(width: 6),
+            Text(date == null ? label : DateFormat('dd/MM/yy').format(date), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo)),
+          ],
+        ),
       ),
     );
   }
@@ -281,65 +206,50 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
         children: [
           Icon(Icons.analytics_outlined, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
-          const Text('Aucune donnée d\'analyse pour ce site', style: TextStyle(color: Colors.grey)),
+          const Text('Aucune donnée pour ce site', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  Widget _buildAnalysisView() {
-    return ListView.builder(
+  Widget _buildChartSection() {
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      itemCount: _analysisData.keys.length,
-      itemBuilder: (context, index) {
-        final room = _analysisData.keys.elementAt(index);
-        final color = _roomColors[index % _roomColors.length];
-        final points = _analysisData[room]!;
-        
-        return Column(
-          children: [
-            _buildIndividualChartSection(room, points, color),
-            const SizedBox(height: 24),
-            _buildIndividualRegressionSummary(room, color),
-            const SizedBox(height: 32),
-            if (index < _analysisData.keys.length - 1) const Divider(),
-            if (index < _analysisData.keys.length - 1) const SizedBox(height: 32),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildIndividualChartSection(String room, List<dynamic> points, Color color) {
-    return Container(
-      height: 350,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
-      ),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(width: 12, height: 12, color: color),
-              const SizedBox(width: 8),
-              Text('Évolution : $room', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Expanded(
+          Container(
+            height: 400,
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 32, 24, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))],
+            ),
             child: LineChart(
               LineChartData(
-                lineBarsData: _buildIndividualLineBars(room, points, color),
+                lineBarsData: _buildAllLineBars(),
                 titlesData: _buildTitles(),
-                gridData: const FlGridData(show: true, drawVerticalLine: false),
-                borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade300)),
+                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)),
+                borderData: FlBorderData(show: false),
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (touchedSpot) => Colors.blueGrey.withValues(alpha: 0.8),
+                    getTooltipColor: (touchedSpot) => Colors.indigo.shade900,
+                    getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                      return touchedSpots.map((s) {
+                        final seriesName = _analysisData.keys.elementAt(s.barIndex);
+                        return LineTooltipItem(
+                          '$seriesName\n',
+                          const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                          children: [
+                            TextSpan(
+                              text: '${s.y.toStringAsFixed(1)}%',
+                              style: TextStyle(color: s.bar.color, fontSize: 11, fontWeight: FontWeight.w900),
+                            ),
+                          ],
+                        );
+                      }).toList();
+                    },
                   ),
                 ),
                 minY: 0,
@@ -347,114 +257,72 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 24),
+          _buildLegend(),
         ],
       ),
     );
   }
 
-  List<LineChartBarData> _buildIndividualLineBars(String room, List<dynamic> points, Color color) {
+  List<LineChartBarData> _buildAllLineBars() {
     List<LineChartBarData> bars = [];
-    
-    // Real points curve or scatter
-    bars.add(LineChartBarData(
-      spots: points.map((p) {
-        double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
-        double y = (p['homogeneity'] as num).toDouble();
-        return FlSpot(x, y);
-      }).toList(),
-      isCurved: _showLines,
-      color: _showLines ? color : Colors.transparent,
-      barWidth: _showLines ? 3 : 0,
-      dotData: FlDotData(
-        show: true,
-        getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
-          radius: 4,
-          color: color,
-          strokeWidth: 1,
-          strokeColor: Colors.white,
-        ),
-      ),
-    ));
-    
-    // Regression dashed line
-    if (_regressions.containsKey(room)) {
-      final reg = _regressions[room]!;
-      final firstX = DateTime.parse(points.first['date']).millisecondsSinceEpoch.toDouble();
-      final lastX = DateTime.parse(points.last['date']).millisecondsSinceEpoch.toDouble();
-      
-      double y1 = reg['a']! * (firstX / 1000.0) + reg['b']!;
-      double y2 = reg['a']! * (lastX / 1000.0) + reg['b']!;
-      
+    int i = 0;
+    _analysisData.forEach((seriesName, points) {
+      final color = _seriesColors[i % _seriesColors.length];
       bars.add(LineChartBarData(
-        spots: [
-          FlSpot(firstX, y1),
-          FlSpot(lastX, y2),
-        ],
-        isCurved: false,
-        color: color.withValues(alpha: 0.6),
-        barWidth: 2,
-        dashArray: [5, 5],
-        dotData: const FlDotData(show: false),
+        spots: points.map((p) {
+          double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
+          double y = (p['homogeneity'] as num).toDouble();
+          return FlSpot(x, y);
+        }).toList(),
+        isCurved: true,
+        color: color,
+        barWidth: 4,
+        isStrokeCapRound: true,
+        dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 5, color: color, strokeWidth: 2, strokeColor: Colors.white)),
+        belowBarData: BarAreaData(show: true, color: color.withOpacity(0.02)),
       ));
-    }
-    
+      i++;
+    });
     return bars;
   }
 
-  Widget _buildIndividualRegressionSummary(String room, Color color) {
-    if (!_regressions.containsKey(room)) return const SizedBox();
-    
-    final e = _regressions.entries.firstWhere((element) => element.key == room);
-    final slope = e.value['a']!;
-    final isImproving = slope > 0;
-    final weeklyGrowth = slope * 60 * 60 * 24 * 7;
-    
-    return Card(
-      elevation: 0,
-      color: isImproving ? Colors.green.shade50 : Colors.red.shade50,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: Icon(
-          isImproving ? Icons.trending_up : Icons.trending_down,
-          color: isImproving ? Colors.green : Colors.red,
-        ),
-        title: Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(
-          isImproving 
-            ? 'Amélioration de l\'uniformité.' 
-            : 'Dégradation de l\'uniformité.',
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '${weeklyGrowth > 0 ? "+" : ""}${weeklyGrowth.toStringAsFixed(1)}%',
-              style: TextStyle(fontWeight: FontWeight.bold, color: isImproving ? Colors.green : Colors.red),
-            ),
-            const Text('par semaine', style: TextStyle(fontSize: 10, color: Colors.grey)),
-          ],
-        ),
+  Widget _buildLegend() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 12,
+        children: _analysisData.keys.toList().asMap().entries.map((e) {
+          final color = _seriesColors[e.key % _seriesColors.length];
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              Text(e.value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
+            ],
+          );
+        }).toList(),
       ),
     );
   }
 
   FlTitlesData _buildTitles() {
-    // Dynamically calculate interval based on date range to avoid overlapping labels
-    double? bottomInterval;
-    if (_analysisData.isNotEmpty) {
-      final allPoints = _analysisData.values.expand((x) => x).toList();
-      if (allPoints.isNotEmpty) {
-        final first = DateTime.parse(allPoints.first['date']).millisecondsSinceEpoch;
-        final last = DateTime.parse(allPoints.last['date']).millisecondsSinceEpoch;
-        final diff = last - first;
-        if (diff > 0) {
-          // Aim for about 5-6 labels
-          bottomInterval = diff / 5.0;
-        }
+    double minX = double.maxFinite;
+    double maxX = double.minPositive;
+    
+    _analysisData.values.forEach((points) {
+      for (var p in points) {
+        double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
       }
-    }
+    });
+
+    double? bottomInterval;
+    if (maxX > minX) bottomInterval = (maxX - minX) / 4.0;
 
     return FlTitlesData(
       rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -462,15 +330,14 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
       bottomTitles: AxisTitles(
         sideTitles: SideTitles(
           showTitles: true,
-          reservedSize: 40,
+          reservedSize: 32,
           interval: bottomInterval,
           getTitlesWidget: (value, meta) {
             final date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
             return SideTitleWidget(
               meta: meta,
-              angle: -45, // Rotate labels for better fit
               space: 10,
-              child: Text(DateFormat('dd/MM').format(date), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+              child: Text(DateFormat('dd/MM').format(date), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400)),
             );
           },
         ),
@@ -478,12 +345,12 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
       leftTitles: AxisTitles(
         sideTitles: SideTitles(
           showTitles: true,
-          reservedSize: 45,
+          reservedSize: 40,
           getTitlesWidget: (value, meta) {
-            if (value < 0 || value > 100) return const SizedBox();
+            if (value % 20 != 0) return const SizedBox();
             return SideTitleWidget(
               meta: meta,
-              child: Text('${value.toInt()}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              child: Text('${value.toInt()}%', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade400)),
             );
           },
         ),

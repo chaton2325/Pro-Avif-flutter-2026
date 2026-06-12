@@ -18,21 +18,23 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
   bool _isLoading = false;
   Map<String, dynamic>? _clusteringData;
   Map<String, dynamic>? _simulationResult;
+  List<dynamic> _sourceHistory = [];
+  List<dynamic> _targetHistory = [];
   
   // Selection state
   List<Farm> _farms = [];
   Farm? _selectedFarm;
-  String? _selectedWeighingId;
+  String? _selectedRoom;
+  String _selectedSex = 'Mâle';
   
   // Simulation params
-  String? _sourceRoom;
-  String? _targetRoom;
+  String? _simSourceRoom;
+  String? _simTargetRoom;
   int? _selectedClusterId;
 
   @override
   void initState() {
     super.initState();
-    _selectedWeighingId = widget.initialWeighingId;
     _loadInitialData();
   }
 
@@ -41,13 +43,19 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     try {
       _farms = await _mongoService.getFarms();
       if (_farms.isNotEmpty) {
-        // Find farm if we have a weighingId that might be linked to it
-        // For now, default to first farm
         _selectedFarm = _farms.first;
+        if (_selectedFarm!.rooms.isNotEmpty) {
+          _selectedRoom = _selectedFarm!.rooms.first;
+          _simSourceRoom = _selectedRoom;
+          // Target room is usually different
+          if (_selectedFarm!.rooms.length > 1) {
+            _simTargetRoom = _selectedFarm!.rooms[1];
+          }
+        }
       }
       
-      if (_selectedWeighingId != null) {
-        await _fetchClusteringData();
+      if (_selectedFarm != null && _selectedRoom != null) {
+        await _fetchAnalysisData();
       } else {
         setState(() => _isLoading = false);
       }
@@ -56,73 +64,125 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     }
   }
 
-  Future<void> _fetchClusteringData() async {
-    if (_selectedWeighingId == null) return;
+  Future<void> _fetchAnalysisData() async {
+    if (_selectedFarm == null || _selectedRoom == null) return;
     setState(() => _isLoading = true);
     try {
-      final data = await _mongoService.getPredictiveClustering(_selectedWeighingId!);
+      final data = await _mongoService.getLatestAnalysis(
+        farmName: _selectedFarm!.name,
+        roomName: _selectedRoom!,
+        sex: _selectedSex,
+      );
+      
       setState(() {
         _clusteringData = data;
         _isLoading = false;
-        // Reset simulation if weighing changes
         _simulationResult = null;
         _selectedClusterId = null;
       });
     } catch (e) {
       setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur d\'analyse: $e'), backgroundColor: Colors.red));
     }
   }
 
   Future<void> _runSimulation() async {
-    if (_selectedFarm == null || _sourceRoom == null || _targetRoom == null || _selectedClusterId == null) return;
+    if (_selectedFarm == null || _simSourceRoom == null || _simTargetRoom == null || _selectedClusterId == null) return;
     
     setState(() => _isLoading = true);
     try {
       final result = await _mongoService.simulateMove(
         farmName: _selectedFarm!.name,
-        sourceRoom: _sourceRoom!,
-        targetRoom: _targetRoom!,
+        sourceRoom: _simSourceRoom!,
+        targetRoom: _simTargetRoom!,
+        sex: _selectedSex,
         clusterId: _selectedClusterId!,
       );
+      
+      if (result.containsKey('error')) {
+        setState(() => _isLoading = false);
+        _showErrorDialog(result['error']);
+        return;
+      }
+
+      // Fetch real history for trend charts (Room - Sex)
+      final srcHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simSourceRoom!);
+      final tgtHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simTargetRoom!);
+      
       setState(() {
         _simulationResult = result;
+        _sourceHistory = srcHist;
+        _targetHistory = tgtHist;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur lors de la simulation'), backgroundColor: Colors.red));
     }
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Action Impossible', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('COMPRIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo))),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF1F5F9),
       appBar: AppBar(
-        title: const Text('Analyse Prédictive & IA', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('IA : Optimisation & Simulation', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.5)),
         elevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        foregroundColor: Colors.indigo.shade900,
+        centerTitle: true,
       ),
       body: _isLoading && _farms.isEmpty
-          ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
+          ? const Center(child: CircularProgressIndicator(color: Colors.indigo, strokeWidth: 3))
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildSexSelector(),
+                  const SizedBox(height: 16),
                   _buildSelectors(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   if (_clusteringData != null) ...[
+                    _buildSectionHeader('TABLEAU DE BORD IA ($_selectedSex)', Icons.dashboard_customize),
+                    const SizedBox(height: 12),
                     _buildClusteringDashboard(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
+                    _buildSectionHeader('TENDANCE DE LA SALLE', Icons.trending_up),
+                    const SizedBox(height: 12),
                     _buildTrendAnalysis(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
+                    _buildSectionHeader('SIMULATEUR DE TRANSFERT', Icons.rebase_edit),
+                    const SizedBox(height: 12),
                     _buildSimulatorInterface(),
                     if (_simulationResult != null) ...[
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 32),
+                      _buildSectionHeader('PRÉDICTIONS DE TRANSFERT', Icons.online_prediction),
+                      const SizedBox(height: 12),
                       _buildSimulationResults(),
                     ],
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 60),
                   ] else if (!_isLoading)
                     _buildNoDataPrompt(),
                 ],
@@ -131,55 +191,103 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     );
   }
 
-  Widget _buildSelectors() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+  Widget _buildSexSelector() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)]),
+      child: Row(
+        children: [
+          Expanded(child: _buildSexOption('Mâle', Icons.male)),
+          Expanded(child: _buildSexOption('Femelle', Icons.female)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSexOption(String sex, IconData icon) {
+    bool isSelected = _selectedSex == sex;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedSex = sex;
+          _simulationResult = null;
+        });
+        _fetchAnalysisData();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(color: isSelected ? Colors.indigo.shade600 : Colors.transparent, borderRadius: BorderRadius.circular(12)),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            DropdownButtonFormField<Farm>(
-              value: _selectedFarm,
-              decoration: const InputDecoration(labelText: 'Sélectionner une ferme', prefixIcon: Icon(Icons.location_on, color: Colors.indigo)),
-              items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name))).toList(),
-              onChanged: (val) {
-                setState(() {
-                  _selectedFarm = val;
-                  _sourceRoom = null;
-                  _targetRoom = null;
-                  _simulationResult = null;
-                });
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              initialValue: _selectedWeighingId,
-              decoration: const InputDecoration(
-                labelText: 'ID de la Pesée',
-                prefixIcon: Icon(Icons.numbers, color: Colors.indigo),
-                hintText: 'Entrez l\'ID pour analyse',
-              ),
-              onChanged: (val) => _selectedWeighingId = val,
-              onFieldSubmitted: (_) => _fetchClusteringData(),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _fetchClusteringData,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 0,
-                ),
-                child: const Text('LANCER L\'ANALYSE IA', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
-              ),
-            ),
+            Icon(icon, color: isSelected ? Colors.white : Colors.grey, size: 20),
+            const SizedBox(width: 8),
+            Text(sex, style: TextStyle(color: isSelected ? Colors.white : Colors.grey.shade600, fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Colors.indigo.shade400),
+        const SizedBox(width: 8),
+        Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.indigo.shade400, letterSpacing: 1.2)),
+      ],
+    );
+  }
+
+  Widget _buildSelectors() {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          DropdownButtonFormField<Farm>(
+            value: _selectedFarm,
+            dropdownColor: Colors.white,
+            decoration: InputDecoration(
+              labelText: 'Ferme / Bâtiment',
+              prefixIcon: const Icon(Icons.agriculture_rounded, color: Colors.indigo, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              filled: true, fillColor: Colors.grey.shade50,
+            ),
+            items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name))).toList(),
+            onChanged: (val) {
+              setState(() {
+                _selectedFarm = val;
+                _selectedRoom = val?.rooms.first;
+                _simSourceRoom = _selectedRoom;
+                _simulationResult = null;
+              });
+              _fetchAnalysisData();
+            },
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedRoom,
+            dropdownColor: Colors.white,
+            decoration: InputDecoration(
+              labelText: 'Salle à Analyser',
+              prefixIcon: const Icon(Icons.meeting_room_rounded, color: Colors.indigo, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              filled: true, fillColor: Colors.grey.shade50,
+            ),
+            items: (_selectedFarm?.rooms ?? []).map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+            onChanged: (val) {
+              setState(() {
+                _selectedRoom = val;
+                _simSourceRoom = val;
+                _simulationResult = null;
+              });
+              _fetchAnalysisData();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -190,334 +298,134 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     final clusters = (_clusteringData!['clusters'] as List?) ?? [];
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Expanded(child: _buildStatCard('Homogénéité Actuelle', '${homogeneity.toStringAsFixed(1)}%', Icons.analytics, Colors.blue)),
+            Expanded(child: _buildStatCard('Homogénéité', '${homogeneity.toStringAsFixed(1)}%', Icons.auto_graph_rounded, Colors.blue.shade600)),
             const SizedBox(width: 12),
             Expanded(child: _buildSilhouetteScore(silhouette)),
           ],
         ),
-        const SizedBox(height: 24),
-        const Text('Distribution des Poids par Cluster', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         _buildWeightHistogram(clusters),
       ],
     );
   }
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(height: 12),
-            Text(title, style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
-          ],
-        ),
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 20)),
+          const SizedBox(height: 12),
+          Text(title, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.w700)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+        ],
       ),
     );
   }
 
   Widget _buildSilhouetteScore(double score) {
-    Color color = Colors.red;
-    String label = 'Médiocre';
-    if (score > 0.5) {
-      color = Colors.green;
-      label = 'Bon';
-    } else if (score > 0.25) {
-      color = Colors.orange;
-      label = 'Moyen';
-    }
+    Color color = score > 0.5 ? Colors.green.shade600 : (score > 0.25 ? Colors.orange.shade600 : Colors.red.shade600);
+    String label = score > 0.5 ? 'EXCELLENT' : (score > 0.25 ? 'MOYEN' : 'MÉDIOCRE');
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.psychology, color: Colors.purple, size: 20),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text('Score Silhouette', style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            Text(score.toStringAsFixed(3), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
-          ],
-        ),
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.psychology_rounded, color: Colors.purple, size: 20)),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w900))),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text('COHÉSION IA', style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.w700)),
+          Text(score.toStringAsFixed(3), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+        ],
       ),
     );
   }
 
   Widget _buildWeightHistogram(List clusters) {
     List<BarChartGroupData> groups = [];
-    
+    double maxVal = 0;
     for (int i = 0; i < clusters.length; i++) {
-      final c = clusters[i];
-      final weights = (c['weights'] as List?) ?? [];
-      
-      groups.add(
-        BarChartGroupData(
-          x: i,
-          barRods: [
-            BarChartRodData(
-              toY: weights.length.toDouble(),
-              color: _getClusterColor(i),
-              width: 32,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-            )
-          ],
-          showingTooltipIndicators: [0],
-        ),
-      );
+      final count = (clusters[i]['count'] as num).toDouble();
+      if (count > maxVal) maxVal = count;
+      groups.add(BarChartGroupData(x: i, barRods: [BarChartRodData(toY: count, color: _getClusterColor(i), width: 34, borderRadius: const BorderRadius.vertical(top: Radius.circular(8)), backDrawRodData: BackgroundBarChartRodData(show: true, toY: maxVal * 1.2, color: Colors.grey.shade50))], showingTooltipIndicators: [0]));
     }
-
     return Container(
-      height: 250,
-      padding: const EdgeInsets.fromLTRB(16, 32, 16, 16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-      child: BarChart(
-        BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: groups.isEmpty ? 10 : groups.fold(0.0, (max, g) => g.barRods[0].toY > max ? g.barRods[0].toY : max) * 1.3,
-          barGroups: groups,
-          titlesData: FlTitlesData(
-            show: true,
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (val, meta) {
-                  if (val.toInt() < clusters.length) {
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(clusters[val.toInt()]['label'] ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
-                    );
-                  }
-                  return const SizedBox();
-                },
-              ),
-            ),
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          gridData: const FlGridData(show: false),
-          borderData: FlBorderData(show: false),
-          barTouchData: BarTouchData(
-            enabled: true,
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipColor: (group) => Colors.indigo.withOpacity(0.9),
-              getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                final cluster = clusters[groupIndex];
-                return BarTooltipItem(
-                  '${cluster['label']}\n${rod.toY.toInt()} sujets\n${cluster['mean'].toStringAsFixed(1)}g',
-                  const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
+      height: 280, width: double.infinity, padding: const EdgeInsets.fromLTRB(12, 40, 12, 12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      child: BarChart(BarChartData(
+        alignment: BarChartAlignment.spaceAround, maxY: maxVal * 1.35, barGroups: groups,
+        titlesData: FlTitlesData(show: true, bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (val, meta) => val.toInt() < clusters.length ? Padding(padding: const EdgeInsets.only(top: 10.0), child: Text(clusters[val.toInt()]['label'] ?? '', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade600))) : const SizedBox())), leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false))),
+        gridData: const FlGridData(show: false), borderData: FlBorderData(show: false),
+        barTouchData: BarTouchData(enabled: true, touchTooltipData: BarTouchTooltipData(getTooltipColor: (group) => Colors.indigo.shade900, getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem('${clusters[groupIndex]['label']}\n${rod.toY.toInt()} oiseaux\n${clusters[groupIndex]['mean'].toStringAsFixed(0)}g', const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)))),
+      )),
     );
   }
 
   Widget _buildTrendAnalysis() {
     final regressionData = (_clusteringData!['regressionData'] as List?) ?? [];
     if (regressionData.isEmpty) return const SizedBox();
-
     regressionData.sort((a, b) => DateTime.parse(a['date']).compareTo(DateTime.parse(b['date'])));
+    List<FlSpot> spots = regressionData.map((p) => FlSpot(DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble(), (p['homogeneity'] as num).toDouble())).toList();
+    double? bottomInterval;
+    if (spots.length > 1) bottomInterval = (spots.last.x - spots.first.x) / 4.0;
 
-    List<FlSpot> spots = [];
-    for (int i = 0; i < regressionData.length; i++) {
-      spots.add(FlSpot(i.toDouble(), (regressionData[i]['homogeneity'] as num).toDouble()));
-    }
-
-    final n = spots.length;
-    double m = 0, b = 0;
-    if (n > 1) {
-      double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-      for (var s in spots) {
-        sumX += s.x;
-        sumY += s.y;
-        sumXY += s.x * s.y;
-        sumX2 += s.x * s.x;
-      }
-      m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-      b = (sumY - m * sumX) / n;
-    }
-
-    List<FlSpot> trendSpots = [
-      FlSpot(0, b),
-      FlSpot((n - 1).toDouble(), m * (n - 1) + b),
-    ];
-
-    bool improving = m >= 0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Tendance de l\'Homogénéité', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(color: (improving ? Colors.green : Colors.red).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-              child: Row(
-                children: [
-                  Icon(improving ? Icons.trending_up : Icons.trending_down, color: improving ? Colors.green : Colors.red, size: 16),
-                  const SizedBox(width: 6),
-                  Text(improving ? 'Amélioration' : 'Dégradation', style: TextStyle(color: improving ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 11)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          height: 220,
-          padding: const EdgeInsets.fromLTRB(12, 16, 24, 12),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-          child: LineChart(
-            LineChartData(
-              minY: 60, maxY: 100,
-              lineBarsData: [
-                LineChartBarData(
-                  spots: spots,
-                  isCurved: true,
-                  color: Colors.indigo,
-                  barWidth: 4,
-                  dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: Colors.indigo, strokeWidth: 2, strokeColor: Colors.white)),
-                  belowBarData: BarAreaData(show: true, color: Colors.indigo.withOpacity(0.05)),
-                ),
-                if (n > 1)
-                  LineChartBarData(
-                    spots: trendSpots,
-                    isCurved: false,
-                    color: Colors.grey.withOpacity(0.4),
-                    barWidth: 2,
-                    dashArray: [5, 5],
-                    dotData: const FlDotData(show: false),
-                  ),
-              ],
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 35, getTitlesWidget: (v, m) => Text('${v.toInt()}%', style: const TextStyle(fontSize: 10, color: Colors.grey)))),
-                bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, m) {
-                  if (v.toInt() < regressionData.length && v.toInt() >= 0) {
-                    final date = DateTime.parse(regressionData[v.toInt()]['date']);
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(DateFormat('dd/MM').format(date), style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                    );
-                  }
-                  return const SizedBox();
-                })),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              ),
-              gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1)),
-              borderData: FlBorderData(show: false),
-            ),
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.all(20),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('QUALITÉ DU LOT ($_selectedSex)', style: TextStyle(color: Colors.grey.shade400, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1))]),
+        const SizedBox(height: 24),
+        SizedBox(height: 200, child: LineChart(LineChartData(
+          minY: 50, maxY: 100,
+          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.indigo.shade600, barWidth: 5, isStrokeCapRound: true, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 5, color: Colors.indigo, strokeWidth: 2, strokeColor: Colors.white)), belowBarData: BarAreaData(show: true, color: Colors.indigo.withOpacity(0.05)))],
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 35, getTitlesWidget: (v, m) => Text('${v.toInt()}%', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.grey.shade400)))),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32, interval: bottomInterval, getTitlesWidget: (v, m) => Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(v.toInt())), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400))))),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
-        ),
-      ],
+          gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)), borderData: FlBorderData(show: false),
+        ))),
+      ]),
     );
   }
 
   Widget _buildSimulatorInterface() {
     final clusters = (_clusteringData!['clusters'] as List?) ?? [];
     final rooms = _selectedFarm?.rooms ?? [];
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Simulateur de Transfert Stratégique', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.indigo.withOpacity(0.2))),
-          color: Colors.indigo.withOpacity(0.02),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _sourceRoom,
-                        decoration: const InputDecoration(labelText: 'Source', prefixIcon: Icon(Icons.outbound, size: 20)),
-                        items: rooms.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 13)))).toList(),
-                        onChanged: (val) => setState(() => _sourceRoom = val),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Icon(Icons.arrow_forward, color: Colors.indigo, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _targetRoom,
-                        decoration: const InputDecoration(labelText: 'Cible', prefixIcon: Icon(Icons.login, size: 20)),
-                        items: rooms.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 13)))).toList(),
-                        onChanged: (val) => setState(() => _targetRoom = val),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<int>(
-                  value: _selectedClusterId,
-                  decoration: const InputDecoration(labelText: 'Cluster à déplacer', prefixIcon: Icon(Icons.groups, size: 20)),
-                  items: clusters.map((c) => DropdownMenuItem<int>(value: c['id'], child: Text('${c['label']} (${c['count']} sujets)', style: const TextStyle(fontSize: 13)))).toList(),
-                  onChanged: (val) => setState(() => _selectedClusterId = val),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: (_sourceRoom != null && _targetRoom != null && _selectedClusterId != null && _sourceRoom != _targetRoom) ? _runSimulation : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.indigo,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 0,
-                    ),
-                    child: const Text('LANCER LA SIMULATION', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
-                  ),
-                ),
-              ],
-            ),
-          ),
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.indigo.shade50, width: 2)), padding: const EdgeInsets.all(20),
+      child: Column(children: [
+        Row(children: [
+          Expanded(child: _buildSimpleDropdown('Source', _simSourceRoom, rooms, (v) => setState(() => _simSourceRoom = v))),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Icon(Icons.swap_horiz_rounded, color: Colors.indigo, size: 28)),
+          Expanded(child: _buildSimpleDropdown('Cible', _simTargetRoom, rooms, (v) => setState(() => _simTargetRoom = v))),
+        ]),
+        const SizedBox(height: 16),
+        DropdownButtonFormField<int>(
+          value: _selectedClusterId, dropdownColor: Colors.white,
+          decoration: InputDecoration(labelText: 'Groupe $_selectedSex à déplacer', prefixIcon: const Icon(Icons.groups_rounded, color: Colors.indigo, size: 20), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), filled: true, fillColor: Colors.grey.shade50),
+          items: clusters.map((c) => DropdownMenuItem<int>(value: c['id'], child: Text('${c['label']} (${c['count']} sujets)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)))).toList(),
+          onChanged: (val) => setState(() => _selectedClusterId = val),
         ),
-      ],
+        const SizedBox(height: 20),
+        SizedBox(width: double.infinity, height: 54, child: ElevatedButton.icon(onPressed: (_simSourceRoom != null && _simTargetRoom != null && _selectedClusterId != null && _simSourceRoom != _simTargetRoom) ? _runSimulation : null, icon: const Icon(Icons.rocket_launch_rounded, size: 20), label: const Text('SIMULER LES IMPACTS', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)), style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0))),
+      ]),
     );
+  }
+
+  Widget _buildSimpleDropdown(String label, String? value, List<String> items, Function(String?) onChanged) {
+    return DropdownButtonFormField<String>(value: value, dropdownColor: Colors.white, decoration: InputDecoration(labelText: label, labelStyle: TextStyle(color: Colors.indigo.shade300, fontSize: 11, fontWeight: FontWeight.w800), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), filled: true, fillColor: Colors.grey.shade50, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)), items: items.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)))).toList(), onChanged: onChanged);
   }
 
   Widget _buildSimulationResults() {
@@ -525,161 +433,74 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     final target = _simulationResult!['target'];
     final moved = _simulationResult!['moved'];
     final range = (moved['range'] as List?) ?? [0, 0];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Résultats de la Simulation IA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
-        _buildMovedClusterCard(moved, range),
-        const SizedBox(height: 16),
-        _buildRoomImpactCard('Source : ${source['room']}', source, true),
-        const SizedBox(height: 12),
-        _buildRoomImpactCard('Cible : ${target['room']}', target, false),
-        const SizedBox(height: 24),
-        const Text('Nouvelle Distribution Théorique (Cible)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),
-        const SizedBox(height: 12),
-        _buildDistributionCurve(target['after']['weights'] as List),
-      ],
-    );
+    return Column(children: [
+      _buildMovedClusterCard(moved, range),
+      const SizedBox(height: 20),
+      _buildRoomImpactCard('SOURCE : ${source['room']}', source, _sourceHistory, true),
+      const SizedBox(height: 20),
+      _buildRoomImpactCard('CIBLE : ${target['room']}', target, _targetHistory, false),
+      const SizedBox(height: 24),
+      Container(width: double.infinity, padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('DISTRIBUTION THÉORIQUE APRÈS TRANSFERT', style: TextStyle(color: Colors.grey.shade500, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)), const SizedBox(height: 20), _buildDistributionCurve(target['after']['weights'] as List)])),
+    ]);
   }
 
   Widget _buildMovedClusterCard(Map<String, dynamic> moved, List range) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.indigo.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.indigo.withOpacity(0.1))),
-      child: Row(
-        children: [
-          const Icon(Icons.move_to_inbox, color: Colors.indigo),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Transfert : ${moved['clusterLabel']}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-                Text('${moved['count']} sujets | Intervalle : ${range[0].toStringAsFixed(1)}g - ${range[1].toStringAsFixed(1)}g', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.indigo.shade600, Colors.indigo.shade800]), borderRadius: BorderRadius.circular(18), boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))]), child: Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.move_down_rounded, color: Colors.white, size: 24)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Transfert de ${moved['count']} sujets (${moved['clusterLabel']})', style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 15)), const SizedBox(height: 2), Text('Calibrage IA : ${range[0].toStringAsFixed(0)}g à ${range[1].toStringAsFixed(0)}g', style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.8), fontWeight: FontWeight.w600))]))]));
   }
 
-  Widget _buildRoomImpactCard(String title, Map<String, dynamic> data, bool isSource) {
+  Widget _buildRoomImpactCard(String title, Map<String, dynamic> data, List<dynamic> history, bool isSource) {
     final before = (data['before']['homogeneity'] as num).toDouble();
     final after = (data['after']['homogeneity'] as num).toDouble();
     final change = (isSource ? data['gain'] : data['impact']) as num;
     final isPositive = change >= 0;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: (isPositive ? Colors.green : Colors.orange).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: Text(
-                    '${isPositive ? "+" : ""}${change.toStringAsFixed(2)}%',
-                    style: TextStyle(color: isPositive ? Colors.green : Colors.orange, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(child: _buildBeforeAfterStat('Avant', before)),
-                const Icon(Icons.arrow_forward, color: Colors.grey, size: 16),
-                Expanded(child: _buildBeforeAfterStat('Après', after, color: isPositive ? Colors.green : Colors.orange)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    return Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.all(20), child: Column(children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5)), Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: (isPositive ? Colors.green : Colors.red).withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text('${isPositive ? "+" : ""}${change.toStringAsFixed(2)}%', style: TextStyle(color: isPositive ? Colors.green.shade700 : Colors.red.shade700, fontWeight: FontWeight.w900, fontSize: 12)))]), const SizedBox(height: 20), Row(children: [_buildSimpleStat('ACTUEL', before, Colors.grey.shade400), const Expanded(child: Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Divider())), _buildSimpleStat('PRÉDIT', after, isPositive ? Colors.green.shade600 : Colors.red.shade600)]), const SizedBox(height: 24), Text('HISTORIQUE & PRÉDICTION D\'HOMOGÉNÉITÉ', style: TextStyle(color: Colors.grey.shade400, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)), const SizedBox(height: 12), _buildPredictionTrendChart(history, before, after, isPositive)]));
   }
 
-  Widget _buildBeforeAfterStat(String label, double value, {Color? color}) {
-    return Column(
-      children: [
-        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 4),
-        Text('${value.toStringAsFixed(1)}%', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: color)),
-      ],
-    );
+  Widget _buildSimpleStat(String label, double value, Color color) {
+    return Column(children: [Text(label, style: TextStyle(color: Colors.grey.shade400, fontSize: 9, fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text('${value.toStringAsFixed(1)}%', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: color))]);
+  }
+
+  Widget _buildPredictionTrendChart(List<dynamic> history, double current, double predicted, bool isPositive) {
+    List<FlSpot> historicalSpots = (List.from(history)..sort((a, b) => DateTime.parse(a['date']).compareTo(DateTime.parse(b['date'])))).map((p) => FlSpot(DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble(), (p['homogeneity'] as num).toDouble())).toList();
+    double nowTime = historicalSpots.isNotEmpty ? historicalSpots.last.x : DateTime.now().millisecondsSinceEpoch.toDouble();
+    double step = 24 * 60 * 60 * 1000.0; 
+    double predictedTime = nowTime + step;
+    double futureTime = predictedTime + step;
+    List<FlSpot> predictiveSpots = [if (historicalSpots.isNotEmpty) historicalSpots.last else FlSpot(nowTime, current), FlSpot(predictedTime, predicted)];
+    double futureProj = predicted + (predicted - current);
+    if (futureProj > 100) futureProj = 100;
+    if (futureProj < 0) futureProj = 0;
+    List<FlSpot> futureSpots = [FlSpot(predictedTime, predicted), FlSpot(futureTime, futureProj)];
+    double minX = historicalSpots.isNotEmpty ? historicalSpots.first.x : nowTime;
+    double maxX = futureTime;
+    double? bottomInterval;
+    if (maxX > minX) bottomInterval = (maxX - minX) / 4.0;
+    return SizedBox(height: 120, width: double.infinity, child: LineChart(LineChartData(
+      minY: 40, maxY: 100, minX: minX, maxX: maxX,
+      lineBarsData: [if (historicalSpots.isNotEmpty) LineChartBarData(spots: historicalSpots, isCurved: true, color: Colors.grey.shade300, barWidth: 3, dotData: const FlDotData(show: false)), LineChartBarData(spots: predictiveSpots, isCurved: false, color: isPositive ? Colors.green : Colors.red, barWidth: 4, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: isPositive ? Colors.green : Colors.red, strokeWidth: 2, strokeColor: Colors.white))), LineChartBarData(spots: futureSpots, isCurved: false, color: Colors.grey.withOpacity(0.3), barWidth: 2, dashArray: [5, 5], dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 3, color: Colors.grey.shade300, strokeWidth: 1, strokeColor: Colors.white)))],
+      titlesData: FlTitlesData(leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, getTitlesWidget: (v, m) => Text('${v.toInt()}%', style: TextStyle(fontSize: 8, color: Colors.grey.shade300, fontWeight: FontWeight.bold)))), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, interval: bottomInterval, getTitlesWidget: (v, m) { if (v == predictedTime) return const Text('Prédit', style: TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.bold)); if (v == futureTime) return const Text('Futur', style: TextStyle(fontSize: 8, color: Colors.grey)); return Text(DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(v.toInt())), style: const TextStyle(fontSize: 8, color: Colors.grey)); })), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false))),
+      gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05))), borderData: FlBorderData(show: false),
+    )));
   }
 
   Widget _buildDistributionCurve(List weights) {
     if (weights.isEmpty) return const SizedBox();
-    
     Map<int, int> freq = {};
-    for (var w in weights) {
-      int bucket = ((w as num).toInt() / 25).floor() * 25; // Finer precision
-      freq[bucket] = (freq[bucket] ?? 0) + 1;
-    }
-    
-    var sortedBuckets = freq.keys.toList()..sort();
-    List<FlSpot> spots = sortedBuckets.map((b) => FlSpot(b.toDouble(), freq[b]!.toDouble())).toList();
-
-    return Container(
-      height: 160,
-      padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-      child: LineChart(
-        LineChartData(
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: true,
-              color: Colors.indigo,
-              barWidth: 3,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(show: true, color: Colors.indigo.withOpacity(0.1)),
-            ),
-          ],
-          titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, getTitlesWidget: (v, m) => Padding(padding: const EdgeInsets.only(top: 4), child: Text('${v.toInt()}g', style: const TextStyle(fontSize: 8, color: Colors.grey))))),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 5, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)),
-          borderData: FlBorderData(show: false),
-        ),
-      ),
-    );
+    for (var w in weights) { int bucket = ((w as num).toInt() / 25).floor() * 25; freq[bucket] = (freq[bucket] ?? 0) + 1; }
+    List<FlSpot> spots = (freq.keys.toList()..sort()).map((b) => FlSpot(b.toDouble(), freq[b]!.toDouble())).toList();
+    return SizedBox(height: 150, width: double.infinity, child: LineChart(LineChartData(
+      lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.indigo.shade600, barWidth: 3, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: Colors.indigo.withOpacity(0.1)))],
+      titlesData: FlTitlesData(leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, getTitlesWidget: (v, m) => Padding(padding: const EdgeInsets.only(top: 4), child: Text('${v.toInt()}g', style: TextStyle(fontSize: 8, color: Colors.grey.shade400, fontWeight: FontWeight.bold))))), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false))),
+      gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 5, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.03))), borderData: FlBorderData(show: false),
+    )));
   }
 
   Widget _buildNoDataPrompt() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(height: 60),
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: Colors.indigo.withOpacity(0.05), shape: BoxShape.circle),
-            child: Icon(Icons.query_stats, size: 64, color: Colors.indigo.withOpacity(0.4)),
-          ),
-          const SizedBox(height: 20),
-          const Text('Prêt pour l\'analyse prédictive', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 8),
-          const Text('Sélectionnez une pesée pour que l\'IA calcule\nles optimisations et simulations.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
-        ],
-      ),
-    );
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const SizedBox(height: 80), Container(padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.05), blurRadius: 20)]), child: Icon(Icons.analytics_outlined, size: 70, color: Colors.indigo.shade200)), const SizedBox(height: 24), Text('PRÊT POUR L\'OPTIMISATION', style: TextStyle(color: Colors.indigo.shade900, fontWeight: FontWeight.w900, fontSize: 18)), const SizedBox(height: 12), Text('Veuillez sélectionner une salle pour activer\nles prédictions et simulations IA.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500))]));
   }
 
   Color _getClusterColor(int index) {
-    final colors = [Colors.blue, Colors.orange, Colors.green, Colors.purple, Colors.red, Colors.teal, Colors.indigo, Colors.pink];
+    final colors = [Colors.blue.shade400, Colors.orange.shade400, Colors.green.shade400, Colors.purple.shade400, Colors.red.shade400, Colors.teal.shade400, Colors.indigo.shade400, Colors.pink.shade400];
     return colors[index % colors.length];
   }
 }
