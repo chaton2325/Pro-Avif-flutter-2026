@@ -31,6 +31,7 @@ class FullscreenChartView extends StatefulWidget {
 
 class _FullscreenChartViewState extends State<FullscreenChartView> {
   int _currentIndex = 0;
+  bool _showProjected = false;
 
   @override
   void initState() {
@@ -62,9 +63,22 @@ class _FullscreenChartViewState extends State<FullscreenChartView> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Vue détaillée : ${currentChart['title']}'),
+        title: Text('Vue détaillée : ${currentChart['title']}', style: const TextStyle(color: Colors.indigo)),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+            child: TextButton.icon(
+              icon: Icon(_showProjected ? Icons.history : Icons.auto_graph, color: Colors.indigo),
+              label: Text(_showProjected ? 'Mode Actuel' : 'Mode Projeté', style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold)),
+              onPressed: () => setState(() => _showProjected = !_showProjected),
+              style: TextButton.styleFrom(backgroundColor: Colors.indigo.shade50),
+            ),
+          )
+        ],
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: const Icon(Icons.close, color: Colors.indigo),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -98,8 +112,16 @@ class _FullscreenChartViewState extends State<FullscreenChartView> {
     double nowTime = historicalSpots.isNotEmpty ? historicalSpots.last.x : DateTime.now().millisecondsSinceEpoch.toDouble();
     double step = 24 * 60 * 60 * 1000.0;
     double predictedTime = nowTime + step;
-    List<FlSpot> predictiveSpots = [if (historicalSpots.isNotEmpty) historicalSpots.last else FlSpot(nowTime, current), FlSpot(predictedTime, predicted)];
     
+    // Logic for projected spots
+    List<FlSpot> displaySpots = List.from(historicalSpots);
+    if (_showProjected && displaySpots.isNotEmpty) {
+      displaySpots.removeLast(); // Remove last real point
+      displaySpots.add(FlSpot(nowTime, predicted)); // Add predicted point
+    }
+    
+    List<FlSpot> predictiveSpots = [if (historicalSpots.isNotEmpty) historicalSpots.last else FlSpot(nowTime, current), FlSpot(predictedTime, predicted)];
+
     double minX = historicalSpots.isNotEmpty ? historicalSpots.first.x : nowTime;
     double maxX = predictedTime;
 
@@ -111,8 +133,14 @@ class _FullscreenChartViewState extends State<FullscreenChartView> {
             child: LineChart(LineChartData(
               minY: 0, maxY: 100, minX: minX, maxX: maxX,
               lineBarsData: [
-                if (historicalSpots.isNotEmpty) LineChartBarData(spots: historicalSpots, isCurved: true, color: Colors.grey.shade300, barWidth: 3, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: Colors.grey.shade400))),
-                LineChartBarData(spots: predictiveSpots, isCurved: false, color: isPositive ? Colors.green : Colors.red, barWidth: 6, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 6, color: isPositive ? Colors.green : Colors.red))),
+                LineChartBarData(
+                  spots: _showProjected ? displaySpots : historicalSpots,
+                  isCurved: true,
+                  color: _showProjected ? (isPositive ? Colors.green : Colors.red) : Colors.grey.shade400,
+                  barWidth: 4,
+                  dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: _showProjected ? (isPositive ? Colors.green : Colors.red) : Colors.grey.shade400)),
+                ),
+                if (!_showProjected) LineChartBarData(spots: predictiveSpots, isCurved: false, color: isPositive ? Colors.green.shade200 : Colors.red.shade200, barWidth: 3, dashArray: [5, 5]),
               ],
               titlesData: FlTitlesData(
                 bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, m) => Text(DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(v.toInt())), style: const TextStyle(fontSize: 12)))),
