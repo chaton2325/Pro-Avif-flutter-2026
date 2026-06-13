@@ -81,7 +81,9 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
   Future<void> _fetchAnalysisData() async {
     final lot = _selectedLot;
     if (_selectedFarm == null || _selectedRoom == null || lot == null) return;
+
     setState(() => _isLoading = true);
+
     try {
       final data = await _mongoService.getLatestAnalysis(
         farmName: _selectedFarm!.name,
@@ -89,16 +91,29 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
         sex: _selectedSex,
         lotNumber: lot.number,
       );
-      
+
+      // CHARGEMENT DE L'HISTORIQUE ICI
+      final history = await _mongoService.getRoomHomogeneityHistory(
+        _selectedFarm!.name,
+        _selectedRoom!,
+      );
+
       setState(() {
         _clusteringData = data;
+        _sourceHistory = history; // Mettre à jour l'historique utilisé par le graphique
         _isLoading = false;
         _simulationResult = null;
         _selectedClusterId = null;
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur d\'analyse: $e'), backgroundColor: Colors.red));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur d\'analyse: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -404,16 +419,23 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
         alignment: BarChartAlignment.spaceAround, maxY: maxVal * 1.35, barGroups: groups,
         titlesData: FlTitlesData(show: true, bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (val, meta) => val.toInt() < clusters.length ? Padding(padding: const EdgeInsets.only(top: 10.0), child: Text(clusters[val.toInt()]['label'] ?? '', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade600))) : const SizedBox())), leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false))),
         gridData: const FlGridData(show: false), borderData: FlBorderData(show: false),
-        barTouchData: BarTouchData(enabled: true, touchTooltipData: BarTouchTooltipData(getTooltipColor: (group) => Colors.indigo.shade900, getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem('${clusters[groupIndex]['label']}\n${rod.toY.toInt()} oiseaux\n${clusters[groupIndex]['mean'].toStringAsFixed(0)}g', const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)))),
+        barTouchData: BarTouchData(enabled: true, touchTooltipData: BarTouchTooltipData(getTooltipColor: (group) => Colors.indigo.shade900, getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem('${clusters[groupIndex]['label']}\n${rod.toY.toInt()} Sujets\n${clusters[groupIndex]['mean'].toStringAsFixed(0)}g', const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)))),
       )),
     );
   }
 
   Widget _buildTrendAnalysis() {
-    final regressionData = (_clusteringData!['regressionData'] as List?) ?? [];
+    // Tenter de récupérer regressionData, sinon utiliser l'historique de la salle
+    List<dynamic> regressionData = (_clusteringData!['regressionData'] as List?) ?? [];
+    if (regressionData.isEmpty) {
+      regressionData = _sourceHistory;
+    }
+    
     if (regressionData.isEmpty) return const SizedBox();
+    
     regressionData.sort((a, b) => DateTime.parse(a['date']).compareTo(DateTime.parse(b['date'])));
     List<FlSpot> spots = regressionData.map((p) => FlSpot(DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble(), (p['homogeneity'] as num).toDouble())).toList();
+    
     double? bottomInterval;
     if (spots.length > 1) bottomInterval = (spots.last.x - spots.first.x) / 4.0;
 
@@ -423,14 +445,14 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('QUALITÉ DU LOT ($_selectedSex)', style: TextStyle(color: Colors.grey.shade400, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1))]),
         const SizedBox(height: 24),
         SizedBox(height: 200, child: LineChart(LineChartData(
-          minY: 50, maxY: 100,
-          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.indigo.shade600, barWidth: 5, isStrokeCapRound: true, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 5, color: Colors.indigo, strokeWidth: 2, strokeColor: Colors.white)), belowBarData: BarAreaData(show: true, color: Colors.indigo.withOpacity(0.05)))],
+          minY: 0, maxY: 100, // Ajusté pour mieux voir la variation
+          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.indigo.shade600, barWidth: 5, isStrokeCapRound: true, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 5, color: Colors.indigo, strokeWidth: 2, strokeColor: Colors.white)), belowBarData: BarAreaData(show: true, color: Colors.indigo.withValues(alpha: 0.05)))],
           titlesData: FlTitlesData(
             leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 35, getTitlesWidget: (v, m) => Text('${v.toInt()}%', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.grey.shade400)))),
             bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32, interval: bottomInterval, getTitlesWidget: (v, m) => Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(v.toInt())), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400))))),
             rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
-          gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)), borderData: FlBorderData(show: false),
+          gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withValues(alpha: 0.05), strokeWidth: 1)), borderData: FlBorderData(show: false),
         ))),
       ]),
     );
@@ -497,7 +519,10 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
   }
 
   Widget _buildPredictionTrendChart(List<dynamic> history, double current, double predicted, bool isPositive) {
+    print("DEBUG TREND CHART: history length = ${history.length}, history = $history");
     List<FlSpot> historicalSpots = (List.from(history)..sort((a, b) => DateTime.parse(a['date']).compareTo(DateTime.parse(b['date'])))).map((p) => FlSpot(DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble(), (p['homogeneity'] as num).toDouble())).toList();
+    print("DEBUG TREND CHART: historicalSpots = $historicalSpots");
+    
     double nowTime = historicalSpots.isNotEmpty ? historicalSpots.last.x : DateTime.now().millisecondsSinceEpoch.toDouble();
     double step = 24 * 60 * 60 * 1000.0; 
     double predictedTime = nowTime + step;
@@ -511,11 +536,18 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     double maxX = futureTime;
     double? bottomInterval;
     if (maxX > minX) bottomInterval = (maxX - minX) / 4.0;
+    
+    print("DEBUG TREND CHART: spotsCount = ${historicalSpots.length + predictiveSpots.length + futureSpots.length}");
+
     return SizedBox(height: 120, width: double.infinity, child: LineChart(LineChartData(
       minY: 40, maxY: 100, minX: minX, maxX: maxX,
-      lineBarsData: [if (historicalSpots.isNotEmpty) LineChartBarData(spots: historicalSpots, isCurved: true, color: Colors.grey.shade300, barWidth: 3, dotData: const FlDotData(show: false)), LineChartBarData(spots: predictiveSpots, isCurved: false, color: isPositive ? Colors.green : Colors.red, barWidth: 4, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: isPositive ? Colors.green : Colors.red, strokeWidth: 2, strokeColor: Colors.white))), LineChartBarData(spots: futureSpots, isCurved: false, color: Colors.grey.withOpacity(0.3), barWidth: 2, dashArray: [5, 5], dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 3, color: Colors.grey.shade300, strokeWidth: 1, strokeColor: Colors.white)))],
+      lineBarsData: [
+        if (historicalSpots.isNotEmpty) LineChartBarData(spots: historicalSpots, isCurved: true, color: Colors.grey.shade300, barWidth: 3, dotData: const FlDotData(show: false)), 
+        LineChartBarData(spots: predictiveSpots, isCurved: false, color: isPositive ? Colors.green : Colors.red, barWidth: 4, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: isPositive ? Colors.green : Colors.red, strokeWidth: 2, strokeColor: Colors.white))), 
+        LineChartBarData(spots: futureSpots, isCurved: false, color: Colors.grey.withValues(alpha: 0.3), barWidth: 2, dashArray: [5, 5], dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 3, color: Colors.grey.shade300, strokeWidth: 1, strokeColor: Colors.white)))
+      ],
       titlesData: FlTitlesData(leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, getTitlesWidget: (v, m) => Text('${v.toInt()}%', style: TextStyle(fontSize: 8, color: Colors.grey.shade300, fontWeight: FontWeight.bold)))), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, interval: bottomInterval, getTitlesWidget: (v, m) { if (v == predictedTime) return const Text('Prédit', style: TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.bold)); if (v == futureTime) return const Text('Futur', style: TextStyle(fontSize: 8, color: Colors.grey)); return Text(DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(v.toInt())), style: const TextStyle(fontSize: 8, color: Colors.grey)); })), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false))),
-      gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05))), borderData: FlBorderData(show: false),
+      gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withValues(alpha: 0.05))), borderData: FlBorderData(show: false),
     )));
   }
 
