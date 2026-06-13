@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../services/mongo_service.dart';
 import '../models/farm.dart';
 import '../models/lot.dart';
+import 'fullscreen_chart_view.dart';
+
 
 class AdminPredictiveAnalysisScreen extends StatefulWidget {
   final String? initialWeighingId;
@@ -96,6 +98,7 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
       final history = await _mongoService.getRoomHomogeneityHistory(
         _selectedFarm!.name,
         _selectedRoom!,
+        _selectedSex,
       );
 
       setState(() {
@@ -138,8 +141,8 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
       }
 
       // Fetch real history for trend charts (Room - Sex)
-      final srcHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simSourceRoom!);
-      final tgtHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simTargetRoom!);
+      final srcHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simSourceRoom!, _selectedSex);
+      final tgtHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simTargetRoom!, _selectedSex);
       
       setState(() {
         _simulationResult = result;
@@ -497,6 +500,23 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
       _buildRoomImpactCard('SOURCE : ${source['room']}', source, _sourceHistory, true),
       const SizedBox(height: 20),
       _buildRoomImpactCard('CIBLE : ${target['room']}', target, _targetHistory, false),
+      const SizedBox(height: 16),
+      ElevatedButton.icon(
+        icon: const Icon(Icons.fullscreen),
+        label: const Text('DÉVELOPPER LES GRAPHIQUES'),
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => FullscreenChartView(
+            sourceHistory: _sourceHistory,
+            targetHistory: _targetHistory,
+            sourceBefore: (source['before']['homogeneity'] as num).toDouble(),
+            sourceAfter: (source['after']['homogeneity'] as num).toDouble(),
+            isSourcePositive: ((source['gain'] ?? 0) as num) >= 0,
+            targetBefore: (target['before']['homogeneity'] as num).toDouble(),
+            targetAfter: (target['after']['homogeneity'] as num).toDouble(),
+            isTargetPositive: ((target['impact'] ?? 0) as num) >= 0,
+          )));
+        },
+      ),
       const SizedBox(height: 24),
       Container(width: double.infinity, padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('DISTRIBUTION THÉORIQUE APRÈS TRANSFERT', style: TextStyle(color: Colors.grey.shade500, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)), const SizedBox(height: 20), _buildDistributionCurve(target['after']['weights'] as List)])),
     ]);
@@ -540,9 +560,9 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     print("DEBUG TREND CHART: spotsCount = ${historicalSpots.length + predictiveSpots.length + futureSpots.length}");
 
     return SizedBox(height: 120, width: double.infinity, child: LineChart(LineChartData(
-      minY: 40, maxY: 100, minX: minX, maxX: maxX,
+      minY: 0, maxY: 100, minX: minX, maxX: maxX,
       lineBarsData: [
-        if (historicalSpots.isNotEmpty) LineChartBarData(spots: historicalSpots, isCurved: true, color: Colors.grey.shade300, barWidth: 3, dotData: const FlDotData(show: false)), 
+        if (historicalSpots.isNotEmpty) LineChartBarData(spots: historicalSpots, isCurved: true, color: Colors.grey.shade300, barWidth: 3, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 3, color: Colors.grey.shade400, strokeWidth: 1, strokeColor: Colors.white))), 
         LineChartBarData(spots: predictiveSpots, isCurved: false, color: isPositive ? Colors.green : Colors.red, barWidth: 4, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: isPositive ? Colors.green : Colors.red, strokeWidth: 2, strokeColor: Colors.white))), 
         LineChartBarData(spots: futureSpots, isCurved: false, color: Colors.grey.withValues(alpha: 0.3), barWidth: 2, dashArray: [5, 5], dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 3, color: Colors.grey.shade300, strokeWidth: 1, strokeColor: Colors.white)))
       ],

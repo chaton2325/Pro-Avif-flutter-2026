@@ -387,7 +387,7 @@ class MongoService {
     return {};
   }
 
-  Future<List<dynamic>> getRoomHomogeneityHistory(String farmName, String roomName) async {
+  Future<List<dynamic>> getRoomHomogeneityHistory(String farmName, String roomName, String sex) async {
     try {
       final queryParams = { 'farmName': farmName };
       final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
@@ -395,9 +395,10 @@ class MongoService {
       
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
-        // The data is a Map<String, List<dynamic>> where keys are room names
-        if (data.containsKey(roomName)) {
-          return List<dynamic>.from(data[roomName]);
+        // The data is a Map<String, List<dynamic>> where keys are 'Room - Sex'
+        final String key = '$roomName - $sex';
+        if (data.containsKey(key)) {
+          return List<dynamic>.from(data[key]);
         }
       }
     } catch (e) {
