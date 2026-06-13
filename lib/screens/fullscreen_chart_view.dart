@@ -34,6 +34,7 @@ class _FullscreenChartViewState extends State<FullscreenChartView> {
   bool _showProjected = false;
   bool _showCurve = true;
   bool _showRegression = true;
+  int? _touchedIndex;
 
   @override
   void initState() {
@@ -123,6 +124,7 @@ class _FullscreenChartViewState extends State<FullscreenChartView> {
 
     // Linear Regression Calculation
     List<FlSpot> regressionSpots = [];
+    FlSpot? prediction7DaySpot;
     if (_showRegression && displaySpots.length > 1) {
       double n = displaySpots.length.toDouble();
       double sumX = displaySpots.fold(0.0, (sum, spot) => sum + spot.x);
@@ -133,14 +135,26 @@ class _FullscreenChartViewState extends State<FullscreenChartView> {
       double slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
       double intercept = (sumY - slope * sumX) / n;
       
+      // Extend 7 days ahead
+      double sevenDaysMs = 7 * 24 * 60 * 60 * 1000.0;
+      double x7Days = displaySpots.last.x + sevenDaysMs;
+      double y7Days = slope * x7Days + intercept;
+      
+      // Clamp Y to [0, 100]
+      y7Days = y7Days.clamp(0.0, 100.0);
+      
+      prediction7DaySpot = FlSpot(x7Days, y7Days);
+
       regressionSpots = [
         FlSpot(displaySpots.first.x, slope * displaySpots.first.x + intercept),
-        FlSpot(displaySpots.last.x, slope * displaySpots.last.x + intercept),
+        prediction7DaySpot,
       ];
     }
     
     double minX = displaySpots.isNotEmpty ? displaySpots.first.x : nowTime;
-    double maxX = predictedTime;
+    double maxX = prediction7DaySpot != null ? prediction7DaySpot.x : predictedTime;
+    
+    double dateInterval = (maxX - minX) / 3.0;
 
     return Padding(
       padding: const EdgeInsets.all(20.0),
@@ -148,15 +162,64 @@ class _FullscreenChartViewState extends State<FullscreenChartView> {
         children: [
           Expanded(
             child: LineChart(LineChartData(
-              minY: 0, maxY: 100, minX: minX, maxX: maxX,
+              minY: -5, maxY: 105, minX: minX, maxX: maxX,
               lineBarsData: [
                 if (_showCurve) LineChartBarData(spots: displaySpots, isCurved: true, color: _showProjected ? (isPositive ? Colors.green : Colors.red) : Colors.grey.shade400, barWidth: 2, dotData: const FlDotData(show: false)),
-                LineChartBarData(spots: displaySpots, isCurved: false, color: Colors.transparent, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: _showProjected ? (isPositive ? Colors.green : Colors.red) : Colors.grey.shade400))),
-                if (_showRegression && regressionSpots.isNotEmpty) LineChartBarData(spots: regressionSpots, isCurved: false, color: Colors.blue.shade800, barWidth: 2, dashArray: [5, 5]),
+                LineChartBarData(
+                  spots: displaySpots, 
+                  isCurved: false, 
+                  color: Colors.transparent, 
+                  dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: _showProjected ? (isPositive ? Colors.green : Colors.red) : Colors.grey.shade400))
+                ),
+                if (_showRegression && regressionSpots.isNotEmpty) LineChartBarData(
+                  spots: regressionSpots, 
+                  isCurved: false, 
+                  color: Colors.blue.shade800, 
+                  barWidth: 2, 
+                  dashArray: [5, 5], 
+                  dotData: FlDotData(
+                    show: true, 
+                    getDotPainter: (s, p, b, i) => i == 1 
+                        ? FlDotCirclePainter(radius: 6, color: Colors.purple, strokeWidth: 2, strokeColor: Colors.white) 
+                        : FlDotCirclePainter(radius: 3, color: Colors.blue.shade800, strokeWidth: 1, strokeColor: Colors.white)
+                  )
+                ),
               ],
+              lineTouchData: LineTouchData(
+                enabled: true,
+                handleBuiltInTouches: true,
+                touchCallback: (event, response) {
+                  if (event is FlTapUpEvent && response != null && response.lineBarSpots != null) {
+                    setState(() {
+                      _touchedIndex = response.lineBarSpots!.first.spotIndex;
+                    });
+                  } else if (event is FlTapUpEvent) {
+                    setState(() { _touchedIndex = null; });
+                  }
+                },
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipColor: (spot) => Colors.indigo.shade50,
+                  getTooltipItems: (touchedSpots) {
+                    return touchedSpots.map((spot) {
+                      final date = DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(spot.x.toInt()));
+                      String text = '$date: ${spot.y.toStringAsFixed(1)}%';
+                      
+                      if (spot.barIndex == 2 && spot.spotIndex == 1) {
+                         final lastHistValue = historicalSpots.isNotEmpty ? historicalSpots.last.y : current;
+                         text += '\nGain (vs dernier): ${((spot.y - lastHistValue) / lastHistValue * 100).toStringAsFixed(1)}%';
+                         return LineTooltipItem(text, const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold));
+                      }
+                      
+                      return LineTooltipItem(text, const TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold));
+                    }).toList();
+                  }
+                )
+              ),
               titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, m) => Text(DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(v.toInt())), style: const TextStyle(fontSize: 12)))),
-                leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, m) => Text('${v.toInt()}%', style: const TextStyle(fontSize: 12)))),
+                bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: dateInterval, reservedSize: 25, getTitlesWidget: (v, m) => Text(DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(v.toInt())), style: const TextStyle(fontSize: 10)))),
+                leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, getTitlesWidget: (v, m) => Text('${v.toInt()}%', style: const TextStyle(fontSize: 10)))),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               ),
             )),
           ),
