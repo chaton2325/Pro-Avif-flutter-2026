@@ -4,6 +4,7 @@ import '../models/lot.dart';
 import '../models/weighing_session.dart';
 import '../services/mongo_service.dart';
 import '../services/session_storage.dart';
+import '../services/export_service.dart';
 
 class WeighingSummaryScreen extends StatefulWidget {
   final User user;
@@ -62,6 +63,30 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
 
     _homogeneousCount = widget.weights.where((w) => w >= _minus10 && w <= _plus10).length;
     _homogeneityPercentage = (_homogeneousCount / widget.weights.length) * 100;
+  }
+
+  Future<void> _export({required bool isPdf}) async {
+    final session = WeighingSession(
+      userId: widget.user.id!,
+      lotId: widget.lot.id ?? widget.lot.number,
+      lotNumber: widget.lot.number,
+      operator: widget.operator,
+      farmName: widget.building,
+      roomName: widget.room,
+      sex: widget.sex,
+      lowerInterval: widget.lowerInterval,
+      upperInterval: widget.upperInterval,
+      age: widget.age,
+      weights: widget.weights,
+      timestamp: DateTime.now(),
+      homogeneity: _homogeneityPercentage,
+    );
+
+    if (isPdf) {
+      await ExportService.exportToPdf(session);
+    } else {
+      await ExportService.exportToExcel(session);
+    }
   }
 
   Future<void> _confirmAndSave() async {
@@ -296,6 +321,38 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
               ),
             ),
             const SizedBox(height: 40),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _export(isPdf: true),
+                    icon: const Icon(Icons.picture_as_pdf, size: 20),
+                    label: const Text('PDF', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _export(isPdf: false),
+                    icon: const Icon(Icons.table_chart, size: 20),
+                    label: const Text('EXCEL', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               height: 60,

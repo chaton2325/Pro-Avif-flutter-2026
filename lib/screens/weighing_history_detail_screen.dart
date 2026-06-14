@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/weighing_session.dart';
 import '../services/mongo_service.dart';
+import '../services/export_service.dart';
 import 'admin_predictive_analysis_screen.dart';
 
 class WeighingHistoryDetailScreen extends StatelessWidget {
@@ -22,8 +23,21 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('PESÉE LOT: ${session.lotNumber ?? session.lotId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text('PESÉE LOT: ${session.lotNumber ?? session.lotId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
+            onPressed: () => ExportService.exportToPdf(session),
+            tooltip: 'Exporter en PDF',
+          ),
+          IconButton(
+            icon: const Icon(Icons.table_chart, color: Colors.green),
+            onPressed: () => ExportService.exportToExcel(session),
+            tooltip: 'Exporter en Excel',
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
