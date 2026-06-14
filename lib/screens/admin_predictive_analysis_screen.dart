@@ -99,6 +99,7 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
         _selectedFarm!.name,
         _selectedRoom!,
         _selectedSex,
+        lotNumber: lot.number,
       );
 
       setState(() {
@@ -141,8 +142,8 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
       }
 
       // Fetch real history for trend charts (Room - Sex)
-      final srcHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simSourceRoom!, _selectedSex);
-      final tgtHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simTargetRoom!, _selectedSex);
+      final srcHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simSourceRoom!, _selectedSex, lotNumber: _selectedLot!.number);
+      final tgtHist = await _mongoService.getRoomHomogeneityHistory(_selectedFarm!.name, _simTargetRoom!, _selectedSex, lotNumber: _selectedLot!.number);
       
       setState(() {
         _simulationResult = result;

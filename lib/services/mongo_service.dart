@@ -332,10 +332,17 @@ class MongoService {
         if (lotNumber != null) 'lotNumber': lotNumber,
       };
       final uri = Uri.parse('$baseUrl/weighings/analysis/latest').replace(queryParameters: queryParams);
+      
+      print("🔍 API CALL (Latest): $uri");
+      
       final response = await http.get(uri);
       
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+        print("✅ API RESPONSE (Latest): ${data.keys}");
+        return data;
+      } else {
+        print("❌ API ERROR (Latest): ${response.statusCode} - ${response.body}");
       }
     } catch (e) {
       print("Erreur getLatestAnalysis: $e");
@@ -344,7 +351,7 @@ class MongoService {
   }
 
   Future<Map<String, dynamic>> getHomogeneityAnalysis(
-    String farmName, {
+    String? farmName, {
     String? startDate,
     String? endDate,
     String? lotNumber,
@@ -352,7 +359,7 @@ class MongoService {
   }) async {
     try {
       final queryParams = {
-        'farmName': farmName,
+        if (farmName != null) 'farmName': farmName,
         if (startDate != null) 'startDate': startDate,
         if (endDate != null) 'endDate': endDate,
         if (lotNumber != null) 'lotNumber': lotNumber,
@@ -360,12 +367,16 @@ class MongoService {
       };
       final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
       
-      print("🔍 API CALL: $uri");
+      print("🔍 API CALL (Homogeneity): $uri");
       
       final response = await http.get(uri);
       
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+        print("✅ API RESPONSE (Homogeneity): ${data.keys}");
+        return data;
+      } else {
+        print("❌ API ERROR (Homogeneity): ${response.statusCode} - ${response.body}");
       }
     } catch (e) {
       print("Erreur getHomogeneityAnalysis: $e");
@@ -387,19 +398,44 @@ class MongoService {
     return {};
   }
 
-  Future<List<dynamic>> getRoomHomogeneityHistory(String farmName, String roomName, String sex) async {
+  Future<List<dynamic>> getRoomHomogeneityHistory(String farmName, String roomName, String sex, {String? lotNumber}) async {
     try {
-      final queryParams = { 'farmName': farmName };
+      final queryParams = { 
+        'farmName': farmName,
+        'roomName': roomName,
+        'sex': sex,
+        if (lotNumber != null) 'lotNumber': lotNumber,
+      };
       final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
+      
+      print("🔍 API CALL (History): $uri");
+      
       final response = await http.get(uri);
       
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
-        // The data is a Map<String, List<dynamic>> where keys are 'Room - Sex'
-        final String key = '$roomName - $sex';
-        if (data.containsKey(key)) {
-          return List<dynamic>.from(data[key]);
+        print("✅ API RESPONSE (History): ${data.keys}");
+        
+        // Format: "Room - Sex (Lot: Number)"
+        String keyWithLot = '$roomName - $sex (Lot: $lotNumber)';
+        String keySimple = '$roomName - $sex';
+        
+        if (data.containsKey(keyWithLot)) {
+          return List<dynamic>.from(data[keyWithLot]);
+        } else if (data.containsKey(keySimple)) {
+          return List<dynamic>.from(data[keySimple]);
         }
+        
+        // Fallback: search for any key containing the room and sex
+        for (var k in data.keys) {
+          if (k.contains(roomName) && k.contains(sex)) {
+            if (lotNumber == null || k.contains(lotNumber)) {
+              return List<dynamic>.from(data[k]);
+            }
+          }
+        }
+      } else {
+        print("❌ API ERROR (History): ${response.statusCode} - ${response.body}");
       }
     } catch (e) {
       print("Erreur getRoomHomogeneityHistory: $e");

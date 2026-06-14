@@ -74,6 +74,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     
     setState(() => _isLoadingData = true);
     try {
+      print("🔍 LOADING ANALYSIS DATA for Lot: ${_selectedLot!.number}");
       final data = await _mongoService.getHomogeneityAnalysis(
         _selectedFarm!.name,
         lotNumber: _selectedLot!.number,
@@ -81,6 +82,8 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
         startDate: _isAllHistory ? null : _startDate?.toIso8601String(),
         endDate: _isAllHistory ? null : _endDate?.toIso8601String(),
       );
+      
+      print("✅ RECEIVED DATA KEYS: ${data.keys}");
       
       final Map<String, List<dynamic>> formattedData = {};
       data.forEach((key, value) {
