@@ -89,55 +89,44 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: Colors.white,
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.agriculture, size: 100, color: Colors.orange),
-              const SizedBox(height: 16),
+              // Icon container
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.agriculture, size: 80, color: Colors.orange),
+              ),
+              const SizedBox(height: 24),
               const Text(
                 'PRO-AVIF',
                 style: TextStyle(
                   color: Colors.black87,
-                  fontSize: 36,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5,
                 ),
               ),
+              const SizedBox(height: 8),
               const Text(
                 'Gestion de Fermes',
-                style: TextStyle(color: Colors.grey, fontSize: 18),
+                style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.w500),
               ),
-              const SizedBox(height: 60),
-              TextField(
-                controller: _nameController,
-                decoration: InputDecoration(
-                  labelText: 'Nom d\'utilisateur',
-                  prefixIcon: const Icon(Icons.person, color: Colors.orange),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
+              const SizedBox(height: 48),
+              
+              // Input fields with modern styling
+              _buildTextField(controller: _nameController, label: 'Nom d\'utilisateur', icon: Icons.person),
               const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Mot de passe',
-                  prefixIcon: const Icon(Icons.lock, color: Colors.orange),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
+              _buildTextField(controller: _passwordController, label: 'Mot de passe', icon: Icons.lock, obscure: true),
+              
               const SizedBox(height: 32),
+              
+              // Login button
               _isLoading
                   ? const CircularProgressIndicator(color: Colors.orange)
                   : SizedBox(
@@ -146,48 +135,84 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: ElevatedButton(
                         onPressed: _login,
                         style: ElevatedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          elevation: 2,
+                          backgroundColor: Colors.orange,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 4,
+                          shadowColor: Colors.orange.withValues(alpha: 0.5),
                         ),
-                        child: const Text('SE CONNECTER', style: TextStyle(fontSize: 16, letterSpacing: 1.2)),
+                        child: const Text('SE CONNECTER', style: TextStyle(fontSize: 16, letterSpacing: 1.2, fontWeight: FontWeight.bold, color: Colors.white)),
                       ),
                     ),
+              
               const SizedBox(height: 32),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: connected ? Colors.green : Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    connected ? 'Serveur en ligne' : 'Serveur hors ligne',
-                    style: TextStyle(color: connected ? Colors.green : Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-              if (!connected)
-                TextButton(
-                  onPressed: () async {
-                    setState(() => _isLoading = true);
-                    try {
-                      await MongoService().connect();
-                    } catch (e) {}
-                    setState(() => _isLoading = false);
-                  },
-                  child: const Text('Réessayer la connexion', style: TextStyle(color: Colors.orange)),
-                ),
+              
+              // Status indicator
+              _buildConnectionStatus(connected),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, bool obscure = false}) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.grey),
+        prefixIcon: Icon(icon, color: Colors.orange.shade300),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: Colors.grey.shade200, width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Colors.orange, width: 2),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionStatus(bool connected) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: connected ? Colors.green : Colors.red,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              connected ? 'Serveur en ligne' : 'Serveur hors ligne',
+              style: TextStyle(color: connected ? Colors.green : Colors.red, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        if (!connected)
+          TextButton(
+            onPressed: () async {
+              setState(() => _isLoading = true);
+              try { await MongoService().connect(); } catch (e) {}
+              setState(() => _isLoading = false);
+            },
+            child: const Text('Réessayer la connexion', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          ),
+      ],
     );
   }
 }

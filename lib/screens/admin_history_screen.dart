@@ -153,7 +153,7 @@ class _AdminHistoryScreenState extends State<AdminHistoryScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: ListTile(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WeighingHistoryDetailScreen(session: session))),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WeighingHistoryDetailScreen(session: session, userRole: 'admin'))),
         title: Text('Lot: ${session.lotNumber ?? session.lotId}', style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

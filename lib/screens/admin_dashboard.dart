@@ -270,24 +270,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Nom du Bâtiment (Site)'),
+                  decoration: const InputDecoration(labelText: 'Nom du Bâtiment (Site)', prefixIcon: Icon(Icons.apartment)),
                 ),
-                const SizedBox(height: 16),
-                const Text('Salles du bâtiment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                const SizedBox(height: 24),
+                const Text('Salles du bâtiment', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: roomController,
-                        decoration: const InputDecoration(hintText: 'Nom de la salle'),
+                        decoration: const InputDecoration(hintText: 'Nom de la salle', prefixIcon: Icon(Icons.meeting_room)),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.add_circle, color: Colors.green),
+                      icon: const Icon(Icons.add_circle, color: Colors.orange, size: 32),
                       onPressed: () {
                         if (roomController.text.isNotEmpty) {
                           setDialogState(() {
@@ -299,12 +301,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                   ],
                 ),
-                Wrap(
-                  spacing: 8,
-                  children: rooms.map((r) => Chip(
-                    label: Text(r, style: const TextStyle(fontSize: 10)),
-                    onDeleted: () => setDialogState(() => rooms.remove(r)),
-                  )).toList(),
+                const SizedBox(height: 16),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: rooms.map((r) => Chip(
+                      label: Text(r),
+                      backgroundColor: Colors.orange.shade50,
+                      deleteIconColor: Colors.red,
+                      onDeleted: () => setDialogState(() => rooms.remove(r)),
+                    )).toList(),
+                  ),
                 ),
               ],
             ),
@@ -342,24 +351,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Nom du Bâtiment'),
+                  decoration: const InputDecoration(labelText: 'Nom du Bâtiment', prefixIcon: Icon(Icons.apartment)),
                 ),
-                const SizedBox(height: 16),
-                const Text('Salles', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                const SizedBox(height: 24),
+                const Text('Salles', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: roomController,
-                        decoration: const InputDecoration(hintText: 'Ajouter une salle'),
+                        decoration: const InputDecoration(hintText: 'Ajouter une salle', prefixIcon: Icon(Icons.meeting_room)),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.add_circle, color: Colors.green),
+                      icon: const Icon(Icons.add_circle, color: Colors.orange, size: 32),
                       onPressed: () {
                         if (roomController.text.isNotEmpty) {
                           setDialogState(() {
@@ -371,12 +382,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                   ],
                 ),
-                Wrap(
-                  spacing: 8,
-                  children: rooms.map((r) => Chip(
-                    label: Text(r, style: const TextStyle(fontSize: 10)),
-                    onDeleted: () => setDialogState(() => rooms.remove(r)),
-                  )).toList(),
+                const SizedBox(height: 16),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: rooms.map((r) => Chip(
+                      label: Text(r),
+                      backgroundColor: Colors.orange.shade50,
+                      deleteIconColor: Colors.red,
+                      onDeleted: () => setDialogState(() => rooms.remove(r)),
+                    )).toList(),
+                  ),
                 ),
               ],
             ),
@@ -435,7 +453,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return Scaffold(
       extendBody: true,
       appBar: AppBar(
-        title: const Text('PRO-AVIF ADMIN', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        title: const Text('ADMINISTRATION', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 18)),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(icon: const Icon(Icons.refresh, color: Colors.orange), onPressed: _refreshData),
           IconButton(icon: const Icon(Icons.logout, color: Colors.orange), onPressed: _logout),
@@ -446,7 +467,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         : _error != null 
           ? Center(child: Padding(padding: const EdgeInsets.all(20.0), child: Text(_error!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center)))
           : _buildBody(),
-      floatingActionButton: (_currentIndex >= 1 && _currentIndex <= 3) && !_isLoading
+      floatingActionButton: (_currentIndex == 1 || _currentIndex == 2 || _currentIndex == 3) && !_isLoading
           ? FloatingActionButton(
               backgroundColor: Colors.orange,
               elevation: 6,
@@ -470,7 +491,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         _buildUserList(),
         _buildFarmList(),
         _buildLotList(),
-        _buildAuditLogs(),
       ],
     );
   }
@@ -481,11 +501,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
       color: Colors.orange,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Aperçu Général', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            _buildAdminHeaderCard(),
+            const SizedBox(height: 32),
+            const Text('VUE D\'ENSEMBLE', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2)),
             const SizedBox(height: 20),
             Row(
               children: [
@@ -500,8 +522,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 _buildStatCard('Lots', _lots.length.toString(), Icons.inventory_2, Colors.purple),
                 const SizedBox(width: 16),
                 _buildQuickAction(
-                  Icons.analytics, 
-                  'Historique Global', 
+                  Icons.analytics_rounded, 
+                  'Historique', 
                   Colors.indigo,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminHistoryScreen())),
                 ),
@@ -511,58 +533,76 @@ class _AdminDashboardState extends State<AdminDashboard> {
             Row(
               children: [
                 _buildQuickAction(
-                  Icons.show_chart, 
-                  'Analyse Qualité', 
+                  Icons.show_chart_rounded, 
+                  'Analyse', 
                   Colors.orange,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminAnalysisScreen())),
                 ),
                 const SizedBox(width: 16),
                 _buildQuickAction(
-                  Icons.psychology, 
-                  'Optimisation IA', 
+                  Icons.psychology_rounded, 
+                  'IA', 
                   Colors.purple,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPredictiveAnalysisScreen())),
                 ),
               ],
             ),
-            const SizedBox(height: 32),
-            const Text('Activités Récentes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            if (_logs.isEmpty)
-              const Center(child: Padding(padding: EdgeInsets.all(20.0), child: Text('Aucune activité enregistrée', style: TextStyle(color: Colors.grey))))
-            else
-              ..._logs.take(5).map((log) => Card(
-                elevation: 1,
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                child: ListTile(
-                  leading: const Icon(Icons.info_outline, size: 20),
-                  title: Text(log.details, style: const TextStyle(fontSize: 13)),
-                  subtitle: Text('${log.userName} | ${log.timestamp.toString().substring(11, 16)}', style: const TextStyle(fontSize: 11)),
-                ),
-              )),
-            const SizedBox(height: 100),
+            const SizedBox(height: 120),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildAdminHeaderCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade600,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(color: Colors.orange.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icon, color: color, size: 30),
-              const SizedBox(height: 12),
-              Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              const Text('ADMINISTRATEUR', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+              Text(
+                '${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+              ),
             ],
           ),
+          const SizedBox(height: 8),
+          const Text('Système de Gestion Pro-Avif', style: TextStyle(color: Colors.white70, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade100),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 12),
+            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            Text(title, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+          ],
         ),
       ),
     );
@@ -570,22 +610,23 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget _buildQuickAction(IconData icon, String label, Color color, {VoidCallback? onTap}) {
     return Expanded(
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(15),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon, color: color, size: 30),
-                const SizedBox(height: 12),
-                Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              ],
-            ),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
+            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: color, size: 32),
+              const SizedBox(height: 12),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+            ],
           ),
         ),
       ),
@@ -596,7 +637,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.all(20.0),
           child: TextField(
             controller: _userSearchController,
             decoration: InputDecoration(
@@ -604,7 +645,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
               prefixIcon: const Icon(Icons.search, color: Colors.orange),
               filled: true,
               fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: Colors.grey.shade100, width: 1)),
             ),
           ),
         ),
@@ -612,35 +655,35 @@ class _AdminDashboardState extends State<AdminDashboard> {
           child: _filteredUsers.isEmpty 
             ? const Center(child: Text('Aucun membre trouvé', style: TextStyle(color: Colors.grey)))
             : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
                 itemCount: _filteredUsers.length,
                 itemBuilder: (context, index) {
                   final user = _filteredUsers[index];
                   final farm = _farms.cast<Farm?>().firstWhere((f) => f?.id == user.farmId, orElse: () => null);
-                  return Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    child: ExpansionTile(
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.grey.shade100),
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       leading: CircleAvatar(
-                        backgroundColor: user.isActive ? (user.role == 'admin' ? Colors.orange.withValues(alpha: 0.2) : Colors.grey[200]) : Colors.red.withValues(alpha: 0.1),
-                        child: Icon(user.role == 'admin' ? Icons.security : Icons.person, color: user.isActive ? (user.role == 'admin' ? Colors.orange : Colors.grey[700]) : Colors.red[300]),
+                        backgroundColor: user.isActive ? (user.role == 'admin' ? Colors.orange.withValues(alpha: 0.1) : Colors.blue.withValues(alpha: 0.1)) : Colors.grey.withValues(alpha: 0.1),
+                        child: Icon(user.role == 'admin' ? Icons.security_rounded : Icons.person_rounded, color: user.isActive ? (user.role == 'admin' ? Colors.orange : Colors.blue) : Colors.grey),
                       ),
-                      title: Text(user.name, style: TextStyle(fontWeight: FontWeight.bold, decoration: user.isActive ? null : TextDecoration.lineThrough, color: user.isActive ? Colors.black87 : Colors.grey)),
-                      subtitle: Text('${user.role.toUpperCase()} | ${farm?.name ?? "Sans ferme"}'),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              TextButton.icon(icon: Icon(user.isActive ? Icons.block : Icons.check_circle, color: user.isActive ? Colors.red : Colors.green), label: Text(user.isActive ? 'Désactiver' : 'Activer', style: TextStyle(color: user.isActive ? Colors.red : Colors.green)), onPressed: () async { await _mongoService.toggleUserStatus(user); _refreshData(); }),
-                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showEditUserDialog(user)),
-                              IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () async { await _mongoService.deleteUser(user.id!); _refreshData(); }),
-                            ],
-                          ),
-                        )
-                      ],
+                      title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                      subtitle: Text('${user.role.toUpperCase()} • ${farm?.name ?? "Sans site"}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(icon: Icon(user.isActive ? Icons.toggle_on_rounded : Icons.toggle_off_rounded, color: user.isActive ? Colors.green : Colors.grey, size: 32), onPressed: () async { await _mongoService.toggleUserStatus(user); _refreshData(); }),
+                          IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20), onPressed: () => _showEditUserDialog(user)),
+                          IconButton(icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20), onPressed: () async { await _mongoService.deleteUser(user.id!); _refreshData(); }),
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -654,7 +697,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.all(20.0),
           child: TextField(
             controller: _farmSearchController,
             decoration: InputDecoration(
@@ -662,7 +705,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
               prefixIcon: const Icon(Icons.search, color: Colors.orange),
               filled: true,
               fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: Colors.grey.shade100, width: 1)),
             ),
           ),
         ),
@@ -670,23 +715,28 @@ class _AdminDashboardState extends State<AdminDashboard> {
           child: _filteredFarms.isEmpty
             ? const Center(child: Text('Aucun bâtiment trouvé', style: TextStyle(color: Colors.grey)))
             : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
                 itemCount: _filteredFarms.length,
                 itemBuilder: (context, index) {
                   final farm = _filteredFarms[index];
-                  return Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    margin: const EdgeInsets.symmetric(vertical: 6),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.grey.shade100),
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                    ),
                     child: ListTile(
-                      leading: CircleAvatar(backgroundColor: Colors.orange.withValues(alpha: 0.2), child: const Icon(Icons.house, color: Colors.orange)),
-                      title: Text(farm.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('${farm.rooms.length} salle(s) : ${farm.rooms.join(", ")}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      leading: CircleAvatar(backgroundColor: Colors.green.withValues(alpha: 0.1), child: const Icon(Icons.agriculture_rounded, color: Colors.green)),
+                      title: Text(farm.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                      subtitle: Text('${farm.rooms.length} salle(s) : ${farm.rooms.join(", ")}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showEditFarmDialog(farm)),
-                          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () async { await _mongoService.deleteFarm(farm.id!); _refreshData(); }),
+                          IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20), onPressed: () => _showEditFarmDialog(farm)),
+                          IconButton(icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20), onPressed: () async { await _mongoService.deleteFarm(farm.id!); _refreshData(); }),
                         ],
                       ),
                     ),
@@ -723,8 +773,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 itemBuilder: (context, index) {
                   final lot = _filteredLots[index];
                   return Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade100)),
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     child: ListTile(
                       leading: CircleAvatar(backgroundColor: Colors.purple.withValues(alpha: 0.1), child: const Icon(Icons.inventory_2, color: Colors.purple)),
@@ -740,41 +790,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _buildAuditLogs() {
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
-      itemCount: _logs.length,
-      itemBuilder: (context, index) {
-        final log = _logs[index];
-        IconData actionIcon;
-        Color actionColor;
-        switch (log.action) {
-          case 'create': actionIcon = Icons.add_circle_outline; actionColor = Colors.green; break;
-          case 'update': actionIcon = Icons.edit_outlined; actionColor = Colors.blue; break;
-          case 'delete': actionIcon = Icons.remove_circle_outline; actionColor = Colors.red; break;
-          case 'login': actionIcon = Icons.login_outlined; actionColor = Colors.orange; break;
-          default: actionIcon = Icons.info_outline; actionColor = Colors.grey;
-        }
-        return Card(
-          elevation: 1,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          child: ListTile(
-            leading: Icon(actionIcon, color: actionColor),
-            title: Text(log.details, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            subtitle: Text('Par: ${log.userName} | ${log.timestamp.toString().substring(0, 19)}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildGoogleNavBar() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 5))]),
+      margin: const EdgeInsets.fromLTRB(30, 0, 30, 30),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(35), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))]),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: GNav(
           rippleColor: Colors.orange[300]!,
           hoverColor: Colors.orange[100]!,
@@ -790,11 +811,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           onTabChange: (index) => setState(() => _currentIndex = index),
           tabs: const [
-            GButton(icon: Icons.home, text: 'Accueil'),
-            GButton(icon: Icons.people, text: 'Membres'),
-            GButton(icon: Icons.agriculture, text: 'Bâtiments'),
-            GButton(icon: Icons.inventory_2, text: 'Lots'),
-            GButton(icon: Icons.history, text: 'Logs'),
+            GButton(icon: Icons.home_rounded, text: 'Accueil'),
+            GButton(icon: Icons.people_rounded, text: 'Membres'),
+            GButton(icon: Icons.agriculture_rounded, text: 'Bâtiments'),
+            GButton(icon: Icons.inventory_2_rounded, text: 'Lots'),
           ],
         ),
       ),

@@ -229,7 +229,7 @@ class _UserHistoryScreenState extends State<UserHistoryScreen> {
         borderRadius: BorderRadius.circular(16),
         onTap: () => Navigator.push(
           context, 
-          MaterialPageRoute(builder: (_) => WeighingHistoryDetailScreen(session: session))
+          MaterialPageRoute(builder: (_) => WeighingHistoryDetailScreen(session: session, userRole: 'user'))
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),

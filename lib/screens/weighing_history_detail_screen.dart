@@ -6,8 +6,9 @@ import 'admin_predictive_analysis_screen.dart';
 
 class WeighingHistoryDetailScreen extends StatelessWidget {
   final WeighingSession session;
+  final String userRole;
 
-  const WeighingHistoryDetailScreen({super.key, required this.session});
+  const WeighingHistoryDetailScreen({super.key, required this.session, required this.userRole});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +18,7 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
     double minus10 = averageWeight * 0.90;
     int homogeneousCount = session.weights.where((w) => w >= minus10 && w <= plus10).length;
     double homogeneityPercentage = (homogeneousCount / session.weights.length) * 100;
-    
+
     // Use session value if available, otherwise use local calculation
     double finalHomogeneity = session.homogeneity > 0 ? session.homogeneity : homogeneityPercentage;
 
@@ -67,15 +68,15 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // AI Decision Button
-            if (session.isSync) 
+            // AI Decision Button (Admin Only)
+            if (session.isSync && userRole == 'admin')
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () => Navigator.push(
-                    context, 
+                    context,
                     MaterialPageRoute(builder: (_) => AdminPredictiveAnalysisScreen(
-                      initialWeighingId: session.id ?? "", 
+                      initialWeighingId: session.id ?? "",
                     ))
                   ),
                   icon: const Icon(Icons.psychology, color: Colors.white),
@@ -88,8 +89,8 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
-            
-            if (session.isSync) const SizedBox(height: 24),
+
+            if (session.isSync && userRole == 'admin') const SizedBox(height: 24),
 
             // Statistics Card
             const Text('Statistiques', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),

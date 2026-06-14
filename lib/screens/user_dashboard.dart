@@ -30,12 +30,10 @@ class _UserDashboardState extends State<UserDashboard> {
   
   List<Map<String, dynamic>> _pendingSessions = [];
   
-  // Real-time clock
   late Timer _timer;
   String _currentTime = '';
   String _currentDateStr = '';
 
-  // Settings controllers
   late String _selectedLanguage;
   final TextEditingController _precisionController = TextEditingController();
 
@@ -146,8 +144,10 @@ class _UserDashboardState extends State<UserDashboard> {
       extendBody: true,
       appBar: AppBar(
         title: Text(_currentIndex == 0 ? 'ACCUEIL' : 'PARAMÈTRES', 
-          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 18)),
         centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.orange),
@@ -170,16 +170,16 @@ class _UserDashboardState extends State<UserDashboard> {
 
   Widget _buildHome() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_pendingSessions.isNotEmpty) _buildPendingSessionAlert(),
-          const SizedBox(height: 10),
           _buildHeaderCard(),
-          const SizedBox(height: 24),
-          const Text('VOS RÉGLAGES ACTUELS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey, letterSpacing: 1.1)),
-          const SizedBox(height: 12),
+          const SizedBox(height: 32),
+          
+          const Text('VOS RÉGLAGES', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Colors.grey, letterSpacing: 1.2)),
+          const SizedBox(height: 16),
           Row(
             children: [
               _buildInfoCard(Icons.scale, 'Précision', '${_precisionController.text} déc.'),
@@ -187,27 +187,28 @@ class _UserDashboardState extends State<UserDashboard> {
               _buildInfoCard(Icons.language, 'Langue', _selectedLanguage.toUpperCase()),
             ],
           ),
+          
           const SizedBox(height: 32),
-          const Text('ACTIONS RAPIDES', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey, letterSpacing: 1.1)),
-          const SizedBox(height: 12),
+          const Text('ACTIONS RAPIDES', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Colors.grey, letterSpacing: 1.2)),
+          const SizedBox(height: 16),
           Row(
             children: [
               _buildQuickAction(
-                Icons.add_shopping_cart, 
+                Icons.add_circle_outline, 
                 'Nouvelle Pesée', 
                 Colors.blue,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NewWeighingScreen(user: widget.user))).then((_) => _checkPendingSessions()),
               ),
               const SizedBox(width: 16),
               _buildQuickAction(
-                Icons.history, 
-                'Mon Historique', 
+                Icons.history_rounded, 
+                'Historique', 
                 Colors.green,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserHistoryScreen(user: widget.user))),
               ),
             ],
           ),
-          const SizedBox(height: 100),
+          const SizedBox(height: 120),
         ],
       ),
     );
@@ -216,16 +217,12 @@ class _UserDashboardState extends State<UserDashboard> {
   Widget _buildHeaderCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.orange.shade600, Colors.orangeAccent.shade400],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(25),
+        color: Colors.orange.shade600,
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
-          BoxShadow(color: Colors.orange.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 8)),
+          BoxShadow(color: Colors.orange.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10)),
         ],
       ),
       child: Column(
@@ -234,51 +231,76 @@ class _UserDashboardState extends State<UserDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.white.withValues(alpha: 0.2),
-                    child: const Icon(Icons.person, color: Colors.white, size: 24),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Bienvenue,', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                      Text(
-                        widget.user.name,
-                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
+                  const Text('Bienvenue,', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  Text(widget.user.name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(_currentTime, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-                  Text(_currentDateStr, style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                  Text(_currentTime, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                  Text(_currentDateStr, style: const TextStyle(color: Colors.white70, fontSize: 11)),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text('SITE DE PRODUCTION (BÂTIMENT)', style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              const Icon(Icons.agriculture, color: Colors.white, size: 24),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _assignedFarm?.name ?? 'En attente...',
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
+          const SizedBox(height: 32),
+          const Text('SITE DE PRODUCTION', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+          const SizedBox(height: 4),
+          Text(
+            _assignedFarm?.name ?? 'En attente...',
+            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(IconData icon, String label, String value) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade100),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: Colors.orange, size: 28),
+            const SizedBox(height: 12),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickAction(IconData icon, String label, Color color, {VoidCallback? onTap}) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.grey.shade100),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 32),
+              const SizedBox(height: 12),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -294,7 +316,7 @@ class _UserDashboardState extends State<UserDashboard> {
       decoration: BoxDecoration(
         color: Colors.red.shade50,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.red.shade200),
+        border: Border.all(color: Colors.red.shade100),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
@@ -334,50 +356,6 @@ class _UserDashboardState extends State<UserDashboard> {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoCard(IconData icon, String label, String value) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: Colors.orange, size: 24),
-            const SizedBox(height: 8),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickAction(IconData icon, String label, Color color, {VoidCallback? onTap}) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 30),
-              const SizedBox(height: 8),
-              Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-            ],
           ),
         ),
       ),
@@ -428,10 +406,11 @@ class _UserDashboardState extends State<UserDashboard> {
             child: ElevatedButton(
               onPressed: _saveSettings,
               style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                 elevation: 0,
               ),
-              child: const Text('ENREGISTRER LES MODIFICATIONS', style: TextStyle(letterSpacing: 1.1)),
+              child: const Text('ENREGISTRER LES MODIFICATIONS', style: TextStyle(letterSpacing: 1.1, color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ),
           const SizedBox(height: 100),
@@ -446,7 +425,8 @@ class _UserDashboardState extends State<UserDashboard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
