@@ -161,6 +161,7 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
   }
 
   Widget _buildInfoSummary() {
+    final currentWeek = _realHistory.isNotEmpty ? _realHistory.last.week.toString() : '-';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -172,6 +173,7 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _buildSummaryItem('Sexe', widget.sex, widget.sex == 'Mâle' ? Colors.blue : Colors.pink),
+          _buildSummaryItem('Semaine', 'S$currentWeek', Colors.green.shade700),
           _buildSummaryItem('Bâtiment', widget.farmName, Colors.indigo),
           _buildSummaryItem('Salle', widget.roomName, Colors.teal),
           if (widget.lotNumber != null) _buildSummaryItem('Lot', widget.lotNumber!, Colors.orange),
@@ -213,35 +215,47 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
       icon = Icons.trending_up_rounded;
     }
 
-    final diff = ((lastReal.averageWeight - standardAtLastWeek.weight) / standardAtLastWeek.weight * 100).toStringAsFixed(1);
-    final diffPrefix = double.parse(diff) >= 0 ? "+" : "";
+    final diff = (lastReal.averageWeight - standardAtLastWeek.weight).abs().toStringAsFixed(0);
+    final diffPrefix = (lastReal.averageWeight - standardAtLastWeek.weight) >= 0 ? "+" : "-";
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(status, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 13)),
-                Text('Écart par rapport à l\'idéal : $diffPrefix$diff%', 
-                  style: TextStyle(color: color.withOpacity(0.8), fontSize: 11)),
-              ],
-            ),
+          Row(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(width: 12),
+              Text(status, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 16)),
+            ],
           ),
-          Text('${lastReal.averageWeight.toStringAsFixed(0)}g', 
-            style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 18)),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildBadgeStat('Poids Actuel', '${lastReal.averageWeight.toStringAsFixed(0)}g'),
+              _buildBadgeStat('Norme (Min-Max)', '${standardAtLastWeek.minWeight.toStringAsFixed(0)}g - ${standardAtLastWeek.maxWeight.toStringAsFixed(0)}g'),
+              _buildBadgeStat('Écart', '$diffPrefix$diff g', color: color),
+            ],
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBadgeStat(String label, String value, {Color? color}) {
+    return Column(
+      children: [
+        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: color ?? Colors.indigo.shade900)),
+      ],
     );
   }
 

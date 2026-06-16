@@ -54,18 +54,96 @@ class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Column(
+      body: Row(
         children: [
           Expanded(
+            flex: 3,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 40, 10),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               child: _buildChart(),
             ),
           ),
-          _buildLegend(),
-          const SizedBox(height: 16),
+          Container(
+            width: 250,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              border: Border(left: BorderSide(color: Colors.grey.shade200)),
+            ),
+            child: Column(
+              children: [
+                _buildAnalysisBadge(),
+                const Spacer(),
+                _buildLegend(),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAnalysisBadge() {
+    if (widget.realHistory.isEmpty || widget.standards.isEmpty) return const SizedBox();
+    
+    final lastReal = widget.realHistory.last;
+    final standardAtLastWeek = widget.standards.firstWhere(
+      (s) => s.week == lastReal.week, 
+      orElse: () => widget.standards.last
+    );
+
+    String status = "DANS LES STANDARDS";
+    Color color = Colors.green;
+    IconData icon = Icons.check_circle_outline;
+
+    if (lastReal.averageWeight < standardAtLastWeek.minWeight) {
+      status = "SOUS-POIDS";
+      color = Colors.orange;
+      icon = Icons.warning_amber_rounded;
+    } else if (lastReal.averageWeight > standardAtLastWeek.maxWeight) {
+      status = "SUR-POIDS";
+      color = Colors.purple;
+      icon = Icons.trending_up_rounded;
+    }
+
+    final diff = (lastReal.averageWeight - standardAtLastWeek.weight).abs().toStringAsFixed(0);
+    final diffPrefix = (lastReal.averageWeight - standardAtLastWeek.weight) >= 0 ? "+" : "-";
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(width: 8),
+              Text(status, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 14)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildBadgeStat('Poids Actuel', '${lastReal.averageWeight.toStringAsFixed(0)}g'),
+          const SizedBox(height: 8),
+          _buildBadgeStat('Norme (Min-Max)', '${standardAtLastWeek.minWeight.toStringAsFixed(0)}g - ${standardAtLastWeek.maxWeight.toStringAsFixed(0)}g'),
+          const SizedBox(height: 8),
+          _buildBadgeStat('Écart', '$diffPrefix$diff g', color: color),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBadgeStat(String label, String value, {Color? color}) {
+    return Column(
+      children: [
+        Text(label, style: TextStyle(fontSize: 9, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
+        Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: color ?? Colors.indigo.shade900)),
+      ],
     );
   }
 
