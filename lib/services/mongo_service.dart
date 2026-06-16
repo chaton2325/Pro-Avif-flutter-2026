@@ -5,6 +5,7 @@ import '../models/farm.dart';
 import '../models/audit_log.dart';
 import '../models/lot.dart';
 import '../models/weighing_session.dart';
+import '../models/weight_standard.dart';
 import './session_storage.dart';
 
 class MongoService {
@@ -494,6 +495,25 @@ class MongoService {
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((l) => AuditLog.fromMap(l)).toList();
+    }
+    return [];
+  }
+
+  // Weight Standards
+  Future<List<WeightStandard>> getWeightStandards(String sex) async {
+    try {
+      final endpoint = sex.toLowerCase() == 'mâle' || sex.toLowerCase() == 'male'
+          ? '/standards/weight-evolution/male'
+          : '/standards/weight-evolution/female';
+      
+      final response = await http.get(Uri.parse('$baseUrl$endpoint'));
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((s) => WeightStandard.fromJson(s)).toList();
+      }
+    } catch (e) {
+      print("Erreur getWeightStandards: $e");
     }
     return [];
   }

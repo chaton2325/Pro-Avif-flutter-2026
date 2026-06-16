@@ -9,6 +9,7 @@ import 'login_screen.dart';
 import 'admin_history_screen.dart';
 import 'admin_analysis_screen.dart';
 import 'admin_predictive_analysis_screen.dart';
+import 'admin_weight_standards_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -545,6 +546,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   Colors.purple,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPredictiveAnalysisScreen())),
                 ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                _buildQuickAction(
+                  Icons.rule_rounded, 
+                  'Standards', 
+                  Colors.teal,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminWeightStandardsScreen())),
+                ),
+                const Expanded(child: SizedBox()),
               ],
             ),
             const SizedBox(height: 120),
