@@ -162,17 +162,18 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
 
   Widget _buildInfoSummary() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _buildSummaryItem('Sexe', widget.sex, widget.sex == 'Mâle' ? Colors.blue : Colors.pink),
-          _buildSummaryItem('Bâtiment', widget.roomName, Colors.indigo),
+          _buildSummaryItem('Bâtiment', widget.farmName, Colors.indigo),
+          _buildSummaryItem('Salle', widget.roomName, Colors.teal),
           if (widget.lotNumber != null) _buildSummaryItem('Lot', widget.lotNumber!, Colors.orange),
         ],
       ),
