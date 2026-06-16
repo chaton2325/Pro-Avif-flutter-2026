@@ -3,6 +3,7 @@ import '../models/weighing_session.dart';
 import '../services/mongo_service.dart';
 import '../services/export_service.dart';
 import 'admin_predictive_analysis_screen.dart';
+import 'performance_comparison_screen.dart';
 
 class WeighingHistoryDetailScreen extends StatelessWidget {
   final WeighingSession session;
@@ -70,24 +71,51 @@ class WeighingHistoryDetailScreen extends StatelessWidget {
 
             // AI Decision Button (Admin Only)
             if (session.isSync && userRole == 'admin')
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => AdminPredictiveAnalysisScreen(
-                      initialWeighingId: session.id ?? "",
-                    ))
+              Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => AdminPredictiveAnalysisScreen(
+                          initialWeighingId: session.id ?? "",
+                        ))
+                      ),
+                      icon: const Icon(Icons.psychology, color: Colors.white),
+                      label: const Text('DÉCISION IA RELOCALISATION', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      ),
+                    ),
                   ),
-                  icon: const Icon(Icons.psychology, color: Colors.white),
-                  label: const Text('DÉCISION IA RELOCALISATION', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => PerformanceComparisonScreen(
+                          farmName: session.farmName,
+                          roomName: session.roomName,
+                          sex: session.sex ?? 'Mâle',
+                          lotNumber: session.lotNumber,
+                        ))
+                      ),
+                      icon: const Icon(Icons.show_chart, color: Colors.white),
+                      label: const Text('SUIVI DE PERFORMANCE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
 
             if (session.isSync && userRole == 'admin') const SizedBox(height: 24),

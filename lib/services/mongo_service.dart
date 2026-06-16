@@ -6,6 +6,7 @@ import '../models/audit_log.dart';
 import '../models/lot.dart';
 import '../models/weighing_session.dart';
 import '../models/weight_standard.dart';
+import '../models/weight_history_entry.dart';
 import './session_storage.dart';
 
 class MongoService {
@@ -514,6 +515,37 @@ class MongoService {
       }
     } catch (e) {
       print("Erreur getWeightStandards: $e");
+    }
+    return [];
+  }
+
+  // Actual Weight Evolution
+  Future<List<WeightHistoryEntry>> getWeightEvolution({
+    required String farmName,
+    required String roomName,
+    required String sex,
+    String? lotNumber,
+  }) async {
+    try {
+      final queryParams = {
+        'farmName': farmName,
+        'roomName': roomName,
+        'sex': sex,
+        if (lotNumber != null) 'lotNumber': lotNumber,
+      };
+      final uri = Uri.parse('$baseUrl/weighings/analysis/weight-evolution').replace(queryParameters: queryParams);
+      
+      final response = await http.get(uri);
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        if (data.containsKey('history')) {
+          final List<dynamic> history = data['history'];
+          return history.map((e) => WeightHistoryEntry.fromJson(e)).toList();
+        }
+      }
+    } catch (e) {
+      print("Erreur getWeightEvolution: $e");
     }
     return [];
   }

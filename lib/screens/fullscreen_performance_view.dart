@@ -1,0 +1,220 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:fl_chart/fl_chart.dart';
+import '../models/weight_standard.dart';
+import '../models/weight_history_entry.dart';
+
+class FullscreenPerformanceView extends StatefulWidget {
+  final List<WeightStandard> standards;
+  final List<WeightHistoryEntry> realHistory;
+  final String title;
+
+  const FullscreenPerformanceView({
+    super.key,
+    required this.standards,
+    required this.realHistory,
+    required this.title,
+  });
+
+  @override
+  State<FullscreenPerformanceView> createState() => _FullscreenPerformanceViewState();
+}
+
+class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text(widget.title, 
+          style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold, fontSize: 16)),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.indigo),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 40, 10),
+              child: _buildChart(),
+            ),
+          ),
+          _buildLegend(),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegend() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildLegendItem('Performance Réelle', Colors.indigo, isLine: true),
+        const SizedBox(width: 32),
+        _buildLegendItem('Intervalle Standard', Colors.green.withOpacity(0.3), isBox: true),
+        const SizedBox(width: 32),
+        _buildLegendItem('Alerte Poids', Colors.red, isDot: true),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color, {bool isLine = false, bool isBox = false, bool isDot = false}) {
+    return Row(
+      children: [
+        if (isLine) Container(width: 20, height: 3, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+        if (isBox) Container(width: 20, height: 14, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+        if (isDot) Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 10),
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+      ],
+    );
+  }
+
+  Widget _buildChart() {
+    final minSpots = widget.standards.map((s) => FlSpot(s.week.toDouble(), s.minWeight)).toList();
+    final maxSpots = widget.standards.map((s) => FlSpot(s.week.toDouble(), s.maxWeight)).toList();
+    final realSpots = widget.realHistory.map((h) => FlSpot(h.week.toDouble(), h.averageWeight)).toList();
+
+    double maxWeek = 0;
+    if (widget.standards.isNotEmpty) maxWeek = widget.standards.last.week.toDouble();
+    if (widget.realHistory.isNotEmpty && widget.realHistory.last.week > maxWeek) {
+      maxWeek = widget.realHistory.last.week.toDouble();
+    }
+
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: true,
+          verticalInterval: 5,
+          horizontalInterval: 500,
+          getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1),
+          getDrawingVerticalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1),
+        ),
+        titlesData: FlTitlesData(
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              interval: 5, // Show every 5 weeks in landscape
+              getTitlesWidget: (value, meta) {
+                if (value < 0) return const SizedBox();
+                return SideTitleWidget(
+                  meta: meta,
+                  space: 8,
+                  child: Text('S${value.toInt()}',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade500)),
+                );
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 50,
+              interval: 500,
+              getTitlesWidget: (value, meta) {
+                return SideTitleWidget(
+                  meta: meta,
+                  child: Text('${value.toInt()}g',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade500)),
+                );
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        lineBarsData: [
+          LineChartBarData(
+            spots: minSpots,
+            isCurved: true,
+            color: Colors.transparent,
+            dotData: const FlDotData(show: false),
+          ),
+          LineChartBarData(
+            spots: maxSpots,
+            isCurved: true,
+            color: Colors.transparent,
+            dotData: const FlDotData(show: false),
+          ),
+          LineChartBarData(
+            spots: realSpots,
+            isCurved: true,
+            color: Colors.indigo,
+            barWidth: 3,
+            isStrokeCapRound: true,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, bar, index) {
+                bool isLast = index == realSpots.length - 1;
+                if (isLast) {
+                  final week = spot.x.toInt();
+                  final standard = widget.standards.firstWhere((s) => s.week == week, orElse: () => widget.standards.last);
+                  Color dotColor = Colors.green;
+                  if (spot.y < standard.minWeight) dotColor = Colors.red;
+                  else if (spot.y > standard.maxWeight) dotColor = Colors.orange;
+                  return FlDotCirclePainter(radius: 6, color: dotColor, strokeWidth: 2, strokeColor: Colors.white);
+                }
+                return FlDotCirclePainter(radius: 3, color: Colors.indigo, strokeWidth: 1, strokeColor: Colors.white);
+              },
+            ),
+          ),
+        ],
+        betweenBarsData: [
+          BetweenBarsData(
+            fromIndex: 0,
+            toIndex: 1,
+            color: Colors.green.withOpacity(0.2),
+          ),
+        ],
+        lineTouchData: LineTouchData(
+          handleBuiltInTouches: true,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (spot) => Colors.indigo.shade900,
+            getTooltipItems: (List<LineBarSpot> touchedSpots) {
+              return touchedSpots.map((spot) {
+                if (spot.barIndex != 2) return null;
+                final week = spot.x.toInt();
+                final real = widget.realHistory.firstWhere((h) => h.week == week, orElse: () => widget.realHistory.first);
+                final standard = widget.standards.firstWhere((s) => s.week == week, orElse: () => widget.standards.first);
+                return LineTooltipItem(
+                  'S$week: ${real.averageWeight.toStringAsFixed(1)}g\n(Std: ${standard.minWeight.toInt()}-${standard.maxWeight.toInt()}g)',
+                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                );
+              }).toList();
+            },
+          ),
+        ),
+        minY: 0,
+        minX: 0,
+        maxX: maxWeek + 0.5,
+      ),
+    );
+  }
+}
