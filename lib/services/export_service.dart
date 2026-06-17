@@ -69,21 +69,24 @@ class ExportService {
     final int totalCount = session.weights.length;
 
     // Diagnostic
-    String diagnostic = "DANS LES STANDARDS";
-    String gapInfo = "";
+    String diagnostic = "CONFORME";
+    double standardWeight = 0;
+    double gap = 0;
     PdfColor diagColor = PdfColors.green;
     if (standards.isNotEmpty) {
       final std = standards.firstWhere((s) => s.week == session.age, orElse: () => standards.last);
-      if (mean < std.minWeight) {
-        double gap = std.weight - mean;
+      standardWeight = std.weight;
+      gap = mean - standardWeight;
+      
+      if (mean < standardWeight) {
         diagnostic = "SOUS-POIDS";
-        gapInfo = " (-${gap.toStringAsFixed(1)} g)";
         diagColor = PdfColors.orange;
-      } else if (mean > std.maxWeight) {
-        double gap = mean - std.weight;
+      } else if (mean > standardWeight) {
         diagnostic = "SUR-POIDS";
-        gapInfo = " (+${gap.toStringAsFixed(1)} g)";
         diagColor = PdfColors.purple;
+      } else {
+        diagnostic = "CONFORME";
+        diagColor = PdfColors.green;
       }
     }
 
@@ -131,31 +134,45 @@ class ExportService {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text('STATUT CROISSANCE :', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('$diagnostic$gapInfo', style: pw.TextStyle(color: PdfColors.white, fontSize: 13, fontWeight: pw.FontWeight.bold)),
+                  pw.Text(diagnostic, style: pw.TextStyle(color: PdfColors.white, fontSize: 13, fontWeight: pw.FontWeight.bold)),
                 ],
               ),
             ),
             pw.SizedBox(height: 20),
 
-            // Statistics Section
-            pw.Text('RÉSUMÉ DE LA PESÉE ACTUELLE', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+            // Performance Analysis Section
+            pw.Text('ANALYSE DE PERFORMANCE VS STANDARD', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
             pw.Divider(thickness: 0.5),
             pw.SizedBox(height: 10),
             pw.Row(
               children: [
-                pw.Expanded(child: _buildPdfStatItem('Poids Moyen (PM)', '${mean.toStringAsFixed(1)} g')),
+                pw.Expanded(child: _buildPdfStatItem('Poids Moyen Réel', '${mean.toStringAsFixed(1)} g')),
+                pw.Expanded(child: _buildPdfStatItem('Norme Standard', '${standardWeight.toStringAsFixed(0)} g')),
+                pw.Expanded(child: _buildPdfStatItem('Écart (g)', '${gap >= 0 ? "+" : ""}${gap.toStringAsFixed(1)} g', color: diagColor)),
+                pw.Expanded(child: _buildPdfStatItem('Âge', '${session.age} sem.')),
+              ],
+            ),
+            pw.SizedBox(height: 20),
+
+            // Statistics Section
+            pw.Text('STATISTIQUES DE LA PESÉE', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+            pw.Divider(thickness: 0.5),
+            pw.SizedBox(height: 10),
+            pw.Row(
+              children: [
                 pw.Expanded(child: _buildPdfStatItem('PM - 10%', '${minus10.toStringAsFixed(1)} g')),
                 pw.Expanded(child: _buildPdfStatItem('PM + 10%', '${plus10.toStringAsFixed(1)} g')),
                 pw.Expanded(child: _buildPdfStatItem('Homogénéité', '${session.homogeneity.toStringAsFixed(1)} %')),
+                pw.Expanded(child: _buildPdfStatItem('Sujets Homogènes', '$homogeneousCount / $totalCount')),
               ],
             ),
             pw.SizedBox(height: 10),
             pw.Row(
               children: [
-                pw.Expanded(child: _buildPdfStatItem('Sujets Homogènes', '$homogeneousCount / $totalCount')),
                 pw.Expanded(child: _buildPdfStatItem('Opérateur', session.operator)),
-                pw.Expanded(child: _buildPdfStatItem('Âge', '${session.age} sem.')),
                 pw.Expanded(child: _buildPdfStatItem('Sexe', session.sex ?? 'Tout')),
+                pw.Expanded(child: _buildPdfStatItem('Poids Min', '${minWeight.toStringAsFixed(0)} g')),
+                pw.Expanded(child: _buildPdfStatItem('Poids Max', '${maxWeight.toStringAsFixed(0)} g')),
               ],
             ),
             pw.SizedBox(height: 30),
@@ -322,12 +339,12 @@ class ExportService {
     );
   }
 
-  static pw.Widget _buildPdfStatItem(String label, String value) {
+  static pw.Widget _buildPdfStatItem(String label, String value, {PdfColor? color}) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(label, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
-        pw.Text(value, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo700)),
+        pw.Text(value, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: color ?? PdfColors.indigo700)),
       ],
     );
   }
