@@ -509,43 +509,40 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             _buildAdminHeaderCard(),
             const SizedBox(height: 32),
-            const Text('VUE D\'ENSEMBLE', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2)),
+            const Text('ACTIONS RAPIDES', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2)),
             const SizedBox(height: 20),
             Row(
               children: [
-                _buildStatCard('Membres', _users.length.toString(), Icons.people, Colors.blue),
-                const SizedBox(width: 16),
-                _buildStatCard('Bâtiments', _farms.length.toString(), Icons.agriculture, Colors.green),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _buildStatCard('Lots', _lots.length.toString(), Icons.inventory_2, Colors.purple),
-                const SizedBox(width: 16),
                 _buildQuickAction(
                   Icons.analytics_rounded, 
                   'Historique', 
                   Colors.indigo,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminHistoryScreen())),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
+                const SizedBox(width: 16),
                 _buildQuickAction(
                   Icons.show_chart_rounded, 
                   'Analyse', 
                   Colors.orange,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminAnalysisScreen())),
                 ),
-                const SizedBox(width: 16),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
                 _buildQuickAction(
                   Icons.psychology_rounded, 
                   'IA', 
                   Colors.purple,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPredictiveAnalysisScreen())),
+                ),
+                const SizedBox(width: 16),
+                _buildQuickAction(
+                  Icons.rule_rounded, 
+                  'Standards', 
+                  Colors.teal,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminWeightStandardsScreen())),
                 ),
               ],
             ),
@@ -553,18 +550,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
             Row(
               children: [
                 _buildQuickAction(
-                  Icons.rule_rounded, 
-                  'Standards', 
-                  Colors.teal,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminWeightStandardsScreen())),
-                ),
-                const SizedBox(width: 16),
-                _buildQuickAction(
                   Icons.auto_graph_rounded, 
                   'Croissance', 
                   Colors.blue.shade700,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPerformanceSelectorScreen())),
                 ),
+                const Spacer(),
               ],
             ),
             const SizedBox(height: 120),

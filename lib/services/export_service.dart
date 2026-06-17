@@ -160,6 +160,13 @@ class ExportService {
             ),
             pw.SizedBox(height: 30),
 
+            // Weights Table
+            pw.Text('DÉTAIL DES PESÉES ACTUELLES (${session.weights.length} sujets)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 10),
+            _buildWeightsGrid(session.weights, minus10, plus10),
+
+            pw.SizedBox(height: 30),
+
             // Charts Section
             pw.Text('ÉVOLUTION DES PERFORMANCES', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
             pw.Divider(thickness: 0.5),
@@ -179,10 +186,7 @@ class ExportService {
             ),
             pw.SizedBox(height: 30),
 
-            // Weights Table
-            pw.Text('DÉTAIL DES PESÉES ACTUELLES (${session.weights.length} sujets)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 10),
-            _buildWeightsGrid(session.weights, minus10, plus10),
+
           ];
         },
       ),
@@ -329,7 +333,7 @@ class ExportService {
   }
 
   static pw.Widget _buildWeightsGrid(List<double> weights, double min, double max) {
-    const int weightsPerLine = 18;
+    const int weightsPerLine = 21;
     List<pw.Widget> rows = [];
 
     for (int i = 0; i < weights.length; i += weightsPerLine) {
