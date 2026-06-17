@@ -205,11 +205,11 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
     Color color = Colors.green;
     IconData icon = Icons.check_circle_outline;
 
-    if (lastReal.averageWeight < standardAtLastWeek.minWeight) {
+    if (lastReal.averageWeight < standardAtLastWeek.weight) {
       status = "SOUS-POIDS";
       color = Colors.orange;
       icon = Icons.warning_amber_rounded;
-    } else if (lastReal.averageWeight > standardAtLastWeek.maxWeight) {
+    } else if (lastReal.averageWeight > standardAtLastWeek.weight) {
       status = "SUR-POIDS";
       color = Colors.purple;
       icon = Icons.trending_up_rounded;
@@ -240,7 +240,7 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _buildBadgeStat('Poids Actuel', '${lastReal.averageWeight.toStringAsFixed(0)}g'),
-              _buildBadgeStat('Norme (Min-Max)', '${standardAtLastWeek.minWeight.toStringAsFixed(0)}g - ${standardAtLastWeek.maxWeight.toStringAsFixed(0)}g'),
+              _buildBadgeStat('Norme Standard', '${standardAtLastWeek.weight.toStringAsFixed(0)}g'),
               _buildBadgeStat('Écart', '$diffPrefix$diff g', color: color),
             ],
           ),
@@ -279,8 +279,7 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
     if (_standards.isEmpty && _realHistory.isEmpty) return const SizedBox();
 
     // Mapping spots
-    final minSpots = _standards.map((s) => FlSpot(s.week.toDouble(), s.minWeight)).toList();
-    final maxSpots = _standards.map((s) => FlSpot(s.week.toDouble(), s.maxWeight)).toList();
+    final standardSpots = _standards.map((s) => FlSpot(s.week.toDouble(), s.weight)).toList();
     final realSpots = _realHistory.map((h) => FlSpot(h.week.toDouble(), h.averageWeight)).toList();
 
     // Determine max values for axes
@@ -301,21 +300,16 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
         titlesData: _buildTitles(),
         borderData: FlBorderData(show: false),
         lineBarsData: [
-          // barIndex 0: Min Standard (Transparent)
+          // barIndex 0: Standard Curve (Dashed)
           LineChartBarData(
-            spots: minSpots,
+            spots: standardSpots,
             isCurved: true,
-            color: Colors.transparent,
+            color: Colors.grey.shade400,
+            barWidth: 2,
+            dashArray: [5, 5],
             dotData: const FlDotData(show: false),
           ),
-          // barIndex 1: Max Standard (Transparent)
-          LineChartBarData(
-            spots: maxSpots,
-            isCurved: true,
-            color: Colors.transparent,
-            dotData: const FlDotData(show: false),
-          ),
-          // barIndex 2: Actual Data (Visible)
+          // barIndex 1: Actual Data (Visible)
           LineChartBarData(
             spots: realSpots,
             isCurved: true,
@@ -331,9 +325,9 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
                   final standard = _standards.firstWhere((s) => s.week == week, orElse: () => _standards.last);
                   
                   Color dotColor = Colors.green; // Conforme
-                  if (spot.y < standard.minWeight) {
+                  if (spot.y < standard.weight) {
                     dotColor = Colors.red; // Sous-poids
-                  } else if (spot.y > standard.maxWeight) {
+                  } else if (spot.y > standard.weight) {
                     dotColor = Colors.orange; // Sur-poids
                   }
 
@@ -355,20 +349,13 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
             belowBarData: BarAreaData(show: false),
           ),
         ],
-        betweenBarsData: [
-          BetweenBarsData(
-            fromIndex: 0,
-            toIndex: 1,
-            color: Colors.green.withOpacity(0.2), // Soft green zone
-          ),
-        ],
         lineTouchData: LineTouchData(
           handleBuiltInTouches: true,
           touchTooltipData: LineTouchTooltipData(
             getTooltipColor: (spot) => Colors.indigo.shade900,
             getTooltipItems: (List<LineBarSpot> touchedSpots) {
               return touchedSpots.map((spot) {
-                if (spot.barIndex != 2) return null; // Show only for actual data
+                if (spot.barIndex != 1) return null; // Show only for actual data
                 
                 final week = spot.x.toInt();
                 final real = _realHistory.firstWhere((h) => h.week == week, orElse: () => _realHistory.first);
@@ -383,7 +370,7 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
                     ),
                     TextSpan(
-                      text: 'Intervalle: ${standard.minWeight.toStringAsFixed(0)}-${standard.maxWeight.toStringAsFixed(0)}g',
+                      text: 'Standard: ${standard.weight.toStringAsFixed(0)}g',
                       style: TextStyle(color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.normal, fontSize: 11),
                     ),
                   ],
@@ -448,17 +435,17 @@ class _PerformanceComparisonScreenState extends State<PerformanceComparisonScree
         children: [
           Row(
             children: [
-              _buildLegendItem('Performance Réelle', Colors.indigo, isLine: true),
+              _buildLegendItem('Poids Réel', Colors.indigo, isLine: true),
               const Spacer(),
-              _buildLegendItem('Idéal Théorique', Colors.grey.shade400, isDotted: true),
+              _buildLegendItem('Standard Théorique', Colors.grey.shade400, isDotted: true),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              _buildLegendItem('Plage de Tolérance', Colors.greenAccent.withOpacity(0.3), isBox: true),
+              _buildLegendItem('Point de Pesée', Colors.indigo, isDot: true),
               const Spacer(),
-              _buildLegendItem('Point Actuel', Colors.red, isDot: true),
+              _buildLegendItem('Alerte Poids', Colors.red, isDot: true),
             ],
           ),
         ],

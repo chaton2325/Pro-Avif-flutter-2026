@@ -73,24 +73,16 @@ class _FullscreenWeightStandardsViewState extends State<FullscreenWeightStandard
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildLegendItem('Idéal Théorique', Colors.indigo, isLine: true),
-        const SizedBox(width: 32),
-        _buildLegendItem('Plage Acceptable', Colors.greenAccent.withOpacity(0.5), isLine: false),
+        _buildLegendItem('Standard Théorique', Colors.grey.shade400, isDotted: true),
       ],
     );
   }
 
-  Widget _buildLegendItem(String label, Color color, {required bool isLine}) {
+  Widget _buildLegendItem(String label, Color color, {bool isDotted = false}) {
     return Row(
       children: [
-        Container(
-          width: 20,
-          height: isLine ? 3 : 14,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
+        if (isDotted) Row(children: List.generate(3, (i) => Container(width: 8, height: 2, margin: const EdgeInsets.symmetric(horizontal: 1), color: color)))
+        else Container(width: 20, height: 3, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 10),
         Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
       ],
@@ -99,46 +91,26 @@ class _FullscreenWeightStandardsViewState extends State<FullscreenWeightStandard
 
   Widget _buildChart() {
     final spots = widget.standards.map((s) => FlSpot(s.week.toDouble(), s.weight)).toList();
-    final minSpots = widget.standards.map((s) => FlSpot(s.week.toDouble(), s.minWeight)).toList();
-    final maxSpots = widget.standards.map((s) => FlSpot(s.week.toDouble(), s.maxWeight)).toList();
 
     return LineChart(
       LineChartData(
         lineBarsData: [
           LineChartBarData(
-            spots: maxSpots,
-            isCurved: true,
-            color: Colors.transparent,
-            dotData: const FlDotData(show: false),
-          ),
-          LineChartBarData(
-            spots: minSpots,
-            isCurved: true,
-            color: Colors.transparent,
-            dotData: const FlDotData(show: false),
-          ),
-          LineChartBarData(
             spots: spots,
             isCurved: true,
-            color: Colors.indigo,
+            color: Colors.grey.shade400,
             barWidth: 3,
+            dashArray: [5, 5],
             isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
               getDotPainter: (s, p, b, i) => FlDotCirclePainter(
                 radius: 3,
-                color: Colors.indigo,
+                color: Colors.grey.shade400,
                 strokeWidth: 1,
                 strokeColor: Colors.white,
               ),
             ),
-          ),
-        ],
-        betweenBarsData: [
-          BetweenBarsData(
-            fromIndex: 0,
-            toIndex: 1,
-            color: Colors.greenAccent.withOpacity(0.35),
           ),
         ],
         titlesData: FlTitlesData(
@@ -193,8 +165,6 @@ class _FullscreenWeightStandardsViewState extends State<FullscreenWeightStandard
             fitInsideVertically: true,
             getTooltipItems: (List<LineBarSpot> touchedSpots) {
               return touchedSpots.map((spot) {
-                if (spot.barIndex != 2) return null; // Indigo reference line
-                
                 final week = spot.x.toInt();
                 final standard = widget.standards.firstWhere(
                   (s) => s.week == week, 

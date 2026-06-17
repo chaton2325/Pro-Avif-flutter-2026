@@ -168,24 +168,16 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildLegendItem('Idéal Théorique', Colors.indigo, isLine: true),
-        const SizedBox(width: 20),
-        _buildLegendItem('Plage Acceptable', Colors.greenAccent.withOpacity(0.5), isLine: false),
+        _buildLegendItem('Standard Théorique', Colors.grey.shade400, isDotted: true),
       ],
     );
   }
 
-  Widget _buildLegendItem(String label, Color color, {required bool isLine}) {
+  Widget _buildLegendItem(String label, Color color, {bool isDotted = false}) {
     return Row(
       children: [
-        Container(
-          width: 16,
-          height: isLine ? 3 : 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
+        if (isDotted) Row(children: List.generate(3, (i) => Container(width: 6, height: 2, margin: const EdgeInsets.symmetric(horizontal: 1), color: color)))
+        else Container(width: 16, height: 3, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 8),
         Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
       ],
@@ -194,8 +186,6 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
 
   Widget _buildMainChart() {
     final spots = _standards.map((s) => FlSpot(s.week.toDouble(), s.weight)).toList();
-    final minSpots = _standards.map((s) => FlSpot(s.week.toDouble(), s.minWeight)).toList();
-    final maxSpots = _standards.map((s) => FlSpot(s.week.toDouble(), s.maxWeight)).toList();
 
     return Container(
       height: 400,
@@ -209,44 +199,24 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
       child: LineChart(
         LineChartData(
           lineBarsData: [
-            // Max Weight Line (Transparent, used for shaded area)
-            LineChartBarData(
-              spots: maxSpots,
-              isCurved: true,
-              color: Colors.transparent,
-              dotData: const FlDotData(show: false),
-            ),
-            // Min Weight Line (Transparent, used for shaded area)
-            LineChartBarData(
-              spots: minSpots,
-              isCurved: true,
-              color: Colors.transparent,
-              dotData: const FlDotData(show: false),
-            ),
-            // Reference Weight Line
+            // Reference Weight Line (Dashed)
             LineChartBarData(
               spots: spots,
               isCurved: true,
-              color: Colors.indigo,
-              barWidth: 4,
+              color: Colors.grey.shade400,
+              barWidth: 3,
+              dashArray: [5, 5],
               isStrokeCapRound: true,
               dotData: FlDotData(
                 show: true,
                 getDotPainter: (s, p, b, i) => FlDotCirclePainter(
-                  radius: 4,
-                  color: Colors.indigo,
-                  strokeWidth: 2,
+                  radius: 3,
+                  color: Colors.grey.shade400,
+                  strokeWidth: 1,
                   strokeColor: Colors.white,
                 ),
               ),
               belowBarData: BarAreaData(show: false),
-            ),
-          ],
-          betweenBarsData: [
-            BetweenBarsData(
-              fromIndex: 0,
-              toIndex: 1,
-              color: Colors.greenAccent.withOpacity(0.35),
             ),
           ],
           titlesData: _buildTitles(),
@@ -266,8 +236,6 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
               fitInsideVertically: true,
               getTooltipItems: (List<LineBarSpot> touchedSpots) {
                 return touchedSpots.map((spot) {
-                  if (spot.barIndex != 2) return null; // Indigo reference line
-                  
                   final week = spot.x.toInt();
                   final standard = _standards.firstWhere(
                     (s) => s.week == week, 
@@ -341,7 +309,7 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
               SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'La ligne bleue représente le poids théorique idéal. La zone ombrée indique la plage acceptable (+/- 10% environ).',
+                  'La ligne pointillée représente le poids théorique standard pour cette souche.',
                   style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.5),
                 ),
               ),

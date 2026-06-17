@@ -97,11 +97,11 @@ class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
     Color color = Colors.green;
     IconData icon = Icons.check_circle_outline;
 
-    if (lastReal.averageWeight < standardAtLastWeek.minWeight) {
+    if (lastReal.averageWeight < standardAtLastWeek.weight) {
       status = "SOUS-POIDS";
       color = Colors.orange;
       icon = Icons.warning_amber_rounded;
-    } else if (lastReal.averageWeight > standardAtLastWeek.maxWeight) {
+    } else if (lastReal.averageWeight > standardAtLastWeek.weight) {
       status = "SUR-POIDS";
       color = Colors.purple;
       icon = Icons.trending_up_rounded;
@@ -130,7 +130,7 @@ class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
           const SizedBox(height: 12),
           _buildBadgeStat('Poids Actuel', '${lastReal.averageWeight.toStringAsFixed(0)}g'),
           const SizedBox(height: 8),
-          _buildBadgeStat('Norme (Min-Max)', '${standardAtLastWeek.minWeight.toStringAsFixed(0)}g - ${standardAtLastWeek.maxWeight.toStringAsFixed(0)}g'),
+          _buildBadgeStat('Norme Standard', '${standardAtLastWeek.weight.toStringAsFixed(0)}g'),
           const SizedBox(height: 8),
           _buildBadgeStat('Écart', '$diffPrefix$diff g', color: color),
         ],
@@ -148,23 +148,22 @@ class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
   }
 
   Widget _buildLegend() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
       children: [
-        _buildLegendItem('Performance Réelle', Colors.indigo, isLine: true),
-        const SizedBox(width: 32),
-        _buildLegendItem('Intervalle Standard', Colors.green.withOpacity(0.3), isBox: true),
-        const SizedBox(width: 32),
+        _buildLegendItem('Poids Réel', Colors.indigo, isLine: true),
+        const SizedBox(height: 16),
+        _buildLegendItem('Standard', Colors.grey.shade400, isDotted: true),
+        const SizedBox(height: 16),
         _buildLegendItem('Alerte Poids', Colors.red, isDot: true),
       ],
     );
   }
 
-  Widget _buildLegendItem(String label, Color color, {bool isLine = false, bool isBox = false, bool isDot = false}) {
+  Widget _buildLegendItem(String label, Color color, {bool isLine = false, bool isDotted = false, bool isDot = false}) {
     return Row(
       children: [
         if (isLine) Container(width: 20, height: 3, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
-        if (isBox) Container(width: 20, height: 14, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+        if (isDotted) Row(children: List.generate(3, (i) => Container(width: 6, height: 2, margin: const EdgeInsets.symmetric(horizontal: 1), color: color))),
         if (isDot) Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 10),
         Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
@@ -173,8 +172,7 @@ class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
   }
 
   Widget _buildChart() {
-    final minSpots = widget.standards.map((s) => FlSpot(s.week.toDouble(), s.minWeight)).toList();
-    final maxSpots = widget.standards.map((s) => FlSpot(s.week.toDouble(), s.maxWeight)).toList();
+    final standardSpots = widget.standards.map((s) => FlSpot(s.week.toDouble(), s.weight)).toList();
     final realSpots = widget.realHistory.map((h) => FlSpot(h.week.toDouble(), h.averageWeight)).toList();
 
     double maxWeek = 0;
@@ -229,18 +227,16 @@ class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
         ),
         borderData: FlBorderData(show: false),
         lineBarsData: [
+          // barIndex 0: Standard Curve (Dashed)
           LineChartBarData(
-            spots: minSpots,
+            spots: standardSpots,
             isCurved: true,
-            color: Colors.transparent,
+            color: Colors.grey.shade400,
+            barWidth: 2,
+            dashArray: [5, 5],
             dotData: const FlDotData(show: false),
           ),
-          LineChartBarData(
-            spots: maxSpots,
-            isCurved: true,
-            color: Colors.transparent,
-            dotData: const FlDotData(show: false),
-          ),
+          // barIndex 1: Actual Data (Visible)
           LineChartBarData(
             spots: realSpots,
             isCurved: true,
@@ -255,20 +251,13 @@ class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
                   final week = spot.x.toInt();
                   final standard = widget.standards.firstWhere((s) => s.week == week, orElse: () => widget.standards.last);
                   Color dotColor = Colors.green;
-                  if (spot.y < standard.minWeight) dotColor = Colors.red;
-                  else if (spot.y > standard.maxWeight) dotColor = Colors.orange;
+                  if (spot.y < standard.weight) dotColor = Colors.red;
+                  else if (spot.y > standard.weight) dotColor = Colors.orange;
                   return FlDotCirclePainter(radius: 6, color: dotColor, strokeWidth: 2, strokeColor: Colors.white);
                 }
                 return FlDotCirclePainter(radius: 3, color: Colors.indigo, strokeWidth: 1, strokeColor: Colors.white);
               },
             ),
-          ),
-        ],
-        betweenBarsData: [
-          BetweenBarsData(
-            fromIndex: 0,
-            toIndex: 1,
-            color: Colors.green.withOpacity(0.2),
           ),
         ],
         lineTouchData: LineTouchData(
@@ -277,12 +266,12 @@ class _FullscreenPerformanceViewState extends State<FullscreenPerformanceView> {
             getTooltipColor: (spot) => Colors.indigo.shade900,
             getTooltipItems: (List<LineBarSpot> touchedSpots) {
               return touchedSpots.map((spot) {
-                if (spot.barIndex != 2) return null;
+                if (spot.barIndex != 1) return null;
                 final week = spot.x.toInt();
                 final real = widget.realHistory.firstWhere((h) => h.week == week, orElse: () => widget.realHistory.first);
                 final standard = widget.standards.firstWhere((s) => s.week == week, orElse: () => widget.standards.first);
                 return LineTooltipItem(
-                  'S$week: ${real.averageWeight.toStringAsFixed(1)}g\n(Std: ${standard.minWeight.toInt()}-${standard.maxWeight.toInt()}g)',
+                  'S$week: ${real.averageWeight.toStringAsFixed(1)}g\n(Std: ${standard.weight.toInt()}g)',
                   const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                 );
               }).toList();
