@@ -13,9 +13,12 @@ class AdminWeightStandardsScreen extends StatefulWidget {
 
 class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen> {
   final MongoService _mongoService = MongoService();
+  final TextEditingController _weekController = TextEditingController();
   String _selectedSex = 'Mâle';
   List<WeightStandard> _standards = [];
   bool _isLoading = true;
+  double? _searchedWeight;
+  int? _searchedWeek;
 
   @override
   void initState() {
@@ -23,8 +26,19 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
     _loadStandards();
   }
 
+  @override
+  void dispose() {
+    _weekController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadStandards() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _searchedWeight = null;
+      _searchedWeek = null;
+      _weekController.clear();
+    });
     try {
       final data = await _mongoService.getWeightStandards(_selectedSex);
       data.sort((a, b) => a.day.compareTo(b.day));
@@ -40,6 +54,27 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
         );
       }
     }
+  }
+
+  void _lookupWeight() {
+    final input = _weekController.text;
+    if (input.isEmpty) return;
+
+    final week = int.tryParse(input);
+    if (week == null) return;
+
+    final standard = _standards.firstWhere(
+      (s) => s.week == week,
+      orElse: () => _standards.lastWhere((s) => s.week <= week, orElse: () => _standards.first),
+    );
+
+    setState(() {
+      _searchedWeight = standard.weight;
+      _searchedWeek = week;
+    });
+    
+    // Close keyboard
+    FocusScope.of(context).unfocus();
   }
 
   @override
@@ -131,6 +166,8 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         children: [
+          _buildWeightLookup(),
+          const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -159,6 +196,81 @@ class _AdminWeightStandardsScreenState extends State<AdminWeightStandardsScreen>
           _buildLegend(),
           const SizedBox(height: 24),
           _buildInfoCards(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeightLookup() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('RECHERCHE RAPIDE', 
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _weekController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'Entrez la semaine',
+                    hintStyle: TextStyle(color: Colors.grey.shade300, fontSize: 14),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    prefixIcon: const Icon(Icons.calendar_today, size: 18, color: Colors.indigo),
+                  ),
+                  onSubmitted: (_) => _lookupWeight(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: _lookupWeight,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Icon(Icons.search),
+              ),
+            ],
+          ),
+          if (_searchedWeight != null) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.indigo.shade50,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Semaine $_searchedWeek', style: TextStyle(color: Colors.indigo.shade300, fontSize: 12, fontWeight: FontWeight.bold)),
+                      const Text('Poids Standard', style: TextStyle(color: Colors.indigo, fontSize: 14, fontWeight: FontWeight.w900)),
+                    ],
+                  ),
+                  Text('${_searchedWeight!.toStringAsFixed(0)}g', 
+                    style: const TextStyle(color: Colors.indigo, fontSize: 24, fontWeight: FontWeight.w900)),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
