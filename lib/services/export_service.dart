@@ -105,7 +105,7 @@ class ExportService {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('RAPPORT DE PERFORMANCE', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                      pw.Text('RAPPORT DE PESEE', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
                       pw.Text('Généré le ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
                     ],
                   ),
@@ -160,8 +160,8 @@ class ExportService {
             pw.SizedBox(height: 10),
             pw.Row(
               children: [
-                pw.Expanded(child: _buildPdfStatItem('PM - 10%', '${minus10.toStringAsFixed(1)} g')),
-                pw.Expanded(child: _buildPdfStatItem('PM + 10%', '${plus10.toStringAsFixed(1)} g')),
+                pw.Expanded(child: _buildPdfStatItem('Intervalle Inf. Saisie', '${session.lowerInterval?.toStringAsFixed(0) ?? "N/A"} g')),
+                pw.Expanded(child: _buildPdfStatItem('Intervalle Sup. Saisie', '${session.upperInterval?.toStringAsFixed(0) ?? "N/A"} g')),
                 pw.Expanded(child: _buildPdfStatItem('Homogénéité', '${session.homogeneity.toStringAsFixed(1)} %')),
                 pw.Expanded(child: _buildPdfStatItem('Sujets Homogènes', '$homogeneousCount / $totalCount')),
               ],
@@ -169,10 +169,19 @@ class ExportService {
             pw.SizedBox(height: 10),
             pw.Row(
               children: [
-                pw.Expanded(child: _buildPdfStatItem('Opérateur', session.operator)),
-                pw.Expanded(child: _buildPdfStatItem('Sexe', session.sex ?? 'Tout')),
+                pw.Expanded(child: _buildPdfStatItem('PM - 10%', '${minus10.toStringAsFixed(1)} g')),
+                pw.Expanded(child: _buildPdfStatItem('PM + 10%', '${plus10.toStringAsFixed(1)} g')),
                 pw.Expanded(child: _buildPdfStatItem('Poids Min', '${minWeight.toStringAsFixed(0)} g')),
                 pw.Expanded(child: _buildPdfStatItem('Poids Max', '${maxWeight.toStringAsFixed(0)} g')),
+              ],
+            ),
+            pw.SizedBox(height: 10),
+            pw.Row(
+              children: [
+                pw.Expanded(child: _buildPdfStatItem('Opérateur', session.operator)),
+                pw.Expanded(child: _buildPdfStatItem('Sexe', session.sex ?? 'Tout')),
+                pw.Expanded(child: pw.SizedBox()),
+                pw.Expanded(child: pw.SizedBox()),
               ],
             ),
             pw.SizedBox(height: 30),
@@ -181,6 +190,15 @@ class ExportService {
             pw.Text('DÉTAIL DES PESÉES ACTUELLES (${session.weights.length} sujets)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             _buildWeightsGrid(session.weights, minus10, plus10),
+            pw.SizedBox(height: 8),
+            pw.Row(
+              children: [
+                pw.Container(width: 10, height: 10, color: PdfColors.red),
+                pw.SizedBox(width: 8),
+                pw.Text('Note : Les cases sur fond rouge indiquent les sujets non homogènes (hors de l\'intervalle PM +/- 10%)', 
+                  style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700, fontStyle: pw.FontStyle.italic)),
+              ],
+            ),
 
             pw.SizedBox(height: 30),
 
@@ -188,7 +206,7 @@ class ExportService {
             pw.Text('ÉVOLUTION DES PERFORMANCES', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
             pw.Divider(thickness: 0.5),
             pw.SizedBox(height: 15),
-            
+
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
@@ -390,40 +408,109 @@ class ExportService {
 
   static Future<void> exportToExcel(WeighingSession session) async {
     final excel = Excel.createExcel();
+    final mongoService = MongoService();
     final sheet = excel['Rapport de Pesée'];
     excel.delete('Sheet1');
 
-    sheet.appendRow([TextCellValue('RAPPORT DE PESÉE - PRO-AVIF')]);
-    sheet.appendRow([TextCellValue('Date: ${DateFormat('dd/MM/yyyy HH:mm').format(session.timestamp)}')]);
+    // Fetch evolution data for Excel too
+    List<WeightStandard> standards = [];
+    List<WeightHistoryEntry> history = [];
+    try {
+      final results = await Future.wait([
+        mongoService.getWeightStandards(session.sex ?? 'Mâle'),
+        mongoService.getWeightEvolution(
+          farmName: session.farmName,
+          roomName: session.roomName,
+          sex: session.sex ?? 'Mâle',
+          lotNumber: session.lotNumber,
+        ),
+      ]);
+      standards = results[0] as List<WeightStandard>;
+      history = results[1] as List<WeightHistoryEntry>;
+      standards.sort((a, b) => a.week.compareTo(b.week));
+      history.sort((a, b) => a.week.compareTo(b.week));
+    } catch (e) {
+      print("Error fetching evolution data for Excel: $e");
+    }
+
+    // Header
+    sheet.appendRow([TextCellValue('RAPPORT DE PERFORMANCE - PRO-AVIF')]);
+    sheet.appendRow([TextCellValue('Date du rapport: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}')]);
     sheet.appendRow([]);
 
+    // General Info
     sheet.appendRow([TextCellValue('INFORMATIONS GÉNÉRALES')]);
-    sheet.appendRow([TextCellValue('Ferme'), TextCellValue(session.farmName)]);
+    sheet.appendRow([TextCellValue('Bâtiment (Site)'), TextCellValue(session.farmName)]);
     sheet.appendRow([TextCellValue('Salle'), TextCellValue(session.roomName)]);
-    sheet.appendRow([TextCellValue('Lot'), TextCellValue(session.lotNumber ?? 'N/A')]);
+    sheet.appendRow([TextCellValue('Numéro de Lot'), TextCellValue(session.lotNumber ?? 'N/A')]);
     sheet.appendRow([TextCellValue('Opérateur'), TextCellValue(session.operator)]);
     sheet.appendRow([TextCellValue('Sexe'), TextCellValue(session.sex ?? 'Tout')]);
-    sheet.appendRow([TextCellValue('Âge'), IntCellValue(session.age)]);
+    sheet.appendRow([TextCellValue('Âge du lot'), IntCellValue(session.age)]);
     sheet.appendRow([]);
 
+    // Stats calculations
     final double sum = session.weights.reduce((a, b) => a + b);
     final double mean = sum / session.weights.length;
+    final double plus10 = mean * 1.10;
+    final double minus10 = mean * 0.90;
     final double minWeight = session.weights.reduce((a, b) => a < b ? a : b);
     final double maxWeight = session.weights.reduce((a, b) => a > b ? a : b);
 
-    sheet.appendRow([TextCellValue('STATISTIQUES')]);
-    sheet.appendRow([TextCellValue('Poids Moyen (g)'), DoubleCellValue(mean)]);
-    sheet.appendRow([TextCellValue('Homogénéité (%)'), DoubleCellValue(session.homogeneity)]);
-    sheet.appendRow([TextCellValue('Total Sujets'), IntCellValue(session.weights.length)]);
-    sheet.appendRow([TextCellValue('Poids Minimum'), DoubleCellValue(minWeight)]);
-    sheet.appendRow([TextCellValue('Poids Maximum'), DoubleCellValue(maxWeight)]);
+    // Diagnostic
+    double standardWeight = 0;
+    double gap = 0;
+    String status = "CONFORME";
+    if (standards.isNotEmpty) {
+      final std = standards.firstWhere((s) => s.week == session.age, orElse: () => standards.last);
+      standardWeight = std.weight;
+      gap = mean - standardWeight;
+      if (mean < standardWeight) status = "SOUS-POIDS";
+      else if (mean > standardWeight) status = "SUR-POIDS";
+    }
+
+    // Performance Analysis Section
+    sheet.appendRow([TextCellValue('ANALYSE DE PERFORMANCE VS STANDARD')]);
+    sheet.appendRow([TextCellValue('Statut de Croissance'), TextCellValue(status)]);
+    sheet.appendRow([TextCellValue('Poids Moyen Réel (g)'), DoubleCellValue(mean)]);
+    sheet.appendRow([TextCellValue('Norme Standard (g)'), DoubleCellValue(standardWeight)]);
+    sheet.appendRow([TextCellValue('Écart (g)'), DoubleCellValue(gap)]);
     sheet.appendRow([]);
 
-    sheet.appendRow([TextCellValue('DÉTAIL DES PESÉES')]);
-    sheet.appendRow([TextCellValue('N°'), TextCellValue('Poids (g)'), TextCellValue('Statut')]);
+    // Detailed Stats Section
+    sheet.appendRow([TextCellValue('STATISTIQUES DÉTAILLÉES')]);
+    sheet.appendRow([TextCellValue('Homogénéité (%)'), DoubleCellValue(session.homogeneity)]);
+    sheet.appendRow([TextCellValue('Intervalle Inf. Saisie (g)'), DoubleCellValue(session.lowerInterval ?? 0)]);
+    sheet.appendRow([TextCellValue('Intervalle Sup. Saisie (g)'), DoubleCellValue(session.upperInterval ?? 0)]);
+    sheet.appendRow([TextCellValue('PM - 10% (g)'), DoubleCellValue(minus10)]);
+    sheet.appendRow([TextCellValue('PM + 10% (g)'), DoubleCellValue(plus10)]);
+    sheet.appendRow([TextCellValue('Poids Minimum (g)'), DoubleCellValue(minWeight)]);
+    sheet.appendRow([TextCellValue('Poids Maximum (g)'), DoubleCellValue(maxWeight)]);
+    sheet.appendRow([TextCellValue('Total Sujets Pesés'), IntCellValue(session.weights.length)]);
+    sheet.appendRow([]);
 
-    final double plus10 = mean * 1.10;
-    final double minus10 = mean * 0.90;
+    // Evolution Data Section (Charts Data)
+    sheet.appendRow([TextCellValue('DONNÉES D\'ÉVOLUTION (CHART DATA)')]);
+    sheet.appendRow([TextCellValue('Semaine'), TextCellValue('Standard (g)'), TextCellValue('Réel (g)')]);
+    
+    // Merge standards and history by week for the table
+    Set<int> allWeeks = {...standards.map((s) => s.week), ...history.map((h) => h.week)};
+    List<int> sortedWeeks = allWeeks.toList()..sort();
+    
+    for (var week in sortedWeeks) {
+      final std = standards.firstWhere((s) => s.week == week, orElse: () => WeightStandard(day: 0, week: week, weight: 0, minWeight: 0, maxWeight: 0));
+      final hist = history.firstWhere((h) => h.week == week, orElse: () => WeightHistoryEntry(age: 0, week: week, averageWeight: 0, homogeneity: 0, timestamp: DateTime.now()));
+      
+      sheet.appendRow([
+        IntCellValue(week),
+        DoubleCellValue(std.weight),
+        DoubleCellValue(hist.averageWeight > 0 ? hist.averageWeight : 0),
+      ]);
+    }
+    sheet.appendRow([]);
+
+    // Detail weights table
+    sheet.appendRow([TextCellValue('DÉTAIL DES PESÉES INDIVIDUELLES')]);
+    sheet.appendRow([TextCellValue('N° Sujet'), TextCellValue('Poids (g)'), TextCellValue('Statut Homogénéité')]);
 
     for (int i = 0; i < session.weights.length; i++) {
       final w = session.weights[i];
@@ -438,10 +525,10 @@ class ExportService {
     final fileBytes = excel.save();
     if (fileBytes != null) {
       final tempDir = await getTemporaryDirectory();
-      final fileName = 'Pesee_${session.farmName}_${DateFormat('yyyyMMdd').format(session.timestamp)}.xlsx';
+      final fileName = 'Rapport_Complet_${session.farmName}_${DateFormat('yyyyMMdd').format(DateTime.now())}.xlsx';
       final file = File('${tempDir.path}/$fileName');
       await file.writeAsBytes(fileBytes);
-      await Share.shareXFiles([XFile(file.path)], text: 'Rapport de Pesée - ${session.farmName}');
+      await Share.shareXFiles([XFile(file.path)], text: 'Rapport Complet Pro-Avif - ${session.farmName}');
     }
   }
 }
