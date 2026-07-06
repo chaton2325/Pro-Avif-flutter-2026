@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/farm.dart';
 import '../models/lot.dart';
 import '../models/weight_history_entry.dart';
+import '../models/weight_standard.dart';
 import '../services/mongo_service.dart';
 
 class AdminAnalysisScreen extends StatefulWidget {
@@ -29,9 +30,15 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   bool _showLines = true;
   DateTime? _startDate;
   DateTime? _endDate;
+
+  // Visibilité des courbes du graphique combiné (homogénéité / poids moyen / standard)
+  bool _showHomogeneityCurve = true;
+  bool _showWeightCurve = true;
+  bool _showStandardCurve = true;
   
   Map<String, List<dynamic>> _analysisData = {};
   Map<String, List<WeightHistoryEntry>> _weightData = {};
+  final Map<String, List<WeightStandard>> _standardsBySex = {};
   Set<String> _selectedRooms = {};
 
   final List<Color> _seriesColors = [
@@ -111,6 +118,17 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
           weightData[key] = history;
         } catch (_) {
           weightData[key] = [];
+        }
+      }));
+
+      // Charge la courbe standard (référence) par sexe, comme dans la fenêtre Croissance.
+      final uniqueSexes = formattedData.keys.map(_sexFromKey).toSet();
+      await Future.wait(uniqueSexes.map((sex) async {
+        if (_standardsBySex.containsKey(sex)) return;
+        try {
+          _standardsBySex[sex] = await _mongoService.getWeightStandards(sex);
+        } catch (_) {
+          _standardsBySex[sex] = [];
         }
       }));
 
@@ -296,6 +314,37 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                FilterChip(
+                  avatar: CircleAvatar(backgroundColor: Colors.indigo, radius: 6),
+                  label: const Text('Homogénéité', style: TextStyle(fontSize: 11)),
+                  selected: _showHomogeneityCurve,
+                  onSelected: (val) => setState(() => _showHomogeneityCurve = val),
+                  selectedColor: Colors.indigo.shade100,
+                ),
+                FilterChip(
+                  avatar: const CircleAvatar(backgroundColor: Colors.green, radius: 6),
+                  label: const Text('Poids moyen', style: TextStyle(fontSize: 11)),
+                  selected: _showWeightCurve,
+                  onSelected: (val) => setState(() => _showWeightCurve = val),
+                  selectedColor: Colors.green.shade100,
+                ),
+                FilterChip(
+                  avatar: CircleAvatar(backgroundColor: Colors.grey.shade400, radius: 6),
+                  label: const Text('Standard', style: TextStyle(fontSize: 11)),
+                  selected: _showStandardCurve,
+                  onSelected: (val) => setState(() => _showStandardCurve = val),
+                  selectedColor: Colors.grey.shade300,
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -335,19 +384,22 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     List<Widget> children = [];
     final filtered = _filteredAnalysisData;
 
-    // 1. Vue d'ensemble (toutes les courbes d'homogénéité)
-    children.add(_buildChartContainer(
-      title: 'VUE D\'ENSEMBLE',
-      bars: _buildAllLineBars(filtered),
-      dataValues: filtered.values,
-      seriesNames: filtered.keys.toList(),
-      showLegend: true,
-    ));
+    // 1. Vue d'ensemble (toutes les courbes d'homogénéité) — masquée si la courbe est décochée
+    if (_showHomogeneityCurve) {
+      children.add(_buildChartContainer(
+        title: 'VUE D\'ENSEMBLE',
+        bars: _buildAllLineBars(filtered),
+        dataValues: filtered.values,
+        seriesNames: filtered.keys.toList(),
+        showLegend: true,
+      ));
+    }
 
-    // 2. Graphiques individuels par salle/sexe : homogénéité + poids moyen fusionnés
+    // 2. Graphiques individuels par salle/sexe : homogénéité + poids moyen + standard fusionnés
     int i = 0;
     filtered.forEach((seriesName, points) {
-      children.add(_buildCombinedChartContainer(seriesName, points, _weightData[seriesName] ?? [], i));
+      final sex = _sexFromKey(seriesName);
+      children.add(_buildCombinedChartContainer(seriesName, points, _weightData[seriesName] ?? [], _standardsBySex[sex] ?? [], i));
       i++;
     });
 
@@ -387,31 +439,53 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   }
 
   /// Graphique combiné par salle/sexe/lot : homogénéité (axe gauche, %) + poids moyen
-  /// (axe droit, g) sur le même tracé. Le poids est normalisé sur 0-100 pour partager
-  /// l'échelle du graphique ; les titres de l'axe droit re-convertissent en grammes réels.
-  Widget _buildCombinedChartContainer(String title, List<dynamic> homogeneityPoints, List<WeightHistoryEntry> weightPoints, int colorIndex) {
+  /// et poids standard de référence (axe droit, g) sur le même tracé. Le poids est
+  /// normalisé sur 0-100 pour partager l'échelle du graphique ; les titres de l'axe
+  /// droit re-convertissent en grammes réels.
+  Widget _buildCombinedChartContainer(String title, List<dynamic> homogeneityPoints, List<WeightHistoryEntry> weightPoints, List<WeightStandard> standards, int colorIndex) {
     final homogColor = _seriesColors[colorIndex % _seriesColors.length];
     const weightColor = Colors.green;
+    final standardColor = Colors.grey.shade400;
 
-    final homogSpots = homogeneityPoints.map((p) {
+    final homogSpots = _showHomogeneityCurve ? homogeneityPoints.map((p) {
       double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
       double y = (p['homogeneity'] as num).toDouble();
       return FlSpot(x, y);
-    }).toList();
+    }).toList() : <FlSpot>[];
+
+    // On aligne la courbe standard sur les mêmes dates que les pesées réelles (par semaine/âge),
+    // comme dans la fenêtre Croissance, mais sur l'axe temporel utilisé ici.
+    final weekToTimestamp = {for (final w in weightPoints) w.week: w.timestamp.millisecondsSinceEpoch.toDouble()};
+    final matchedStandards = standards.where((s) => weekToTimestamp.containsKey(s.week)).toList()
+      ..sort((a, b) => a.week.compareTo(b.week));
+    final dataHasStandard = matchedStandards.isNotEmpty;
+    final dataHasWeight = weightPoints.isNotEmpty;
+
+    // Sélection utilisateur : quelles courbes afficher effectivement sur ce graphique.
+    final showHomog = _showHomogeneityCurve;
+    final showWeight = _showWeightCurve && dataHasWeight;
+    final showStandard = _showStandardCurve && dataHasStandard;
 
     double minW = 0, maxW = 100;
-    final hasWeight = weightPoints.isNotEmpty;
-    if (hasWeight) {
-      final weights = weightPoints.map((w) => w.averageWeight).toList();
-      minW = weights.reduce((a, b) => a < b ? a : b);
-      maxW = weights.reduce((a, b) => a > b ? a : b);
+    if (dataHasWeight || dataHasStandard) {
+      final values = [
+        ...weightPoints.map((w) => w.averageWeight),
+        ...matchedStandards.map((s) => s.weight),
+      ];
+      minW = values.reduce((a, b) => a < b ? a : b);
+      maxW = values.reduce((a, b) => a > b ? a : b);
       if (maxW == minW) maxW = minW + 1;
     }
-    final weightSpotsNormalized = weightPoints.map((w) {
+    final weightSpotsNormalized = showWeight ? weightPoints.map((w) {
       double x = w.timestamp.millisecondsSinceEpoch.toDouble();
       double normalized = ((w.averageWeight - minW) / (maxW - minW)) * 100;
       return FlSpot(x, normalized);
-    }).toList();
+    }).toList() : <FlSpot>[];
+    final standardSpotsNormalized = showStandard ? matchedStandards.map((s) {
+      double x = weekToTimestamp[s.week]!;
+      double normalized = ((s.weight - minW) / (maxW - minW)) * 100;
+      return FlSpot(x, normalized);
+    }).toList() : <FlSpot>[];
 
     final allDates = [
       ...homogeneityPoints.map((p) => DateTime.parse(p['date'])),
@@ -457,8 +531,16 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
                         isStrokeCapRound: true,
                         dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: weightColor, strokeWidth: 2, strokeColor: Colors.white)),
                       ),
+                      LineChartBarData(
+                        spots: standardSpotsNormalized,
+                        isCurved: true,
+                        color: standardColor,
+                        barWidth: _showLines ? 2 : 0,
+                        dashArray: const [4, 4],
+                        dotData: const FlDotData(show: false),
+                      ),
                     ],
-                    titlesData: _buildDualTitles(allDates, minW, maxW, hasWeight),
+                    titlesData: _buildDualTitles(allDates, minW, maxW, showWeight || showStandard),
                     gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)),
                     borderData: FlBorderData(show: false),
                     lineTouchData: LineTouchData(
@@ -474,10 +556,17 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
                               );
                             }
                             final realWeight = minW + (s.y / 100) * (maxW - minW);
+                            if (s.barIndex == 1) {
+                              return LineTooltipItem(
+                                'Poids moyen\n',
+                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                children: [TextSpan(text: '${realWeight.toStringAsFixed(0)}g', style: const TextStyle(color: weightColor, fontSize: 11, fontWeight: FontWeight.w900))],
+                              );
+                            }
                             return LineTooltipItem(
-                              'Poids moyen\n',
+                              'Standard\n',
                               const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                              children: [TextSpan(text: '${realWeight.toStringAsFixed(0)}g', style: const TextStyle(color: weightColor, fontSize: 11, fontWeight: FontWeight.w900))],
+                              children: [TextSpan(text: '${realWeight.toStringAsFixed(0)}g', style: TextStyle(color: standardColor, fontSize: 11, fontWeight: FontWeight.w900))],
                             );
                           }).toList();
                         },
@@ -489,7 +578,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
                 ),
         ),
         const SizedBox(height: 16),
-        _buildCombinedLegend(homogColor, weightColor, hasWeight),
+        _buildCombinedLegend(homogColor, weightColor, standardColor, showHomog, showWeight, showStandard),
         const SizedBox(height: 32),
       ],
     );
@@ -539,7 +628,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
   }
 
-  Widget _buildCombinedLegend(Color homogColor, Color weightColor, bool hasWeight) {
+  Widget _buildCombinedLegend(Color homogColor, Color weightColor, Color standardColor, bool showHomog, bool showWeight, bool showStandard) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
@@ -547,16 +636,23 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
         spacing: 16,
         runSpacing: 8,
         children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 12, height: 12, decoration: BoxDecoration(color: homogColor, shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            const Text('Homogénéité (%)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-          ]),
-          if (hasWeight)
+          if (showHomog)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 12, height: 12, decoration: BoxDecoration(color: homogColor, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              const Text('Homogénéité (%)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ]),
+          if (showWeight)
             Row(mainAxisSize: MainAxisSize.min, children: [
               Container(width: 12, height: 12, decoration: BoxDecoration(color: weightColor, shape: BoxShape.circle)),
               const SizedBox(width: 8),
               const Text('Poids moyen (g)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ]),
+          if (showStandard)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 16, height: 4, decoration: BoxDecoration(color: standardColor, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 8),
+              const Text('Standard théorique (g)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ]),
         ],
       ),
