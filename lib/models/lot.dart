@@ -39,4 +39,17 @@ class Lot {
       startDate: map['startDate'] != null ? DateTime.parse(map['startDate'] as String) : null,
     );
   }
+
+  // Égalité par id : évite qu'un DropdownButtonFormField<Lot> plante quand la liste des
+  // lots est rechargée (nouvelles instances) alors qu'une sélection précédente est conservée.
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Lot) return false;
+    if (id != null || other.id != null) return id == other.id;
+    return number == other.number;
+  }
+
+  @override
+  int get hashCode => id?.hashCode ?? number.hashCode;
 }

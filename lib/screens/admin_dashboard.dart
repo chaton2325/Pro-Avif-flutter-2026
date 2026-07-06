@@ -297,9 +297,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     IconButton(
                       icon: const Icon(Icons.add_circle, color: Colors.orange, size: 32),
                       onPressed: () {
-                        if (roomController.text.isNotEmpty) {
+                        final roomName = roomController.text.trim();
+                        if (roomName.isNotEmpty && !rooms.contains(roomName)) {
                           setDialogState(() {
-                            rooms.add(roomController.text);
+                            rooms.add(roomName);
                             roomController.clear();
                           });
                         }
@@ -378,9 +379,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     IconButton(
                       icon: const Icon(Icons.add_circle, color: Colors.orange, size: 32),
                       onPressed: () {
-                        if (roomController.text.isNotEmpty) {
+                        final roomName = roomController.text.trim();
+                        if (roomName.isNotEmpty && !rooms.contains(roomName)) {
                           setDialogState(() {
-                            rooms.add(roomController.text);
+                            rooms.add(roomName);
                             roomController.clear();
                           });
                         }

@@ -296,8 +296,13 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
             onChanged: (val) {
               setState(() {
                 _selectedFarm = val;
-                _selectedRoom = val?.rooms.first;
+                final rooms = val?.rooms ?? [];
+                _selectedRoom = rooms.isNotEmpty ? rooms.first : null;
                 _simSourceRoom = _selectedRoom;
+                // La salle cible appartenait à l'ancien bâtiment : il faut la remplacer,
+                // sinon le dropdown "Cible" garde une valeur absente de la nouvelle liste.
+                _simTargetRoom = rooms.length > 1 ? rooms[1] : null;
+                _selectedClusterId = null;
                 _simulationResult = null;
               });
               _fetchAnalysisData();
@@ -324,7 +329,7 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _selectedRoom,
+            value: (_selectedRoom != null && (_selectedFarm?.rooms.contains(_selectedRoom) ?? false)) ? _selectedRoom : null,
             dropdownColor: Colors.white,
             decoration: InputDecoration(
               labelText: 'Salle à Analyser',
@@ -496,7 +501,8 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
   }
 
   Widget _buildSimpleDropdown(String label, String? value, List<String> items, Function(String?) onChanged) {
-    return DropdownButtonFormField<String>(value: value, dropdownColor: Colors.white, decoration: InputDecoration(labelText: label, labelStyle: TextStyle(color: Colors.indigo.shade300, fontSize: 11, fontWeight: FontWeight.w800), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), filled: true, fillColor: Colors.grey.shade50, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)), items: items.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)))).toList(), onChanged: onChanged);
+    final safeValue = (value != null && items.contains(value)) ? value : null;
+    return DropdownButtonFormField<String>(value: safeValue, dropdownColor: Colors.white, decoration: InputDecoration(labelText: label, labelStyle: TextStyle(color: Colors.indigo.shade300, fontSize: 11, fontWeight: FontWeight.w800), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), filled: true, fillColor: Colors.grey.shade50, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)), items: items.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)))).toList(), onChanged: onChanged);
   }
 
   Widget _buildSimulationResults() {
