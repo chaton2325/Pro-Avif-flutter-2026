@@ -6,6 +6,7 @@ import '../models/lot.dart';
 import '../models/weight_history_entry.dart';
 import '../models/weight_standard.dart';
 import '../services/mongo_service.dart';
+import 'fullscreen_analysis_view.dart';
 
 class AdminAnalysisScreen extends StatefulWidget {
   const AdminAnalysisScreen({super.key});
@@ -16,15 +17,15 @@ class AdminAnalysisScreen extends StatefulWidget {
 
 class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   final MongoService _mongoService = MongoService();
-  
+
   List<Farm> _farms = [];
   List<Lot> _lots = [];
   Farm? _selectedFarm;
   Lot? _selectedLot;
-  String? _selectedSex; 
+  String? _selectedSex;
   bool _isLoadingFarms = true;
   bool _isLoadingData = false;
-  
+
   // Date filtering
   bool _isAllHistory = true;
   bool _showLines = true;
@@ -35,7 +36,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   bool _showHomogeneityCurve = true;
   bool _showWeightCurve = true;
   bool _showStandardCurve = true;
-  
+
   Map<String, List<dynamic>> _analysisData = {};
   Map<String, List<WeightHistoryEntry>> _weightData = {};
   final Map<String, List<WeightStandard>> _standardsBySex = {};
@@ -81,10 +82,9 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
 
   Future<void> _loadAnalysisData() async {
     if (_selectedFarm == null || _selectedLot == null) return;
-    
+
     setState(() => _isLoadingData = true);
     try {
-      print("🔍 LOADING ANALYSIS DATA for Lot: ${_selectedLot!.number}");
       final data = await _mongoService.getHomogeneityAnalysis(
         _selectedFarm!.name,
         lotNumber: _selectedLot!.number,
@@ -92,9 +92,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
         startDate: _isAllHistory ? null : _startDate?.toIso8601String(),
         endDate: _isAllHistory ? null : _endDate?.toIso8601String(),
       );
-      
-      print("✅ RECEIVED DATA KEYS: ${data.keys}");
-      
+
       final Map<String, List<dynamic>> formattedData = {};
       data.forEach((key, value) {
         final list = List<dynamic>.from(value);
@@ -172,6 +170,118 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     });
   }
 
+  /// Affiche le détail d'un point de courbe touché (date, semaine, valeurs).
+  void _showPointDetailsModal(BuildContext context, {required String title, required Color color, required int week, DateTime? date, required Map<String, String> values}) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _modalRow('Semaine', 'S$week'),
+            if (date != null) _modalRow('Date', DateFormat('dd/MM/yyyy').format(date)),
+            ...values.entries.map((e) => _modalRow(e.key, e.value)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('FERMER', style: TextStyle(fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+  }
+
+  /// Construit les valeurs affichées dans le modal d'un point "poids moyen" : la norme
+  /// standard de la même semaine (si disponible), la plage attendue, l'écart et le statut.
+  Map<String, String> _weightPointDetails(WeightHistoryEntry w, List<WeightStandard> standards) {
+    final values = <String, String>{'Poids moyen': '${w.averageWeight.toStringAsFixed(0)}g'};
+    WeightStandard? standard;
+    for (final s in standards) {
+      if (s.week == w.week) {
+        standard = s;
+        break;
+      }
+    }
+    if (standard != null) {
+      final diff = w.averageWeight - standard.weight;
+      final diffStr = '${diff >= 0 ? "+" : ""}${diff.toStringAsFixed(0)}g';
+      final status = diff.abs() < 1 ? 'CONFORME' : (diff < 0 ? 'SOUS-POIDS' : 'SUR-POIDS');
+      values['Norme standard'] = '${standard.weight.toStringAsFixed(0)}g';
+      values['Écart vs standard'] = diffStr;
+      values['Statut'] = status;
+    }
+    return values;
+  }
+
+  /// Affiche, pour une semaine donnée, toutes les informations disponibles (date, âge,
+  /// homogénéité, poids moyen, norme standard) quel que soit le point/la courbe touchée.
+  void _showWeekDetailsModal(BuildContext context, {required int week, required Color color, required List<dynamic> homogeneityPoints, required List<WeightHistoryEntry> weightPoints, required List<WeightStandard> standards}) {
+    dynamic homogEntry;
+    for (final p in homogeneityPoints) {
+      if (((p['age'] as num?)?.toInt()) == week) {
+        homogEntry = p;
+        break;
+      }
+    }
+    WeightHistoryEntry? weightEntry;
+    for (final w in weightPoints) {
+      if (w.week == week) {
+        weightEntry = w;
+        break;
+      }
+    }
+
+    DateTime? date = weightEntry?.timestamp;
+    if (homogEntry != null) {
+      date = DateTime.tryParse(homogEntry['date'].toString()) ?? date;
+    }
+
+    final values = <String, String>{};
+    if (homogEntry != null) {
+      values['Homogénéité'] = '${(homogEntry['homogeneity'] as num).toStringAsFixed(1)}%';
+    }
+    if (weightEntry != null) {
+      values.addAll(_weightPointDetails(weightEntry, standards));
+    } else {
+      WeightStandard? standard;
+      for (final s in standards) {
+        if (s.week == week) {
+          standard = s;
+          break;
+        }
+      }
+      if (standard != null) {
+        values['Norme standard'] = '${standard.weight.toStringAsFixed(0)}g';
+      }
+    }
+
+    if (values.isEmpty) return;
+
+    _showPointDetailsModal(context, title: 'Semaine S$week', color: color, week: week, date: date, values: values);
+  }
+
+  Widget _modalRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+          const SizedBox(width: 16),
+          Flexible(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -183,7 +293,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
         foregroundColor: Colors.indigo.shade900,
         centerTitle: true,
       ),
-      body: _isLoadingFarms 
+      body: _isLoadingFarms
           ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
           : Column(
               children: [
@@ -200,148 +310,101 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------
+  // FILTRES (compacts)
+  // ---------------------------------------------------------------------
+
   Widget _buildControls() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
               Expanded(
-                child: DropdownButtonFormField<Farm>(
+                flex: 3,
+                child: _compactDropdown<Farm>(
                   value: _selectedFarm,
-                  isDense: true,
-                  dropdownColor: Colors.white,
-                  decoration: InputDecoration(
-                    labelText: 'Site',
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                  ),
-                  items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name, style: const TextStyle(fontSize: 12)))).toList(),
+                  label: 'Site',
+                  items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis))).toList(),
                   onChanged: (val) {
                     setState(() => _selectedFarm = val);
                     _loadAnalysisData();
                   },
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
-                child: DropdownButtonFormField<Lot>(
+                flex: 3,
+                child: _compactDropdown<Lot>(
                   value: _selectedLot,
-                  isDense: true,
-                  dropdownColor: Colors.white,
-                  decoration: InputDecoration(
-                    labelText: 'Lot',
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                  ),
-                  items: _lots.map((l) => DropdownMenuItem(value: l, child: Text(l.number, style: const TextStyle(fontSize: 12)))).toList(),
+                  label: 'Lot',
+                  items: _lots.map((l) => DropdownMenuItem(value: l, child: Text(l.number, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis))).toList(),
                   onChanged: (val) {
                     setState(() => _selectedLot = val);
                     _loadAnalysisData();
                   },
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
+              const SizedBox(width: 6),
               Expanded(
-                child: DropdownButtonFormField<String?>(
+                flex: 2,
+                child: _compactDropdown<String?>(
                   value: _selectedSex,
-                  isDense: true,
-                  dropdownColor: Colors.white,
-                  decoration: InputDecoration(
-                    labelText: 'Sexe',
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                  ),
+                  label: 'Sexe',
                   items: [
                     const DropdownMenuItem(value: null, child: Text('Tout', style: TextStyle(fontSize: 12))),
-                    ...['Mâle', 'Femelle'].map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12))))
-                  ].toList(),
+                    ...['Mâle', 'Femelle'].map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12)))),
+                  ],
                   onChanged: (val) {
                     setState(() => _selectedSex = val);
                     _loadAnalysisData();
                   },
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SwitchListTile(
-                  title: const Text('Lignes', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  value: _showLines,
-                  activeColor: Colors.indigo,
-                  contentPadding: EdgeInsets.zero,
-                  onChanged: (val) => setState(() => _showLines = val),
+              const SizedBox(width: 6),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => setState(() => _showLines = !_showLines),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _showLines ? Colors.indigo.shade50 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.show_chart, size: 18, color: _showLines ? Colors.indigo : Colors.grey),
                 ),
               ),
             ],
           ),
           if (_availableRooms.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 32,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
                 children: [
-                  ChoiceChip(
-                    label: const Text('Toutes les salles', style: TextStyle(fontSize: 11)),
-                    selected: _selectedRooms.isEmpty,
-                    onSelected: (_) => setState(() => _selectedRooms.clear()),
-                    selectedColor: Colors.indigo.shade100,
-                  ),
-                  ..._availableRooms.map((room) => FilterChip(
-                        label: Text(room, style: const TextStyle(fontSize: 11)),
-                        selected: _selectedRooms.contains(room),
-                        onSelected: (_) => _toggleRoom(room),
-                        selectedColor: Colors.indigo.shade100,
-                      )),
+                  _compactChoiceChip('Toutes les salles', _selectedRooms.isEmpty, () => setState(() => _selectedRooms.clear()), Colors.indigo),
+                  ..._availableRooms.map((room) => _compactChoiceChip(room, _selectedRooms.contains(room), () => _toggleRoom(room), Colors.indigo)),
                 ],
               ),
             ),
           ],
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 32,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
               children: [
-                FilterChip(
-                  avatar: CircleAvatar(backgroundColor: Colors.indigo, radius: 6),
-                  label: const Text('Homogénéité', style: TextStyle(fontSize: 11)),
-                  selected: _showHomogeneityCurve,
-                  onSelected: (val) => setState(() => _showHomogeneityCurve = val),
-                  selectedColor: Colors.indigo.shade100,
-                ),
-                FilterChip(
-                  avatar: const CircleAvatar(backgroundColor: Colors.green, radius: 6),
-                  label: const Text('Poids moyen', style: TextStyle(fontSize: 11)),
-                  selected: _showWeightCurve,
-                  onSelected: (val) => setState(() => _showWeightCurve = val),
-                  selectedColor: Colors.green.shade100,
-                ),
-                FilterChip(
-                  avatar: CircleAvatar(backgroundColor: Colors.grey.shade400, radius: 6),
-                  label: const Text('Standard', style: TextStyle(fontSize: 11)),
-                  selected: _showStandardCurve,
-                  onSelected: (val) => setState(() => _showStandardCurve = val),
-                  selectedColor: Colors.grey.shade300,
-                ),
+                _compactToggleChip('Homogénéité', Colors.indigo, _showHomogeneityCurve, (val) => setState(() => _showHomogeneityCurve = val)),
+                _compactToggleChip('Poids moyen', Colors.green, _showWeightCurve, (val) => setState(() => _showWeightCurve = val)),
+                _compactToggleChip('Standard', Colors.grey.shade400, _showStandardCurve, (val) => setState(() => _showStandardCurve = val)),
               ],
             ),
           ),
@@ -350,19 +413,54 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
   }
 
-  Widget _buildDateBtn(DateTime? date, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(8)),
-        child: Row(
-          children: [
-            const Icon(Icons.calendar_month, size: 14, color: Colors.indigo),
-            const SizedBox(width: 6),
-            Text(date == null ? label : DateFormat('dd/MM/yy').format(date), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo)),
-          ],
-        ),
+  Widget _compactDropdown<T>({required T? value, required String label, required List<DropdownMenuItem<T>> items, required void Function(T?) onChanged}) {
+    return DropdownButtonFormField<T>(
+      value: value,
+      isDense: true,
+      isExpanded: true,
+      dropdownColor: Colors.white,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(fontSize: 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+      ),
+      items: items,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _compactChoiceChip(String label, bool selected, VoidCallback onTap, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ChoiceChip(
+        label: Text(label, style: const TextStyle(fontSize: 11)),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        selectedColor: color.withOpacity(0.15),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+      ),
+    );
+  }
+
+  Widget _compactToggleChip(String label, Color color, bool selected, void Function(bool) onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: FilterChip(
+        avatar: CircleAvatar(backgroundColor: color, radius: 5),
+        label: Text(label, style: const TextStyle(fontSize: 11)),
+        selected: selected,
+        onSelected: onChanged,
+        selectedColor: color.withOpacity(0.15),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
       ),
     );
   }
@@ -380,6 +478,10 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------
+  // GRAPHIQUES
+  // ---------------------------------------------------------------------
+
   Widget _buildChartSection() {
     List<Widget> children = [];
     final filtered = _filteredAnalysisData;
@@ -388,10 +490,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     if (_showHomogeneityCurve) {
       children.add(_buildChartContainer(
         title: 'VUE D\'ENSEMBLE',
-        bars: _buildAllLineBars(filtered),
-        dataValues: filtered.values,
-        seriesNames: filtered.keys.toList(),
-        showLegend: true,
+        seriesData: filtered,
       ));
     }
 
@@ -424,7 +523,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     return [
       LineChartBarData(
         spots: points.map((p) {
-          double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
+          double x = ((p['age'] as num?)?.toDouble() ?? 0);
           double y = (p['homogeneity'] as num).toDouble();
           return FlSpot(x, y);
         }).toList(),
@@ -439,32 +538,29 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
   }
 
   /// Graphique combiné par salle/sexe/lot : homogénéité (axe gauche, %) + poids moyen
-  /// et poids standard de référence (axe droit, g) sur le même tracé. Le poids est
-  /// normalisé sur 0-100 pour partager l'échelle du graphique ; les titres de l'axe
-  /// droit re-convertissent en grammes réels.
+  /// et poids standard de référence (axe droit, g) sur le même tracé, en abscisse l'âge
+  /// en semaines. Le poids est normalisé sur 0-100 pour partager l'échelle du graphique ;
+  /// les titres de l'axe droit re-convertissent en grammes réels.
   Widget _buildCombinedChartContainer(String title, List<dynamic> homogeneityPoints, List<WeightHistoryEntry> weightPoints, List<WeightStandard> standards, int colorIndex) {
     final homogColor = _seriesColors[colorIndex % _seriesColors.length];
     const weightColor = Colors.green;
     final standardColor = Colors.grey.shade400;
 
-    final homogSpots = _showHomogeneityCurve ? homogeneityPoints.map((p) {
-      double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
-      double y = (p['homogeneity'] as num).toDouble();
-      return FlSpot(x, y);
-    }).toList() : <FlSpot>[];
-
-    // On aligne la courbe standard sur les mêmes dates que les pesées réelles (par semaine/âge),
-    // comme dans la fenêtre Croissance, mais sur l'axe temporel utilisé ici.
-    final weekToTimestamp = {for (final w in weightPoints) w.week: w.timestamp.millisecondsSinceEpoch.toDouble()};
-    final matchedStandards = standards.where((s) => weekToTimestamp.containsKey(s.week)).toList()
+    final realWeeks = weightPoints.map((w) => w.week).toSet();
+    final matchedStandards = standards.where((s) => realWeeks.contains(s.week)).toList()
       ..sort((a, b) => a.week.compareTo(b.week));
     final dataHasStandard = matchedStandards.isNotEmpty;
     final dataHasWeight = weightPoints.isNotEmpty;
 
-    // Sélection utilisateur : quelles courbes afficher effectivement sur ce graphique.
     final showHomog = _showHomogeneityCurve;
     final showWeight = _showWeightCurve && dataHasWeight;
     final showStandard = _showStandardCurve && dataHasStandard;
+
+    final homogSpots = showHomog ? homogeneityPoints.map((p) {
+      double x = ((p['age'] as num?)?.toDouble() ?? 0);
+      double y = (p['homogeneity'] as num).toDouble();
+      return FlSpot(x, y);
+    }).toList() : <FlSpot>[];
 
     double minW = 0, maxW = 100;
     if (dataHasWeight || dataHasStandard) {
@@ -477,19 +573,19 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
       if (maxW == minW) maxW = minW + 1;
     }
     final weightSpotsNormalized = showWeight ? weightPoints.map((w) {
-      double x = w.timestamp.millisecondsSinceEpoch.toDouble();
+      double x = w.week.toDouble();
       double normalized = ((w.averageWeight - minW) / (maxW - minW)) * 100;
       return FlSpot(x, normalized);
     }).toList() : <FlSpot>[];
     final standardSpotsNormalized = showStandard ? matchedStandards.map((s) {
-      double x = weekToTimestamp[s.week]!;
+      double x = s.week.toDouble();
       double normalized = ((s.weight - minW) / (maxW - minW)) * 100;
       return FlSpot(x, normalized);
     }).toList() : <FlSpot>[];
 
-    final allDates = [
-      ...homogeneityPoints.map((p) => DateTime.parse(p['date'])),
-      ...weightPoints.map((w) => w.timestamp),
+    final allWeeks = [
+      ...homogeneityPoints.map((p) => ((p['age'] as num?)?.toInt() ?? 0)),
+      ...weightPoints.map((w) => w.week),
     ];
 
     return Column(
@@ -497,7 +593,28 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
-          child: Text(title.toUpperCase(), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.indigo.shade900, letterSpacing: 0.5)),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(title.toUpperCase(), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.indigo.shade900, letterSpacing: 0.5)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.fullscreen, color: Colors.indigo, size: 20),
+                tooltip: 'Vue développée',
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenCombinedAnalysisView(
+                  title: title,
+                  homogeneityPoints: homogeneityPoints,
+                  weightPoints: weightPoints,
+                  standards: standards,
+                  seriesColor: homogColor,
+                  showHomogeneityCurve: _showHomogeneityCurve,
+                  showWeightCurve: _showWeightCurve,
+                  showStandardCurve: _showStandardCurve,
+                  showLines: _showLines,
+                ))),
+              ),
+            ],
+          ),
         ),
         Container(
           height: 350,
@@ -508,7 +625,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
             borderRadius: BorderRadius.circular(24),
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))],
           ),
-          child: allDates.isEmpty
+          child: allWeeks.isEmpty
               ? const Center(child: Text('Aucune donnée', style: TextStyle(color: Colors.grey)))
               : LineChart(
                   LineChartData(
@@ -540,10 +657,15 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
                         dotData: const FlDotData(show: false),
                       ),
                     ],
-                    titlesData: _buildDualTitles(allDates, minW, maxW, showWeight || showStandard),
+                    titlesData: _buildDualTitles(allWeeks, minW, maxW, showWeight || showStandard),
                     gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)),
                     borderData: FlBorderData(show: false),
                     lineTouchData: LineTouchData(
+                      touchCallback: (event, response) {
+                        if (event is! FlTapUpEvent || response == null || response.lineBarSpots == null || response.lineBarSpots!.isEmpty) return;
+                        final week = response.lineBarSpots!.first.x.toInt();
+                        _showWeekDetailsModal(context, week: week, color: homogColor, homogeneityPoints: homogeneityPoints, weightPoints: weightPoints, standards: standards);
+                      },
                       touchTooltipData: LineTouchTooltipData(
                         getTooltipColor: (touchedSpot) => Colors.indigo.shade900,
                         getTooltipItems: (List<LineBarSpot> touchedSpots) {
@@ -584,23 +706,23 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
   }
 
-  FlTitlesData _buildDualTitles(List<DateTime> dates, double minW, double maxW, bool hasWeight) {
-    if (dates.isEmpty) return const FlTitlesData();
-    double minX = dates.map((d) => d.millisecondsSinceEpoch.toDouble()).reduce((a, b) => a < b ? a : b);
-    double maxX = dates.map((d) => d.millisecondsSinceEpoch.toDouble()).reduce((a, b) => a > b ? a : b);
+  FlTitlesData _buildDualTitles(List<int> weeks, double minW, double maxW, bool hasWeight) {
+    if (weeks.isEmpty) return const FlTitlesData();
+    double minX = weeks.reduce((a, b) => a < b ? a : b).toDouble();
+    double maxX = weeks.reduce((a, b) => a > b ? a : b).toDouble();
     double? bottomInterval;
     if (maxX > minX) bottomInterval = (maxX - minX) / 4.0;
+    if (bottomInterval != null && bottomInterval < 1) bottomInterval = 1;
 
     return FlTitlesData(
       topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       bottomTitles: AxisTitles(
         sideTitles: SideTitles(
           showTitles: true,
-          reservedSize: 32,
+          reservedSize: 28,
           interval: bottomInterval,
           getTitlesWidget: (value, meta) {
-            final date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
-            return SideTitleWidget(meta: meta, space: 10, child: Text(DateFormat('dd/MM').format(date), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400)));
+            return SideTitleWidget(meta: meta, space: 8, child: Text('S${value.toInt()}', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400)));
           },
         ),
       ),
@@ -661,19 +783,32 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
 
   Widget _buildChartContainer({
     required String title,
-    required List<LineChartBarData> bars,
-    required Iterable<List<dynamic>> dataValues,
-    required List<String> seriesNames,
-    bool showLegend = true,
+    required Map<String, List<dynamic>> seriesData,
   }) {
+    final seriesNames = seriesData.keys.toList();
+    final dataValues = seriesData.values.toList();
+    final bars = _buildAllLineBars(seriesData);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
-          child: Text(
-            title,
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.indigo.shade900, letterSpacing: 0.5),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.indigo.shade900, letterSpacing: 0.5)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.fullscreen, color: Colors.indigo, size: 20),
+                tooltip: 'Vue développée',
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenOverviewAnalysisView(
+                  seriesData: seriesData,
+                  seriesColors: _seriesColors,
+                  showLines: _showLines,
+                ))),
+              ),
+            ],
           ),
         ),
         Container(
@@ -692,6 +827,19 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
               gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withOpacity(0.05), strokeWidth: 1)),
               borderData: FlBorderData(show: false),
               lineTouchData: LineTouchData(
+                touchCallback: (event, response) {
+                  if (event is! FlTapUpEvent || response == null || response.lineBarSpots == null || response.lineBarSpots!.isEmpty) return;
+                  final spot = response.lineBarSpots!.first;
+                  final idx = spot.barIndex;
+                  if (idx >= dataValues.length || spot.spotIndex >= dataValues[idx].length) return;
+                  final p = dataValues[idx][spot.spotIndex];
+                  _showPointDetailsModal(context,
+                      title: seriesNames[idx],
+                      color: _seriesColors[idx % _seriesColors.length],
+                      week: spot.x.toInt(),
+                      date: DateTime.tryParse(p['date'].toString()),
+                      values: {'Homogénéité': '${(p['homogeneity'] as num).toStringAsFixed(1)}%'});
+                },
                 touchTooltipData: LineTouchTooltipData(
                   getTooltipColor: (touchedSpot) => Colors.indigo.shade900,
                   getTooltipItems: (List<LineBarSpot> touchedSpots) {
@@ -716,10 +864,8 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
             ),
           ),
         ),
-        if (showLegend) ...[
-          const SizedBox(height: 16),
-          _buildLegend(seriesNames),
-        ],
+        const SizedBox(height: 16),
+        _buildLegend(seriesNames),
         const SizedBox(height: 32),
       ],
     );
@@ -748,14 +894,14 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
     );
   }
 
-  FlTitlesData _buildTitles(Iterable<List<dynamic>> dataValues) {
+  FlTitlesData _buildTitles(List<List<dynamic>> dataValues) {
     double minX = double.maxFinite;
     double maxX = double.minPositive;
     bool hasData = false;
 
     for (var points in dataValues) {
       for (var p in points) {
-        double x = DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble();
+        double x = ((p['age'] as num?)?.toDouble() ?? 0);
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         hasData = true;
@@ -766,6 +912,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
 
     double? bottomInterval;
     if (maxX > minX) bottomInterval = (maxX - minX) / 4.0;
+    if (bottomInterval != null && bottomInterval < 1) bottomInterval = 1;
 
     return FlTitlesData(
       rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -773,14 +920,13 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
       bottomTitles: AxisTitles(
         sideTitles: SideTitles(
           showTitles: true,
-          reservedSize: 32,
+          reservedSize: 28,
           interval: bottomInterval,
           getTitlesWidget: (value, meta) {
-            final date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
             return SideTitleWidget(
               meta: meta,
               space: 10,
-              child: Text(DateFormat('dd/MM').format(date), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400)),
+              child: Text('S${value.toInt()}', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400)),
             );
           },
         ),
