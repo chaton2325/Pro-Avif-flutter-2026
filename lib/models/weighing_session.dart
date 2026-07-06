@@ -14,6 +14,7 @@ class WeighingSession {
   final DateTime timestamp;
   final bool isSync;
   final double homogeneity;
+  final bool? isSuperseded;
 
   WeighingSession({
     this.id,
@@ -31,6 +32,7 @@ class WeighingSession {
     required this.timestamp,
     this.isSync = true,
     this.homogeneity = 0.0,
+    this.isSuperseded,
   });
 
   Map<String, dynamic> toMap() {
@@ -69,6 +71,7 @@ class WeighingSession {
       timestamp: DateTime.parse(map['timestamp'] as String),
       isSync: map['isSync'] as bool? ?? true,
       homogeneity: (map['homogeneity'] as num?)?.toDouble() ?? 0.0,
+      isSuperseded: map['isSuperseded'] as bool?,
     );
   }
 }

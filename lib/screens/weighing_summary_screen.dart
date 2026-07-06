@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/user.dart';
 import '../models/lot.dart';
 import '../models/weighing_session.dart';
@@ -90,6 +91,31 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
   }
 
   Future<void> _confirmAndSave() async {
+    String? duplicateWarning;
+    try {
+      final dup = await _mongoService.checkDuplicateWeighing(
+        farmName: widget.building,
+        roomName: widget.room,
+        sex: widget.sex ?? '',
+        lotId: widget.lot.id ?? widget.lot.number,
+        age: widget.age,
+      );
+      if (dup['exists'] == true) {
+        String dateStr = '';
+        final lastTs = dup['lastTimestamp'];
+        if (lastTs != null) {
+          final d = DateTime.tryParse(lastTs.toString());
+          if (d != null) dateStr = ' (le ${DateFormat('dd/MM/yyyy').format(d)})';
+        }
+        duplicateWarning =
+            'Une pesée existe déjà cette semaine pour ce lot$dateStr.\nCette nouvelle pesée sera considérée comme la plus récente dans les graphiques ; l\'ancienne restera visible dans l\'historique.\n\n';
+      }
+    } catch (_) {
+      // Si la vérification échoue (ex: hors-ligne), on continue sans bloquer la saisie.
+    }
+
+    if (!mounted) return;
+
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -101,9 +127,9 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
             Text('Confirmation', style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
-        content: const Text(
-          'Êtes-vous sûr de vouloir enregistrer définitivement cette session de pesée ?\n\nCette action est irréversible.',
-          style: TextStyle(fontSize: 14),
+        content: Text(
+          '${duplicateWarning ?? ''}Êtes-vous sûr de vouloir enregistrer définitivement la pesée de ce mois ?\n\nCette action est irréversible.',
+          style: const TextStyle(fontSize: 14),
         ),
         actions: [
           TextButton(

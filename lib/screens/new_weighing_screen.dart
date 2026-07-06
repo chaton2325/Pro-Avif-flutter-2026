@@ -27,7 +27,7 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
   bool _isLoading = true;
   late int _currentPrecision;
 
-  final List<String> _sexOptions = ['Mâle/Coq', 'Femelle/Poule', 'Mélangé'];
+  final List<String> _sexOptions = ['Mâle', 'Femelle'];
 
   // Form Controllers
   final TextEditingController _operatorController = TextEditingController();
@@ -158,7 +158,21 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
                   _buildDropdownRoom(),
                   const SizedBox(height: 16),
 
-                  _buildTextField(_ageController, 'Âge du lot (en semaines)', Icons.history, keyboardType: TextInputType.number),
+                  _buildTextField(
+                    _ageController,
+                    'Âge du lot (en semaines)',
+                    Icons.history,
+                    keyboardType: TextInputType.number,
+                    readOnly: true,
+                    helperText: 'Automatique',
+                    validator: (val) {
+                      if (val == null || val.isEmpty) return 'Veuillez sélectionner un lot';
+                      final age = int.tryParse(val);
+                      if (age == null) return 'Doit être un nombre entier';
+                      if (age < 1 || age > 75) return 'Âge hors plage (1-75 semaines), vérifiez le lot';
+                      return null;
+                    },
+                  ),
                   
                   const SizedBox(height: 32),
                   _buildSectionTitle('INTERVALLES DE SAISIE (G)'),
@@ -307,19 +321,22 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, IconData icon, {TextInputType keyboardType = TextInputType.text}) {
+  Widget _buildTextField(TextEditingController controller, String label, IconData icon, {TextInputType keyboardType = TextInputType.text, String? Function(String?)? validator, bool readOnly = false, String? helperText}) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
+      readOnly: readOnly,
+      showCursor: !readOnly,
       decoration: InputDecoration(
         labelText: label,
+        helperText: helperText,
         prefixIcon: Icon(icon, color: Colors.orange, size: 20),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: readOnly ? Colors.grey.shade100 : Colors.white,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
       ),
-      validator: (val) => val == null || val.isEmpty ? 'Champ requis' : null,
+      validator: validator ?? (val) => val == null || val.isEmpty ? 'Champ requis' : null,
     );
   }
 
@@ -337,7 +354,12 @@ class _NewWeighingScreenState extends State<NewWeighingScreen> {
         value: lot,
         child: Text(lot.number),
       )).toList(),
-      onChanged: (val) => setState(() => _selectedLot = val),
+      onChanged: (val) => setState(() {
+        _selectedLot = val;
+        if (val != null) {
+          _ageController.text = val.currentAge.toString();
+        }
+      }),
       validator: (val) => val == null ? 'Veuillez sélectionner un lot' : null,
     );
   }

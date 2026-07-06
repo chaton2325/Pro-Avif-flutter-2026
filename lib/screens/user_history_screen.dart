@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/user.dart';
+import '../models/farm.dart';
 import '../models/weighing_session.dart';
 import '../services/mongo_service.dart';
 import '../services/session_storage.dart';
@@ -22,7 +23,8 @@ class _UserHistoryScreenState extends State<UserHistoryScreen> {
   List<WeighingSession> _allSessions = [];
   List<WeighingSession> _filteredSessions = [];
   bool _isLoading = true;
-  
+  Farm? _assignedFarm;
+
   HistorySort _currentSort = HistorySort.dateDesc;
   String _searchQuery = '';
   bool? _filterSynced; // null: all, true: synced only, false: local only
@@ -35,22 +37,29 @@ class _UserHistoryScreenState extends State<UserHistoryScreen> {
 
   Future<void> _loadHistory() async {
     setState(() => _isLoading = true);
-    
+
     try {
+      if (widget.user.farmId != null) {
+        _assignedFarm ??= await _mongoService.getFarmById(widget.user.farmId!);
+      }
+      final String? farmName = _assignedFarm?.name;
+
       final offline = await SessionStorage.getOfflineSessions();
-      
-      // Load server data using the paginated endpoint with userId filter
-      // Note: We fetch a large enough limit to cover recent history
-      final result = await _mongoService.getPaginatedWeighings(limit: 100);
+
+      // Load server data restricted to this user's building (production site).
+      final result = await _mongoService.getPaginatedWeighings(limit: 100, farmName: farmName);
       final List<dynamic> data = result['data'];
       final server = data
           .map((s) => WeighingSession.fromMap(s))
-          .where((s) => s.userId == widget.user.id)
+          .where((s) => s.userId == widget.user.id && (farmName == null || s.farmName == farmName))
           .toList();
-      
+
+      // Les pesées locales non synchronisées doivent aussi respecter le bâtiment de l'utilisateur.
+      final offlineFiltered = offline.where((s) => farmName == null || s.farmName == farmName).toList();
+
       if (!mounted) return;
       setState(() {
-        _allSessions = [...offline, ...server];
+        _allSessions = [...offlineFiltered, ...server];
         _applyFiltersAndSort();
         _isLoading = false;
       });

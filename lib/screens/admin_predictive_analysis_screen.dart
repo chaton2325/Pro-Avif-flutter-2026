@@ -410,20 +410,24 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
 
   Widget _buildWeightHistogram(List clusters) {
     List<BarChartGroupData> groups = [];
+    final total = clusters.fold<double>(0, (sum, c) => sum + (c['count'] as num).toDouble());
     double maxVal = 0;
     for (int i = 0; i < clusters.length; i++) {
       final count = (clusters[i]['count'] as num).toDouble();
-      if (count > maxVal) maxVal = count;
-      groups.add(BarChartGroupData(x: i, barRods: [BarChartRodData(toY: count, color: _getClusterColor(i), width: 34, borderRadius: const BorderRadius.vertical(top: Radius.circular(8)), backDrawRodData: BackgroundBarChartRodData(show: true, toY: maxVal * 1.2, color: Colors.grey.shade50))], showingTooltipIndicators: [0]));
+      final pct = total > 0 ? (count / total * 100) : 0.0;
+      if (pct > maxVal) maxVal = pct;
+      groups.add(BarChartGroupData(x: i, barRods: [BarChartRodData(toY: pct, color: _getClusterColor(i), width: 34, borderRadius: const BorderRadius.vertical(top: Radius.circular(8)), backDrawRodData: BackgroundBarChartRodData(show: true, toY: maxVal * 1.2, color: Colors.grey.shade50))], showingTooltipIndicators: [0]));
     }
     return Container(
       height: 280, width: double.infinity, padding: const EdgeInsets.fromLTRB(12, 40, 12, 12),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
       child: BarChart(BarChartData(
         alignment: BarChartAlignment.spaceAround, maxY: maxVal * 1.35, barGroups: groups,
-        titlesData: FlTitlesData(show: true, bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (val, meta) => val.toInt() < clusters.length ? Padding(padding: const EdgeInsets.only(top: 10.0), child: Text(clusters[val.toInt()]['label'] ?? '', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade600))) : const SizedBox())), leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false))),
+        titlesData: FlTitlesData(show: true, bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (val, meta) => val.toInt() < clusters.length ? Padding(padding: const EdgeInsets.only(top: 10.0), child: Text(clusters[val.toInt()]['label'] ?? '', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade600))) : const SizedBox())), leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 34, getTitlesWidget: (val, meta) => Text('${val.toInt()}%', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400)))), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false))),
         gridData: const FlGridData(show: false), borderData: FlBorderData(show: false),
-        barTouchData: BarTouchData(enabled: true, touchTooltipData: BarTouchTooltipData(getTooltipColor: (group) => Colors.indigo.shade900, getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem('${clusters[groupIndex]['label']}\n${rod.toY.toInt()} Sujets\n${clusters[groupIndex]['mean'].toStringAsFixed(0)}g', const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)))),
+        barTouchData: BarTouchData(enabled: true, touchTooltipData: BarTouchTooltipData(getTooltipColor: (group) => Colors.indigo.shade900, getTooltipItem: (group, groupIndex, rod, rodIndex) {
+          return BarTooltipItem('${clusters[groupIndex]['label']}\n${rod.toY.toStringAsFixed(1)}%\n${clusters[groupIndex]['mean'].toStringAsFixed(0)}g', const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold));
+        })),
       )),
     );
   }
@@ -464,6 +468,7 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
 
   Widget _buildSimulatorInterface() {
     final clusters = (_clusteringData!['clusters'] as List?) ?? [];
+    final clustersTotal = clusters.fold<double>(0, (sum, c) => sum + (c['count'] as num).toDouble());
     final rooms = _selectedFarm?.rooms ?? [];
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.indigo.shade50, width: 2)), padding: const EdgeInsets.all(20),
@@ -477,7 +482,11 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
         DropdownButtonFormField<int>(
           value: _selectedClusterId, dropdownColor: Colors.white,
           decoration: InputDecoration(labelText: 'Groupe $_selectedSex à déplacer', prefixIcon: const Icon(Icons.groups_rounded, color: Colors.indigo, size: 20), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), filled: true, fillColor: Colors.grey.shade50),
-          items: clusters.map((c) => DropdownMenuItem<int>(value: c['id'], child: Text('${c['label']} (${c['count']} sujets)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)))).toList(),
+          items: clusters.map((c) {
+            final count = (c['count'] as num).toDouble();
+            final pct = clustersTotal > 0 ? (count / clustersTotal * 100) : 0.0;
+            return DropdownMenuItem<int>(value: c['id'], child: Text('${c['label']} — ${pct.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)));
+          }).toList(),
           onChanged: (val) => setState(() => _selectedClusterId = val),
         ),
         const SizedBox(height: 20),

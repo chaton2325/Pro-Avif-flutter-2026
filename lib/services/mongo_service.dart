@@ -218,6 +218,15 @@ class MongoService {
     );
   }
 
+  Future<void> updateLot(Lot lot) async {
+    if (lot.id == null) return;
+    await http.put(
+      Uri.parse('$baseUrl/lots/${lot.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(lot.toMap()),
+    );
+  }
+
   Future<void> deleteLot(String id) async {
     await http.delete(Uri.parse('$baseUrl/lots/$id'));
   }
@@ -260,6 +269,44 @@ class MongoService {
     }
   }
 
+  Future<Map<String, dynamic>> checkDuplicateWeighing({
+    required String farmName,
+    required String roomName,
+    required String sex,
+    required String lotId,
+    required int age,
+  }) async {
+    try {
+      final queryParams = {
+        'farmName': farmName,
+        'roomName': roomName,
+        'sex': sex,
+        'lotId': lotId,
+        'age': age.toString(),
+      };
+      final uri = Uri.parse('$baseUrl/weighings/check-duplicate').replace(queryParameters: queryParams);
+      final response = await http.get(uri).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print("Erreur checkDuplicateWeighing: $e");
+    }
+    return {"exists": false};
+  }
+
+  Future<Map<String, dynamic>> getStatsSummary() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/weighings/stats/summary'));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print("Erreur getStatsSummary: $e");
+    }
+    return {};
+  }
+
   Future<int> syncOfflineSessions() async {
     final offlineSessions = await SessionStorage.getOfflineSessions();
     if (offlineSessions.isEmpty) return 0;
@@ -286,11 +333,12 @@ class MongoService {
     int skip = 0,
     int limit = 20,
     String? farmName,
-    String? lotId,
+    String? roomName,
+    String? lotNumber,
     String? operator,
     String? sex,
-    double? lowerInterval,
-    double? upperInterval,
+    DateTime? startDate,
+    DateTime? endDate,
     String sortBy = 'timestamp',
     String order = 'desc',
   }) async {
@@ -298,16 +346,17 @@ class MongoService {
       final queryParams = {
         'skip': skip.toString(),
         'limit': limit.toString(),
-        'sort_by': sortBy,
+        'sortBy': sortBy,
         'order': order,
         if (farmName != null && farmName.isNotEmpty) 'farmName': farmName,
-        if (lotId != null && lotId.isNotEmpty) 'lotId': lotId,
+        if (roomName != null && roomName.isNotEmpty) 'roomName': roomName,
+        if (lotNumber != null && lotNumber.isNotEmpty) 'lotNumber': lotNumber,
         if (operator != null && operator.isNotEmpty) 'operator': operator,
         if (sex != null && sex.isNotEmpty) 'sex': sex,
-        if (lowerInterval != null) 'lowerInterval': lowerInterval.toString(),
-        if (upperInterval != null) 'upperInterval': upperInterval.toString(),
+        if (startDate != null) 'startDate': startDate.toIso8601String(),
+        if (endDate != null) 'endDate': endDate.toIso8601String(),
       };
-      
+
       final uri = Uri.parse('$baseUrl/weighings/all').replace(queryParameters: queryParams);
       final response = await http.get(uri);
       

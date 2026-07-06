@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_nav_bar/google_nav_bar.dart';
+import 'package:intl/intl.dart';
 import '../models/user.dart';
 import '../models/farm.dart';
 import '../models/audit_log.dart';
@@ -28,6 +29,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   List<Lot> _lots = [];
   List<Lot> _filteredLots = [];
   List<AuditLog> _logs = [];
+  Map<String, dynamic>? _statsSummary;
   int _currentIndex = 0;
   bool _isLoading = false;
   String? _error;
@@ -97,7 +99,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
       final farms = await _mongoService.getFarms();
       final lots = await _mongoService.getLots();
       final logs = await _mongoService.getAuditLogs();
-      
+      final stats = await _mongoService.getStatsSummary();
+
       if (!mounted) return;
       setState(() {
         _users = users;
@@ -107,6 +110,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         _lots = lots;
         _filteredLots = lots;
         _logs = logs;
+        _statsSummary = stats;
         _isLoading = false;
       });
     } catch (e) {
@@ -422,30 +426,145 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   void _showAddLotDialog() {
     final numberController = TextEditingController();
+    final startAgeController = TextEditingController(text: '1');
+    DateTime startDate = DateTime.now();
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Nouveau numéro de lot', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: numberController,
-          decoration: const InputDecoration(labelText: 'Numéro de lot (ex: LOT-2026-001)'),
-          textCapitalization: TextCapitalization.characters,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(
-            onPressed: () async {
-              if (numberController.text.isNotEmpty) {
-                await _mongoService.addLot(Lot(number: numberController.text, createdAt: DateTime.now()));
-                _refreshData();
-                if (!context.mounted) return;
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Enregistrer'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Nouveau numéro de lot', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: numberController,
+                  decoration: const InputDecoration(labelText: 'Numéro de lot (ex: LOT-2026-001)'),
+                  textCapitalization: TextCapitalization.characters,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: startAgeController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Âge de départ (semaines)'),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: Text('Date de départ : ${DateFormat('dd/MM/yyyy').format(startDate)}')),
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: startDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) setDialogState(() => startDate = picked);
+                      },
+                      child: const Text('Choisir'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              onPressed: () async {
+                if (numberController.text.isNotEmpty) {
+                  await _mongoService.addLot(Lot(
+                    number: numberController.text,
+                    createdAt: DateTime.now(),
+                    startAge: int.tryParse(startAgeController.text) ?? 1,
+                    startDate: startDate,
+                  ));
+                  _refreshData();
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditLotDialog(Lot lot) {
+    final numberController = TextEditingController(text: lot.number);
+    final startAgeController = TextEditingController(text: lot.startAge.toString());
+    DateTime startDate = lot.startDate ?? lot.createdAt;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Modifier le lot', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: numberController,
+                  decoration: const InputDecoration(labelText: 'Numéro de lot'),
+                  textCapitalization: TextCapitalization.characters,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: startAgeController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Âge de départ (semaines)'),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: Text('Date de départ : ${DateFormat('dd/MM/yyyy').format(startDate)}')),
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: startDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) setDialogState(() => startDate = picked);
+                      },
+                      child: const Text('Choisir'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              onPressed: () async {
+                if (numberController.text.isNotEmpty) {
+                  await _mongoService.updateLot(Lot(
+                    id: lot.id,
+                    number: numberController.text,
+                    createdAt: lot.createdAt,
+                    startAge: int.tryParse(startAgeController.text) ?? 1,
+                    startDate: startDate,
+                  ));
+                  _refreshData();
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -508,6 +627,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildAdminHeaderCard(),
+            const SizedBox(height: 32),
+            const Text('STATISTIQUES (TEMPS RÉEL)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2)),
+            const SizedBox(height: 20),
+            _buildStatsRow(),
             const SizedBox(height: 32),
             const Text('ACTIONS RAPIDES', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2)),
             const SizedBox(height: 20),
@@ -593,6 +716,48 @@ class _AdminDashboardState extends State<AdminDashboard> {
           const Text('Système de Gestion Pro-Avif', style: TextStyle(color: Colors.white70, fontSize: 12)),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatsRow() {
+    final stats = _statsSummary ?? {};
+    final total = stats['totalCount'] ?? 0;
+    final lastHour = stats['lastHourCount'] ?? 0;
+    final avgHomogeneity = (stats['avgHomogeneity'] as num?)?.toDouble() ?? 0.0;
+    String lastWeighingAgo = '-';
+    final lastTs = stats['lastWeighingTimestamp'];
+    if (lastTs != null) {
+      final lastDate = DateTime.tryParse(lastTs.toString());
+      if (lastDate != null) {
+        final diff = DateTime.now().difference(lastDate);
+        if (diff.inMinutes < 60) {
+          lastWeighingAgo = 'il y a ${diff.inMinutes} min';
+        } else if (diff.inHours < 24) {
+          lastWeighingAgo = 'il y a ${diff.inHours} h';
+        } else {
+          lastWeighingAgo = 'il y a ${diff.inDays} j';
+        }
+      }
+    }
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            _buildStatCard('Total Pesées', '$total', Icons.inventory_2_rounded, Colors.indigo),
+            const SizedBox(width: 16),
+            _buildStatCard('Dernière heure', '$lastHour', Icons.bolt_rounded, Colors.orange),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            _buildStatCard('Dernière pesée', lastWeighingAgo, Icons.history_toggle_off_rounded, Colors.teal),
+            const SizedBox(width: 16),
+            _buildStatCard('Homogénéité moy.', '${avgHomogeneity.toStringAsFixed(1)}%', Icons.auto_graph_rounded, Colors.green),
+          ],
+        ),
+      ],
     );
   }
 
@@ -790,8 +955,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     child: ListTile(
                       leading: CircleAvatar(backgroundColor: Colors.purple.withValues(alpha: 0.1), child: const Icon(Icons.inventory_2, color: Colors.purple)),
                       title: Text(lot.number, style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
-                      subtitle: Text('Créé le : ${lot.createdAt.toString().substring(0, 16)}'),
-                      trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () async { await _mongoService.deleteLot(lot.id!); _refreshData(); }),
+                      subtitle: Text('Âge actuel : ${lot.currentAge} sem. • Départ : ${lot.startDate != null ? DateFormat('dd/MM/yyyy').format(lot.startDate!) : '-'}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20), onPressed: () => _showEditLotDialog(lot)),
+                          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () async { await _mongoService.deleteLot(lot.id!); _refreshData(); }),
+                        ],
+                      ),
                     ),
                   );
                 },
