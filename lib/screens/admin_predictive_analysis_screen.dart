@@ -448,23 +448,70 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     
     regressionData.sort((a, b) => DateTime.parse(a['date']).compareTo(DateTime.parse(b['date'])));
     List<FlSpot> spots = regressionData.map((p) => FlSpot(DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble(), (p['homogeneity'] as num).toDouble())).toList();
-    
+
+    // Courbe du poids moyen (axe droit, normalisée sur 0-100 comme dans la fenêtre Analyse)
+    final weightEntries = regressionData.where((p) => p['avgWeight'] != null).toList();
+    final hasWeight = weightEntries.isNotEmpty;
+    double minW = 0, maxW = 100;
+    if (hasWeight) {
+      final ws = weightEntries.map((p) => (p['avgWeight'] as num).toDouble()).toList();
+      minW = ws.reduce((a, b) => a < b ? a : b);
+      maxW = ws.reduce((a, b) => a > b ? a : b);
+      if (maxW == minW) maxW = minW + 1;
+    }
+    List<FlSpot> weightSpots = weightEntries.map((p) => FlSpot(
+      DateTime.parse(p['date']).millisecondsSinceEpoch.toDouble(),
+      (((p['avgWeight'] as num).toDouble() - minW) / (maxW - minW)) * 100,
+    )).toList();
+
     double? bottomInterval;
     if (spots.length > 1) bottomInterval = (spots.last.x - spots.first.x) / 4.0;
 
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.all(20),
       child: Column(children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('QUALITÉ DU LOT ($_selectedSex)', style: TextStyle(color: Colors.grey.shade400, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1))]),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('QUALITÉ DU LOT ($_selectedSex)', style: TextStyle(color: Colors.grey.shade400, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+          if (hasWeight)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: Colors.indigo.shade600, shape: BoxShape.circle)),
+              const SizedBox(width: 4),
+              Text('Homog.', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade500)),
+              const SizedBox(width: 10),
+              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
+              const SizedBox(width: 4),
+              Text('Poids (g)', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade500)),
+            ]),
+        ]),
         const SizedBox(height: 24),
         SizedBox(height: 200, child: LineChart(LineChartData(
           minY: 0, maxY: 100, // Ajusté pour mieux voir la variation
-          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.indigo.shade600, barWidth: 5, isStrokeCapRound: true, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 5, color: Colors.indigo, strokeWidth: 2, strokeColor: Colors.white)), belowBarData: BarAreaData(show: true, color: Colors.indigo.withValues(alpha: 0.05)))],
+          lineBarsData: [
+            LineChartBarData(spots: spots, isCurved: true, color: Colors.indigo.shade600, barWidth: 5, isStrokeCapRound: true, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 5, color: Colors.indigo, strokeWidth: 2, strokeColor: Colors.white)), belowBarData: BarAreaData(show: true, color: Colors.indigo.withValues(alpha: 0.05))),
+            if (hasWeight)
+              LineChartBarData(spots: weightSpots, isCurved: true, color: Colors.green, barWidth: 3, dashArray: const [6, 4], isStrokeCapRound: true, dotData: FlDotData(show: true, getDotPainter: (s, p, b, i) => FlDotCirclePainter(radius: 4, color: Colors.green, strokeWidth: 2, strokeColor: Colors.white))),
+          ],
           titlesData: FlTitlesData(
             leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 35, getTitlesWidget: (v, m) => Text('${v.toInt()}%', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.grey.shade400)))),
             bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32, interval: bottomInterval, getTitlesWidget: (v, m) => Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(v.toInt())), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey.shade400))))),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: hasWeight, reservedSize: 42, getTitlesWidget: (v, m) {
+              if (!hasWeight || v % 20 != 0) return const SizedBox();
+              final realWeight = minW + (v / 100) * (maxW - minW);
+              return Text('${realWeight.toStringAsFixed(0)}g', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.green.shade400));
+            })),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
+          lineTouchData: LineTouchData(touchTooltipData: LineTouchTooltipData(getTooltipColor: (s) => Colors.indigo.shade900, getTooltipItems: (touchedSpots) {
+            return touchedSpots.map((s) {
+              if (s.barIndex == 0) {
+                return LineTooltipItem('Homogénéité\n', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    children: [TextSpan(text: '${s.y.toStringAsFixed(1)}%', style: TextStyle(color: Colors.indigo.shade200, fontSize: 11, fontWeight: FontWeight.w900))]);
+              }
+              final realWeight = minW + (s.y / 100) * (maxW - minW);
+              return LineTooltipItem('Poids moyen\n', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  children: [TextSpan(text: '${realWeight.toStringAsFixed(0)}g', style: const TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.w900))]);
+            }).toList();
+          })),
           gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.withValues(alpha: 0.05), strokeWidth: 1)), borderData: FlBorderData(show: false),
         ))),
       ]),
@@ -547,7 +594,40 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
     final after = (data['after']['homogeneity'] as num).toDouble();
     final change = (isSource ? data['gain'] : data['impact']) as num;
     final isPositive = change >= 0;
-    return Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.all(20), child: Column(children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5)), Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: (isPositive ? Colors.green : Colors.red).withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text('${isPositive ? "+" : ""}${change.toStringAsFixed(2)}%', style: TextStyle(color: isPositive ? Colors.green.shade700 : Colors.red.shade700, fontWeight: FontWeight.w900, fontSize: 12)))]), const SizedBox(height: 20), Row(children: [_buildSimpleStat('ACTUEL', before, Colors.grey.shade400), const Expanded(child: Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Divider())), _buildSimpleStat('PRÉDIT', after, isPositive ? Colors.green.shade600 : Colors.red.shade600)]), const SizedBox(height: 24), Text('HISTORIQUE & PRÉDICTION D\'HOMOGÉNÉITÉ', style: TextStyle(color: Colors.grey.shade400, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)), const SizedBox(height: 12), _buildPredictionTrendChart(history, before, after, isPositive)]));
+    final beforeWeight = (data['before']['meanWeight'] as num?)?.toDouble();
+    final afterWeight = (data['after']['meanWeight'] as num?)?.toDouble();
+    return Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.all(20), child: Column(children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5)), Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: (isPositive ? Colors.green : Colors.red).withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text('${isPositive ? "+" : ""}${change.toStringAsFixed(2)}%', style: TextStyle(color: isPositive ? Colors.green.shade700 : Colors.red.shade700, fontWeight: FontWeight.w900, fontSize: 12)))]), const SizedBox(height: 20), Row(children: [_buildSimpleStat('ACTUEL', before, Colors.grey.shade400), const Expanded(child: Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Divider())), _buildSimpleStat('PRÉDIT', after, isPositive ? Colors.green.shade600 : Colors.red.shade600)]), if (beforeWeight != null && afterWeight != null) ...[const SizedBox(height: 16), _buildWeightPredictionRow(beforeWeight, afterWeight)], const SizedBox(height: 24), Text('HISTORIQUE & PRÉDICTION D\'HOMOGÉNÉITÉ', style: TextStyle(color: Colors.grey.shade400, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)), const SizedBox(height: 12), _buildPredictionTrendChart(history, before, after, isPositive)]));
+  }
+
+  /// Ligne de prédiction du poids moyen (avant → après transfert) dans la carte d'impact.
+  Widget _buildWeightPredictionRow(double beforeWeight, double afterWeight) {
+    final diff = afterWeight - beforeWeight;
+    final diffStr = '${diff >= 0 ? "+" : ""}${diff.toStringAsFixed(0)}g';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green.withValues(alpha: 0.15))),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(children: [
+            const Icon(Icons.monitor_weight_rounded, color: Colors.green, size: 18),
+            const SizedBox(width: 8),
+            Text('POIDS MOYEN', style: TextStyle(color: Colors.grey.shade500, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+          ]),
+          Row(children: [
+            Text('${beforeWeight.toStringAsFixed(0)}g', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Colors.grey.shade400)),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.grey)),
+            Text('${afterWeight.toStringAsFixed(0)}g', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Colors.green)),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+              child: Text(diffStr, style: const TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.w900)),
+            ),
+          ]),
+        ],
+      ),
+    );
   }
 
   Widget _buildSimpleStat(String label, double value, Color color) {
