@@ -7,6 +7,7 @@ import '../models/farm.dart';
 import '../models/lot.dart';
 import '../services/mongo_service.dart';
 import '../services/session_storage.dart';
+import '../utils/platform_utils.dart';
 import 'login_screen.dart';
 import 'new_weighing_screen.dart';
 import 'weight_entry_screen.dart';
@@ -141,9 +142,9 @@ class _UserDashboardState extends State<UserDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
+      extendBody: !isDesktop,
       appBar: AppBar(
-        title: Text(_currentIndex == 0 ? 'ACCUEIL' : 'PARAMÈTRES', 
+        title: Text(_currentIndex == 0 ? 'ACCUEIL' : 'PARAMÈTRES',
           style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 18)),
         centerTitle: true,
         backgroundColor: Colors.white,
@@ -155,16 +156,61 @@ class _UserDashboardState extends State<UserDashboard> {
           ),
         ],
       ),
-      body: _isLoading 
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.orange))
-          : IndexedStack(
-              index: _currentIndex,
-              children: [
-                _buildHome(),
-                _buildSettings(),
-              ],
-            ),
-      bottomNavigationBar: _buildUserNavBar(),
+          : isDesktop
+              ? Row(
+                  children: [
+                    _buildSideNavBar(),
+                    Expanded(
+                      child: IndexedStack(
+                        index: _currentIndex,
+                        children: [
+                          _buildHome(),
+                          _buildSettings(),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
+              : IndexedStack(
+                  index: _currentIndex,
+                  children: [
+                    _buildHome(),
+                    _buildSettings(),
+                  ],
+                ),
+      bottomNavigationBar: isDesktop ? null : _buildUserNavBar(),
+    );
+  }
+
+  Widget _buildSideNavBar() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 0, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 10))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: NavigationRail(
+          backgroundColor: Colors.transparent,
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (index) => setState(() => _currentIndex = index),
+          extended: true,
+          minExtendedWidth: 190,
+          indicatorColor: Colors.orange.withValues(alpha: 0.1),
+          selectedIconTheme: const IconThemeData(color: Colors.orange, size: 22),
+          unselectedIconTheme: IconThemeData(color: Colors.grey[600], size: 22),
+          selectedLabelTextStyle: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 14),
+          unselectedLabelTextStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
+          destinations: const [
+            NavigationRailDestination(icon: Icon(Icons.home_rounded), label: Text('Accueil')),
+            NavigationRailDestination(icon: Icon(Icons.settings_rounded), label: Text('Paramètres')),
+          ],
+        ),
+      ),
     );
   }
 
