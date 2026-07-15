@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/user.dart';
 import '../models/lot.dart';
+import '../models/weighing_session.dart';
+import '../services/mongo_service.dart';
 import '../services/session_storage.dart';
 import 'weighing_summary_screen.dart';
 
@@ -39,8 +42,10 @@ class WeightEntryScreen extends StatefulWidget {
 class _WeightEntryScreenState extends State<WeightEntryScreen> {
   final TextEditingController _weightController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final MongoService _mongoService = MongoService();
   late List<double> _weights;
   String? _errorMessage;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -106,10 +111,141 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
     });
   }
 
-  void _navigateToSummary() {
+  double _computeHomogeneity() {
+    if (_weights.isEmpty) return 0;
+    final double average = _weights.reduce((a, b) => a + b) / _weights.length;
+    final double plus10 = average * 1.10;
+    final double minus10 = average * 0.90;
+    final int homogeneousCount = _weights.where((w) => w >= minus10 && w <= plus10).length;
+    return (homogeneousCount / _weights.length) * 100;
+  }
+
+  Future<void> _confirmAndSave() async {
     if (_weights.isEmpty) return;
-    
-    Navigator.push(
+
+    String? duplicateWarning;
+    try {
+      final dup = await _mongoService.checkDuplicateWeighing(
+        farmName: widget.building,
+        roomName: widget.room,
+        sex: widget.sex ?? '',
+        lotId: widget.lot.id ?? widget.lot.number,
+        age: widget.age,
+      );
+      if (dup['exists'] == true) {
+        String dateStr = '';
+        final lastTs = dup['lastTimestamp'];
+        if (lastTs != null) {
+          final d = DateTime.tryParse(lastTs.toString());
+          if (d != null) dateStr = ' (le ${DateFormat('dd/MM/yyyy').format(d)})';
+        }
+        duplicateWarning =
+            'Une pesée existe déjà cette semaine pour ce lot$dateStr.\nCette nouvelle pesée sera considérée comme la plus récente dans les graphiques ; l\'ancienne restera visible dans l\'historique.\n\n';
+      }
+    } catch (_) {
+      // Si la vérification échoue (ex: hors-ligne), on continue sans bloquer la saisie.
+    }
+
+    if (!mounted) return;
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 10),
+            Text('Confirmation', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          '${duplicateWarning ?? ''}Êtes-vous sûr de vouloir enregistrer définitivement la pesée de ce mois ?\n\nCette action est irréversible.',
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ANNULER', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('OUI, ENREGISTRER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      _saveSession();
+    }
+  }
+
+  Future<void> _saveSession() async {
+    setState(() => _isSaving = true);
+
+    try {
+      final session = WeighingSession(
+        userId: widget.user.id!,
+        lotId: widget.lot.id ?? widget.lot.number,
+        lotNumber: widget.lot.number,
+        operator: widget.operator,
+        farmName: widget.building,
+        roomName: widget.room,
+        sex: widget.sex,
+        lowerInterval: widget.minWeight,
+        upperInterval: widget.maxWeight,
+        age: widget.age,
+        weights: _weights,
+        timestamp: DateTime.now(),
+        homogeneity: _computeHomogeneity(),
+      );
+
+      await _mongoService.saveWeighingSession(session);
+      await SessionStorage.clearSession(
+        widget.user.id!,
+        widget.lot.number,
+        widget.room,
+        widget.building,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session enregistrée avec succès !'), backgroundColor: Colors.green),
+      );
+
+      _goToSummary();
+    } catch (e) {
+      if (!mounted) return;
+
+      if (e.toString().contains("OFFLINE_SAVED")) {
+        await SessionStorage.clearSession(
+          widget.user.id!,
+          widget.lot.number,
+          widget.room,
+          widget.building,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mode Hors-Ligne : Pesée sauvegardée localement. Elle sera synchronisée à votre prochaine connexion.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+        _goToSummary();
+      } else {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors de l\'enregistrement: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _goToSummary() {
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => WeighingSummaryScreen(
@@ -287,13 +423,20 @@ class _WeightEntryScreenState extends State<WeightEntryScreen> {
             child: SizedBox(
               width: double.infinity,
               height: 50,
-              child: ElevatedButton(
-                onPressed: _weights.isEmpty ? null : _navigateToSummary,
+              child: ElevatedButton.icon(
+                onPressed: (_weights.isEmpty || _isSaving) ? null : _confirmAndSave,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
+                  backgroundColor: Colors.green,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('SUIVANT (RÉSUMÉ)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save, color: Colors.white, size: 20),
+                label: const Text('ENREGISTRER', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ),

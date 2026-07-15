@@ -39,8 +39,8 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     try {
       final user = await mongoService.login(
-        _nameController.text,
-        _passwordController.text,
+        _nameController.text.trim(),
+        _passwordController.text.trim(),
       );
       
       if (!mounted) return;

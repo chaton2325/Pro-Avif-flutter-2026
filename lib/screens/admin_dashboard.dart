@@ -173,7 +173,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
             ElevatedButton(
               onPressed: () async {
-                await _mongoService.addUser(User(name: nameController.text, password: passwordController.text, role: selectedRole, farmId: selectedFarmId));
+                await _mongoService.addUser(User(name: nameController.text.trim(), password: passwordController.text.trim(), role: selectedRole, farmId: selectedFarmId));
                 _refreshData();
                 if (!context.mounted) return;
                 Navigator.pop(context);
@@ -242,8 +242,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
               onPressed: () async {
                 final updatedUser = User(
                   id: user.id,
-                  name: nameController.text,
-                  password: passwordController.text.isEmpty ? user.password : passwordController.text,
+                  name: nameController.text.trim(),
+                  password: passwordController.text.trim().isEmpty ? user.password : passwordController.text.trim(),
                   role: selectedRole,
                   farmId: selectedFarmId,
                   isActive: user.isActive,

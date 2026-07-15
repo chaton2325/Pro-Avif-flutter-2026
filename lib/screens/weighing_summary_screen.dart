@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/user.dart';
 import '../models/lot.dart';
 import '../models/weighing_session.dart';
-import '../services/mongo_service.dart';
-import '../services/session_storage.dart';
 import '../services/export_service.dart';
 
 class WeighingSummaryScreen extends StatefulWidget {
@@ -38,9 +35,6 @@ class WeighingSummaryScreen extends StatefulWidget {
 }
 
 class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
-  final MongoService _mongoService = MongoService();
-  bool _isSaving = false;
-
   late double _averageWeight;
   late double _plus10;
   late double _minus10;
@@ -87,135 +81,6 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
       await ExportService.exportToPdf(session);
     } else {
       await ExportService.exportToExcel(session);
-    }
-  }
-
-  Future<void> _confirmAndSave() async {
-    String? duplicateWarning;
-    try {
-      final dup = await _mongoService.checkDuplicateWeighing(
-        farmName: widget.building,
-        roomName: widget.room,
-        sex: widget.sex ?? '',
-        lotId: widget.lot.id ?? widget.lot.number,
-        age: widget.age,
-      );
-      if (dup['exists'] == true) {
-        String dateStr = '';
-        final lastTs = dup['lastTimestamp'];
-        if (lastTs != null) {
-          final d = DateTime.tryParse(lastTs.toString());
-          if (d != null) dateStr = ' (le ${DateFormat('dd/MM/yyyy').format(d)})';
-        }
-        duplicateWarning =
-            'Une pesée existe déjà cette semaine pour ce lot$dateStr.\nCette nouvelle pesée sera considérée comme la plus récente dans les graphiques ; l\'ancienne restera visible dans l\'historique.\n\n';
-      }
-    } catch (_) {
-      // Si la vérification échoue (ex: hors-ligne), on continue sans bloquer la saisie.
-    }
-
-    if (!mounted) return;
-
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange),
-            SizedBox(width: 10),
-            Text('Confirmation', style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Text(
-          '${duplicateWarning ?? ''}Êtes-vous sûr de vouloir enregistrer définitivement la pesée de ce mois ?\n\nCette action est irréversible.',
-          style: const TextStyle(fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('ANNULER', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('OUI, ENREGISTRER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      _saveSession();
-    }
-  }
-
-  Future<void> _saveSession() async {
-    setState(() => _isSaving = true);
-
-    try {
-      final session = WeighingSession(
-        userId: widget.user.id!,
-        lotId: widget.lot.id ?? widget.lot.number,
-        lotNumber: widget.lot.number,
-        operator: widget.operator,
-        farmName: widget.building,
-        roomName: widget.room,
-        sex: widget.sex,
-        lowerInterval: widget.lowerInterval,
-        upperInterval: widget.upperInterval,
-        age: widget.age,
-        weights: widget.weights,
-        timestamp: DateTime.now(),
-        homogeneity: _homogeneityPercentage,
-      );
-
-      await _mongoService.saveWeighingSession(session);
-      await SessionStorage.clearSession(
-        widget.user.id!,
-        widget.lot.number,
-        widget.room,
-        widget.building,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Session enregistrée avec succès !'), backgroundColor: Colors.green),
-      );
-      
-      _popToDashboard();
-    } catch (e) {
-      if (!mounted) return;
-      
-      if (e.toString().contains("OFFLINE_SAVED")) {
-        await SessionStorage.clearSession(
-          widget.user.id!,
-          widget.lot.number,
-          widget.room,
-          widget.building,
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Mode Hors-Ligne : Pesée sauvegardée localement. Elle sera synchronisée à votre prochaine connexion.'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 5),
-          ),
-        );
-        _popToDashboard();
-      } else {
-        setState(() => _isSaving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur lors de l\'enregistrement: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  void _popToDashboard() {
-    Navigator.of(context).pop(); // Summary
-    Navigator.of(context).pop(); // Entry
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(); // NewWeighing
     }
   }
 
@@ -378,22 +243,8 @@ class _WeighingSummaryScreenState extends State<WeighingSummaryScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : () => _confirmAndSave(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                ),
-                child: _isSaving 
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('ENREGISTRER DÉFINITIVEMENT', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-              ),
-            ),
-            const SizedBox(height: 20),
+            // Marge supplémentaire pour que le SnackBar ne masque pas les boutons d'export
+            const SizedBox(height: 100),
           ],
         ),
       ),
