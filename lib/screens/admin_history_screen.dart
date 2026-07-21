@@ -40,7 +40,7 @@ class _AdminHistoryScreenState extends State<AdminHistoryScreen> {
     _loadSessions(clear: true);
     _scrollController.addListener(_onScroll);
     _mongoService.getFarms().then((farms) {
-      if (mounted) setState(() => _farms = farms);
+      if (mounted) setState(() => _farms = farms..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())));
     });
   }
 

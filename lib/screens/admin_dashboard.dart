@@ -97,7 +97,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
       }
       
       final users = await _mongoService.getUsers();
-      final farms = await _mongoService.getFarms();
+      final farms = await _mongoService.getFarms()
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       final lots = await _mongoService.getLots();
       final logs = await _mongoService.getAuditLogs();
       final stats = await _mongoService.getStatsSummary();

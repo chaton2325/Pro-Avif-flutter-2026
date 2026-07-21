@@ -51,7 +51,7 @@ class _AdminPredictiveAnalysisScreenState extends State<AdminPredictiveAnalysisS
         _mongoService.getLots(),
       ]);
       
-      _farms = futures[0] as List<Farm>;
+      _farms = futures[0] as List<Farm>..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _lots = futures[1] as List<Lot>;
 
       if (_farms.isNotEmpty) {

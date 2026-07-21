@@ -11,7 +11,7 @@ import './session_storage.dart';
 
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "https://proavif.mirhosty.com";
+  final String baseUrl = "http://192.168.1.187:8000";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;

@@ -66,7 +66,7 @@ class _AdminAnalysisScreenState extends State<AdminAnalysisScreen> {
         _mongoService.getLots(),
       ]);
       setState(() {
-        _farms = results[0] as List<Farm>;
+        _farms = results[0] as List<Farm>..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
         _lots = results[1] as List<Lot>;
         _isLoadingFarms = false;
         if (_farms.isNotEmpty) _selectedFarm = _farms.first;
