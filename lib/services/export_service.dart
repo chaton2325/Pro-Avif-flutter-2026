@@ -231,23 +231,20 @@ class ExportService {
       ),
     );
 
-    await Printing.sharePdf(bytes: await pdf.save(), filename: _buildReportFileName(session, 'Rapport', 'pdf'));
+    await Printing.sharePdf(bytes: await pdf.save(), filename: _buildReportFileName(session, 'pdf'));
   }
 
-  /// Nom de fichier unique reprenant opérateur, bâtiment, salle, lot, date/heure et un
+  /// Nom de fichier au format Pesee_Batiment_Lot_Salle_Semaine_ChaineUnique, avec un
   /// suffixe basé sur l'horodatage pour éviter toute collision entre rapports générés.
-  static String _buildReportFileName(WeighingSession session, String prefix, String extension) {
+  static String _buildReportFileName(WeighingSession session, String extension) {
     String clean(String value) => value.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '').replaceAll(RegExp(r'\s+'), '_');
 
-    final now = DateTime.now();
-    final operator = clean(session.operator);
     final farm = clean(session.farmName);
     final room = clean(session.roomName);
     final lot = clean(session.lotNumber ?? 'NA');
-    final date = DateFormat('yyyyMMdd_HHmm').format(now);
-    final uniqueId = now.millisecondsSinceEpoch.toString();
+    final uniqueId = DateTime.now().millisecondsSinceEpoch.toString();
 
-    return '${prefix}_${operator}_${farm}_${room}_Lot${lot}_${date}_$uniqueId.$extension';
+    return 'Pesee_${farm}_${lot}_${room}_S${session.age}_$uniqueId.$extension';
   }
 
   /// Homogénéité (%), poids moyen réel (g) et poids moyen standard (g) sur un même
@@ -599,7 +596,7 @@ class ExportService {
     final fileBytes = excel.save();
     if (fileBytes != null) {
       final tempDir = await getTemporaryDirectory();
-      final fileName = _buildReportFileName(session, 'Rapport_Complet', 'xlsx');
+      final fileName = _buildReportFileName(session, 'xlsx');
       final file = File('${tempDir.path}/$fileName');
       await file.writeAsBytes(fileBytes);
       await Share.shareXFiles([XFile(file.path)], text: 'Rapport Complet Pro-Avif - ${session.farmName}');
