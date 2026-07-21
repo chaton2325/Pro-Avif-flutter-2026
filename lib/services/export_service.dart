@@ -20,17 +20,10 @@ class ExportService {
 
     // Fetch data for charts
     List<WeightStandard> standards = [];
-    List<WeightHistoryEntry> history = [];
     List<dynamic> homogeneityHistory = [];
     try {
       final results = await Future.wait([
         mongoService.getWeightStandards(session.sex ?? 'Mâle'),
-        mongoService.getWeightEvolution(
-          farmName: session.farmName,
-          roomName: session.roomName,
-          sex: session.sex ?? 'Mâle',
-          lotNumber: session.lotNumber,
-        ),
         mongoService.getRoomHomogeneityHistory(
           session.farmName,
           session.roomName,
@@ -39,11 +32,9 @@ class ExportService {
         ),
       ]);
       standards = results[0] as List<WeightStandard>;
-      history = results[1] as List<WeightHistoryEntry>;
-      homogeneityHistory = results[2] as List<dynamic>;
-      
+      homogeneityHistory = results[1] as List<dynamic>;
+
       standards.sort((a, b) => a.week.compareTo(b.week));
-      history.sort((a, b) => a.week.compareTo(b.week));
       // Sort homogeneity history by date
       homogeneityHistory.sort((a, b) => DateTime.parse(a['date']).compareTo(DateTime.parse(b['date'])));
     } catch (e) {
@@ -90,6 +81,15 @@ class ExportService {
       }
     }
 
+    // Variation par rapport à la pesée précédente (semaine N-1) du même lot/salle/sexe
+    double? variationN1;
+    final priorEntries = homogeneityHistory.where((h) => h['age'] != null && (h['age'] as num) < session.age).toList();
+    if (priorEntries.isNotEmpty) {
+      priorEntries.sort((a, b) => (a['age'] as num).compareTo(b['age'] as num));
+      final previousWeight = (priorEntries.last['avgWeight'] as num?)?.toDouble();
+      if (previousWeight != null) variationN1 = mean - previousWeight;
+    }
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -105,86 +105,75 @@ class ExportService {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('RAPPORT DE PESEE', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
-                      pw.Text('Généré le ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                      pw.Text('RAPPORT DE PESEE', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                      pw.Text('Généré le ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
                     ],
                   ),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text('Site: ${session.farmName}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      pw.Text('Salle: ${session.roomName}'),
-                      pw.Text('Lot: ${session.lotNumber ?? 'N/A'}'),
+                      pw.Text('Site: ${session.farmName}  Salle: ${session.roomName}', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                      pw.Text('Lot ${session.lotNumber ?? 'N/A'} - Sexe: ${session.sex ?? 'Tout'}', style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text('Opérateur: ${session.operator}', style: const pw.TextStyle(fontSize: 9)),
                     ],
                   ),
                 ],
               ),
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 10),
 
             // Diagnostic Badge
             pw.Container(
               width: double.infinity,
-              padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: pw.BoxDecoration(
                 color: diagColor,
-                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
               ),
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('STATUT CROISSANCE :', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
-                  pw.Text(diagnostic, style: pw.TextStyle(color: PdfColors.white, fontSize: 13, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('STATUT CROISSANCE :', style: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  pw.Text(diagnostic, style: pw.TextStyle(color: PdfColors.white, fontSize: 10, fontWeight: pw.FontWeight.bold)),
                 ],
               ),
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 8),
 
-            // Performance Analysis Section
-            pw.Text('ANALYSE DE PERFORMANCE VS STANDARD', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+            // Performance & Statistics Section (fusionnées pour compacter le rapport)
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('ANALYSE DE PERFORMANCE VS STANDARD', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                pw.Text('${session.age}e sem.', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+              ],
+            ),
             pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 10),
+            pw.SizedBox(height: 6),
             pw.Row(
               children: [
                 pw.Expanded(child: _buildPdfStatItem('Poids Moyen Réel', '${mean.toStringAsFixed(1)} g')),
-                pw.Expanded(child: _buildPdfStatItem('Norme Standard', '${standardWeight.toStringAsFixed(0)} g')),
-                pw.Expanded(child: _buildPdfStatItem('Écart (g)', '${gap >= 0 ? "+" : ""}${gap.toStringAsFixed(1)} g', color: diagColor)),
-                pw.Expanded(child: _buildPdfStatItem('Âge', '${session.age} sem.')),
-              ],
-            ),
-            pw.SizedBox(height: 20),
-
-            // Statistics Section
-            pw.Text('STATISTIQUES DE LA PESÉE', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-            pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 10),
-            pw.Row(
-              children: [
-                pw.Expanded(child: _buildPdfStatItem('Intervalle Inf. Saisie', '${session.lowerInterval?.toStringAsFixed(0) ?? "N/A"} g')),
-                pw.Expanded(child: _buildPdfStatItem('Intervalle Sup. Saisie', '${session.upperInterval?.toStringAsFixed(0) ?? "N/A"} g')),
+                pw.Expanded(child: _buildPdfStatItem('Standard', '${standardWeight.toStringAsFixed(0)} g')),
+                pw.Expanded(child: _buildPdfStatItem('Écart vs Std', '${gap >= 0 ? "+" : ""}${gap.toStringAsFixed(1)} g', color: diagColor)),
                 pw.Expanded(child: _buildPdfStatItem('Homogénéité', '${session.homogeneity.toStringAsFixed(1)} %')),
-                pw.Expanded(child: _buildPdfStatItem('Sujets Homogènes', '$homogeneousCount / $totalCount')),
+                pw.Expanded(child: _buildPdfStatItem('Sujets Homog.', '$homogeneousCount / $totalCount')),
               ],
             ),
-            pw.SizedBox(height: 10),
+            pw.SizedBox(height: 6),
             pw.Row(
               children: [
-                pw.Expanded(child: _buildPdfStatItem('PM - 10%', '${minus10.toStringAsFixed(1)} g')),
-                pw.Expanded(child: _buildPdfStatItem('PM + 10%', '${plus10.toStringAsFixed(1)} g')),
-                pw.Expanded(child: _buildPdfStatItem('Poids Min', '${minWeight.toStringAsFixed(0)} g')),
-                pw.Expanded(child: _buildPdfStatItem('Poids Max', '${maxWeight.toStringAsFixed(0)} g')),
+                pw.Expanded(
+                  child: _buildPdfStatItem(
+                    'Variation N-1',
+                    variationN1 == null ? 'N/A' : '${variationN1 >= 0 ? "+" : ""}${variationN1.toStringAsFixed(1)} g',
+                    color: variationN1 != null && variationN1 < 0 ? PdfColors.red : null,
+                  ),
+                ),
+                pw.Expanded(child: _buildPdfStatItem('Intervalle Saisi', '${session.lowerInterval?.toStringAsFixed(0) ?? "N/A"} - ${session.upperInterval?.toStringAsFixed(0) ?? "N/A"} g')),
+                pw.Expanded(child: _buildPdfStatItem('Poids Min-Max', '${minWeight.toStringAsFixed(0)} - ${maxWeight.toStringAsFixed(0)} g')),
               ],
             ),
-            pw.SizedBox(height: 10),
-            pw.Row(
-              children: [
-                pw.Expanded(child: _buildPdfStatItem('Opérateur', session.operator)),
-                pw.Expanded(child: _buildPdfStatItem('Sexe', session.sex ?? 'Tout')),
-                pw.Expanded(child: pw.SizedBox()),
-                pw.Expanded(child: pw.SizedBox()),
-              ],
-            ),
-            pw.SizedBox(height: 30),
+            pw.SizedBox(height: 14),
 
             // Weights Table
             pw.Text('DÉTAIL DES PESÉES ACTUELLES (${session.weights.length} sujets)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
@@ -195,32 +184,47 @@ class ExportService {
               children: [
                 pw.Container(width: 10, height: 10, color: PdfColors.red),
                 pw.SizedBox(width: 8),
-                pw.Text('Note : Les cases sur fond rouge indiquent les sujets non homogènes (hors de l\'intervalle PM +/- 10%)', 
+                pw.Text('Note : Les cases sur fond rouge indiquent les sujets non homogènes (hors de l\'intervalle PM +/- 10%)',
                   style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700, fontStyle: pw.FontStyle.italic)),
               ],
             ),
 
-            pw.SizedBox(height: 30),
+            pw.SizedBox(height: 14),
 
             // Charts Section
-            pw.Text('ÉVOLUTION DES PERFORMANCES', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+            pw.Text('ÉVOLUTION DES PERFORMANCES', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
             pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 15),
+            pw.SizedBox(height: 8),
 
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Poids vs Standards (g)', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Homogénéité & Poids Moyen (par semaine)', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                    pw.Row(
+                      children: [
+                        _legendDot(PdfColors.orange),
+                        pw.SizedBox(width: 3),
+                        pw.Text('Homogénéité (%) - gauche', style: const pw.TextStyle(fontSize: 8)),
+                        pw.SizedBox(width: 10),
+                        _legendDot(PdfColors.indigo),
+                        pw.SizedBox(width: 3),
+                        pw.Text('Poids moyen réel (g) - droite', style: const pw.TextStyle(fontSize: 8)),
+                        pw.SizedBox(width: 10),
+                        _legendDot(PdfColors.green700),
+                        pw.SizedBox(width: 3),
+                        pw.Text('Poids moyen standard (g) - droite', style: const pw.TextStyle(fontSize: 8)),
+                      ],
+                    ),
+                  ],
+                ),
                 pw.SizedBox(height: 5),
-                pw.Container(width: double.infinity, child: _buildWeightEvolutionChart(standards, history)),
-                pw.SizedBox(height: 25),
-                pw.Text('Homogénéité (%)', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 5),
-                pw.Container(width: double.infinity, child: _buildHomogeneityEvolutionChart(homogeneityHistory)),
+                pw.Container(width: double.infinity, child: _buildHomogeneityWeightChart(homogeneityHistory, standards)),
               ],
             ),
             pw.SizedBox(height: 30),
-
 
           ];
         },
@@ -230,74 +234,128 @@ class ExportService {
     await Printing.sharePdf(bytes: await pdf.save(), filename: 'Rapport_${session.farmName}_Lot_${session.lotNumber ?? "NA"}.pdf');
   }
 
-  static pw.Widget _buildWeightEvolutionChart(List<WeightStandard> standards, List<WeightHistoryEntry> history) {
-    if (standards.isEmpty && history.isEmpty) return pw.SizedBox(height: 100, child: pw.Center(child: pw.Text('Pas de données')));
-
-    return pw.Container(
-      height: 150,
-      child: pw.Chart(
-        grid: pw.CartesianGrid(
-          xAxis: pw.FixedAxis(List.generate(10, (i) => i.toDouble() * 5), format: (v) => 'S${v.toInt()}'),
-          yAxis: pw.FixedAxis([0, 1000, 2000, 3000, 4000, 5000], format: (v) => '${v.toInt()}'),
-        ),
-        datasets: [
-          if (standards.isNotEmpty)
-            pw.LineDataSet(
-              color: PdfColors.green100,
-              isCurved: true,
-              drawSurface: true,
-              surfaceColor: PdfColors.green50,
-              data: standards.map((s) => pw.PointChartValue(s.week.toDouble(), s.maxWeight)).toList(),
-            ),
-          if (history.isNotEmpty)
-            pw.LineDataSet(
-              color: PdfColors.indigo,
-              isCurved: true,
-              drawPoints: true,
-              pointSize: 2,
-              data: history.map((e) => pw.PointChartValue(e.week.toDouble(), e.averageWeight)).toList(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _buildHomogeneityEvolutionChart(List<dynamic> history) {
+  /// Homogénéité (%), poids moyen réel (g) et poids moyen standard (g) sur un même
+  /// graphique, en abscisse les semaines. Le package `pdf` ne supporte qu'un seul système
+  /// d'axes par graphique : l'homogénéité (échelle réelle 0-100%) sert d'axe gauche natif,
+  /// et les deux courbes de poids sont projetées sur cette même échelle 0-100 pour être
+  /// tracées sur la grille ; l'axe droit n'est qu'un habillage visuel affichant les vraies
+  /// valeurs de poids aux mêmes hauteurs.
+  static pw.Widget _buildHomogeneityWeightChart(List<dynamic> history, List<WeightStandard> standards) {
     if (history.isEmpty) return pw.SizedBox(height: 100, child: pw.Center(child: pw.Text('Pas de données')));
 
-    // Limit to last 10 weighings for readability on X axis
-    final recentHistory = history.length > 10 ? history.sublist(history.length - 10) : history;
+    // Une seule entrée par semaine (l'âge est déjà exprimé en semaines côté backend)
+    final Map<int, dynamic> byWeek = {};
+    for (final h in history) {
+      if (h['age'] == null) continue;
+      byWeek[(h['age'] as num).toInt()] = h;
+    }
+    final entries = byWeek.values.toList()..sort((a, b) => (a['age'] as num).compareTo(b['age'] as num));
+
+    if (entries.isEmpty) return pw.SizedBox(height: 100, child: pw.Center(child: pw.Text('Pas de données')));
+
+    final weeksInt = entries.map((e) => (e['age'] as num).toInt()).toList();
+    final weeks = weeksInt.map((w) => w.toDouble()).toList();
+
+    // Norme standard correspondant à chaque semaine observée (première entrée du CSV pour cette semaine)
+    final Map<int, double> standardByWeek = {};
+    for (final w in weeksInt) {
+      for (final s in standards) {
+        if (s.week == w) {
+          standardByWeek[w] = s.weight;
+          break;
+        }
+      }
+    }
+
+    final weightValues = entries.map((e) => (e['avgWeight'] as num?)?.toDouble()).whereType<double>().toList();
+    final allWeightValues = [...weightValues, ...standardByWeek.values];
+    final double minWeight = allWeightValues.isEmpty ? 0 : allWeightValues.reduce((a, b) => a < b ? a : b);
+    final double maxWeight = allWeightValues.isEmpty ? 1 : allWeightValues.reduce((a, b) => a > b ? a : b);
+    final double weightSpan = (maxWeight - minWeight).abs() < 0.001 ? 1 : (maxWeight - minWeight);
+
+    double projectWeight(double w) => ((w - minWeight) / weightSpan) * 100;
+
+    const homogeneityTicks = [0.0, 20.0, 40.0, 60.0, 80.0, 100.0];
+
+    // Texte des axes réduit et espacement resserré pour que toutes les semaines,
+    // depuis la première pesée du lot, restent lisibles sur une largeur A4 portrait.
+    const axisTextStyle = pw.TextStyle(fontSize: 6, color: PdfColors.grey800);
 
     return pw.Container(
-      height: 150,
+      height: 180,
       child: pw.Chart(
         grid: pw.CartesianGrid(
           xAxis: pw.FixedAxis(
-            List.generate(recentHistory.length, (i) => i.toDouble()),
-            format: (v) {
-              int index = v.toInt();
-              if (index >= 0 && index < recentHistory.length) {
-                final dateStr = recentHistory[index]['date'];
-                return DateFormat('dd/MM').format(DateTime.parse(dateStr));
-              }
-              return '';
-            },
+            weeks,
+            format: (v) => 'S${v.toInt()}',
+            textStyle: axisTextStyle,
+            margin: 4,
+            divisions: true,
+            divisionsColor: PdfColors.grey300,
           ),
-          yAxis: pw.FixedAxis([0, 20, 40, 60, 80, 100], format: (v) => '${v.toInt()}%'),
+          yAxis: pw.FixedAxis(
+            homogeneityTicks,
+            format: (v) => '${v.toInt()}%',
+            textStyle: axisTextStyle,
+            margin: 4,
+            divisions: true,
+            divisionsColor: PdfColors.grey300,
+          ),
+        ),
+        right: pw.Padding(
+          padding: const pw.EdgeInsets.only(left: 4),
+          child: pw.Column(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: homogeneityTicks.reversed.map((t) {
+              final w = minWeight + (t / 100) * weightSpan;
+              return pw.Text('${w.toStringAsFixed(0)}g', style: pw.TextStyle(fontSize: 6, color: PdfColors.indigo));
+            }).toList(),
+          ),
         ),
         datasets: [
           pw.LineDataSet(
             color: PdfColors.orange,
             isCurved: true,
             drawPoints: true,
-            pointSize: 2,
-            data: List.generate(recentHistory.length, (i) {
-              final h = (recentHistory[i]['homogeneity'] as num).toDouble();
-              return pw.PointChartValue(i.toDouble(), h);
-            }), 
+            pointSize: 1.5,
+            data: entries.map((e) {
+              final week = (e['age'] as num).toDouble();
+              final homo = (e['homogeneity'] as num?)?.toDouble() ?? 0;
+              return pw.PointChartValue(week, homo);
+            }).toList(),
           ),
+          pw.LineDataSet(
+            color: PdfColors.indigo,
+            isCurved: true,
+            drawPoints: true,
+            pointSize: 1.5,
+            data: entries.where((e) => e['avgWeight'] != null).map((e) {
+              final week = (e['age'] as num).toDouble();
+              final w = (e['avgWeight'] as num).toDouble();
+              return pw.PointChartValue(week, projectWeight(w));
+            }).toList(),
+          ),
+          if (standardByWeek.isNotEmpty)
+            pw.LineDataSet(
+              color: PdfColors.green700,
+              isCurved: true,
+              drawPoints: true,
+              pointSize: 1.5,
+              data: weeksInt.where((w) => standardByWeek.containsKey(w)).map((w) {
+                return pw.PointChartValue(w.toDouble(), projectWeight(standardByWeek[w]!));
+              }).toList(),
+            ),
         ],
       ),
+    );
+  }
+
+  static pw.Widget _legendDot(PdfColor color) {
+    return pw.Container(
+      width: 6,
+      height: 6,
+      decoration: pw.BoxDecoration(color: color, shape: pw.BoxShape.circle),
     );
   }
 
@@ -361,8 +419,8 @@ class ExportService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(label, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
-        pw.Text(value, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: color ?? PdfColors.indigo700)),
+        pw.Text(label, style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700)),
+        pw.Text(value, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: color ?? PdfColors.indigo700)),
       ],
     );
   }
