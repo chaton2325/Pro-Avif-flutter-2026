@@ -13,6 +13,7 @@ import 'new_weighing_screen.dart';
 import 'weight_entry_screen.dart';
 import 'pending_sessions_screen.dart';
 import 'user_history_screen.dart';
+import 'weekly_report_screen.dart';
 
 class UserDashboard extends StatefulWidget {
   final User user;
@@ -240,18 +241,39 @@ class _UserDashboardState extends State<UserDashboard> {
           Row(
             children: [
               _buildQuickAction(
-                Icons.add_circle_outline, 
-                'Nouvelle Pesée', 
+                Icons.add_circle_outline,
+                'Nouvelle Pesée',
                 Colors.blue,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NewWeighingScreen(user: widget.user))).then((_) => _checkPendingSessions()),
               ),
               const SizedBox(width: 16),
               _buildQuickAction(
-                Icons.history_rounded, 
-                'Historique', 
+                Icons.history_rounded,
+                'Historique',
                 Colors.green,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserHistoryScreen(user: widget.user))),
               ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _buildQuickAction(
+                Icons.summarize_rounded,
+                'Rapport Hebdo',
+                Colors.purple,
+                onTap: () {
+                  if (_assignedFarm == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Aucun bâtiment assigné à ce compte.')),
+                    );
+                    return;
+                  }
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => WeeklyReportScreen(fixedFarm: _assignedFarm)));
+                },
+              ),
+              const SizedBox(width: 16),
+              const Spacer(),
             ],
           ),
           const SizedBox(height: 120),

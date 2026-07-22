@@ -7,6 +7,7 @@ import '../models/lot.dart';
 import '../models/weighing_session.dart';
 import '../models/weight_standard.dart';
 import '../models/weight_history_entry.dart';
+import '../models/weekly_report.dart';
 import './session_storage.dart';
 
 class MongoService {
@@ -597,6 +598,35 @@ class MongoService {
       print("Erreur getWeightEvolution: $e");
     }
     return [];
+  }
+
+  // Rapport hebdomadaire (WhatsApp) : regroupement par salle/sexe, calculs faits côté backend
+  Future<WeeklyReport?> getWeeklyReport({
+    required String farmName,
+    required String lotNumber,
+    int? week,
+  }) async {
+    try {
+      final queryParams = {
+        'farmName': farmName,
+        'lotNumber': lotNumber,
+        if (week != null) 'week': week.toString(),
+      };
+      final uri = Uri.parse('$baseUrl/weighings/reports/weekly-summary').replace(queryParameters: queryParams);
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic> && data.containsKey('error')) {
+          throw Exception(data['error']);
+        }
+        return WeeklyReport.fromJson(data);
+      }
+    } catch (e) {
+      print("Erreur getWeeklyReport: $e");
+      rethrow;
+    }
+    return null;
   }
 
   void logout() {
