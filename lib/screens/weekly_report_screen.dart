@@ -31,7 +31,8 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
   String? _error;
   WeeklyReport? _report;
 
-  // TEMPORAIRE (test) : permet de choisir la semaine au lieu de toujours prendre l'actuelle. À enlever après.
+  // Semaine affichée : priorité à la semaine actuelle (détectée automatiquement au premier
+  // chargement), mais modifiable ensuite via le sélecteur.
   int? _selectedWeek;
 
   final Map<int, TextEditingController> _effectifControllers = {};
@@ -119,11 +120,9 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     }
   }
 
-  // TEMPORAIRE (test) : change la semaine affichée et régénère le rapport. À enlever après.
   void _changeWeek(int delta) {
-    final current = _selectedWeek ?? _report?.week;
-    if (current == null) return;
-    setState(() => _selectedWeek = current + delta);
+    if (_selectedWeek == null) return;
+    setState(() => _selectedWeek = _selectedWeek! + delta);
     _generateReport();
   }
 
@@ -205,6 +204,10 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildSelectionCard(),
+                  if (_selectedWeek != null) ...[
+                    const SizedBox(height: 16),
+                    _buildWeekStepperCard(),
+                  ],
                   const SizedBox(height: 16),
                   if (_isFetchingReport) const Center(child: CircularProgressIndicator(color: Colors.orange)),
                   if (_error != null)
@@ -234,7 +237,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
               value: _selectedFarm,
               decoration: const InputDecoration(labelText: 'Bâtiment', border: OutlineInputBorder()),
               items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name))).toList(),
-              onChanged: (val) => setState(() { _selectedFarm = val; _report = null; }),
+              onChanged: (val) => setState(() { _selectedFarm = val; _report = null; _selectedWeek = null; _error = null; }),
             ),
             const SizedBox(height: 12),
           ],
@@ -242,7 +245,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
             value: _selectedLot,
             decoration: const InputDecoration(labelText: 'Lot', border: OutlineInputBorder()),
             items: _lots.map((l) => DropdownMenuItem(value: l, child: Text(l.number))).toList(),
-            onChanged: (val) => setState(() { _selectedLot = val; _report = null; }),
+            onChanged: (val) => setState(() { _selectedLot = val; _report = null; _selectedWeek = null; _error = null; }),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -258,42 +261,49 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     );
   }
 
-  List<Widget> _buildReportPreview(WeeklyReport report) {
-    return [
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // TEMPORAIRE (test) : sélecteur de semaine. À enlever après.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Semaine', style: TextStyle(fontWeight: FontWeight.bold)),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: _isFetchingReport ? null : () => _changeWeek(-1),
-                    ),
-                    Text('${report.week}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: _isFetchingReport ? null : () => _changeWeek(1),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            Text('${DateFormat('dd/MM/yyyy').format(report.dateStart)} au ${DateFormat('dd/MM/yyyy').format(report.dateEnd)}',
+  /// Indépendant du succès/échec de la dernière génération : reste affiché et utilisable
+  /// (flèches) même si la semaine sélectionnée n'a aucune pesée, pour pouvoir y revenir.
+  Widget _buildWeekStepperCard() {
+    final week = _selectedWeek;
+    if (week == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Semaine', style: TextStyle(fontWeight: FontWeight.bold)),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: _isFetchingReport ? null : () => _changeWeek(-1),
+                  ),
+                  Text('$week', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _isFetchingReport ? null : () => _changeWeek(1),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (_report != null) ...[
+            Text('${DateFormat('dd/MM/yyyy').format(_report!.dateStart)} au ${DateFormat('dd/MM/yyyy').format(_report!.dateEnd)}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
             const SizedBox(height: 4),
-            Text('${report.farmName} · Lot ${report.lotNumber}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+            Text('${_report!.farmName} · Lot ${_report!.lotNumber}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
           ],
-        ),
+        ],
       ),
-      const SizedBox(height: 12),
+    );
+  }
+
+  List<Widget> _buildReportPreview(WeeklyReport report) {
+    return [
       for (int i = 0; i < report.groups.length; i++) _buildGroupCard(i, report.groups[i]),
       const SizedBox(height: 8),
       SizedBox(
