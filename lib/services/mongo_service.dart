@@ -10,6 +10,13 @@ import '../models/weight_history_entry.dart';
 import '../models/weekly_report.dart';
 import './session_storage.dart';
 
+class LicenseBlockedException implements Exception {
+  final String reason;
+  LicenseBlockedException(this.reason);
+  @override
+  String toString() => reason;
+}
+
 class MongoService {
   static final MongoService _instance = MongoService._internal();
   final String baseUrl = "https://proavif.mirhosty.com";
@@ -54,15 +61,34 @@ class MongoService {
         final data = jsonDecode(response.body);
         currentUser = User.fromMap(data);
         return currentUser;
+      } else if (response.statusCode == 403) {
+        final data = jsonDecode(response.body);
+        throw LicenseBlockedException(data['detail'] ?? "Application bloquée par l'administrateur.");
       } else if (response.statusCode == 401) {
         throw Exception("Identifiants incorrects ou compte désactivé.");
       } else {
         throw Exception("Erreur lors de la connexion: ${response.statusCode}");
       }
+    } on LicenseBlockedException {
+      rethrow;
     } catch (e) {
       print("Erreur login: $e");
       rethrow;
     }
+  }
+
+  /// Consulte le statut de licence global de l'application (bloqué/actif, raison, expiration).
+  /// En cas d'erreur réseau, retourne "non bloqué" pour ne pas empêcher l'usage hors-ligne.
+  Future<Map<String, dynamic>> getLicenseStatus() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/license/status')).timeout(const Duration(seconds: 6));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print("Erreur getLicenseStatus: $e");
+    }
+    return {"is_blocked": false};
   }
 
   // Users CRUD

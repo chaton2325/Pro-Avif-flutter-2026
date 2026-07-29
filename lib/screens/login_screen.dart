@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/mongo_service.dart';
 import 'admin_dashboard.dart';
+import 'blocked_screen.dart';
 import 'user_dashboard.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -72,6 +73,13 @@ class _LoginScreenState extends State<LoginScreen> {
           const SnackBar(content: Text('Identifiants incorrects')),
         );
       }
+    } on LicenseBlockedException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => BlockedScreen(reason: e.reason)),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);

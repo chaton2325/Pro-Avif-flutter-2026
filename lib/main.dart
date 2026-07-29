@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/mongo_service.dart';
 import 'services/sync_service.dart';
-import 'screens/login_screen.dart';
+import 'screens/splash_gate_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,7 +52,7 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: LoginScreen(),
+      home: const SplashGateScreen(),
     );
   }
 }
