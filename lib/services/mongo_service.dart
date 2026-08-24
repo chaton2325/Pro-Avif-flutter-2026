@@ -19,7 +19,7 @@ class LicenseBlockedException implements Exception {
 
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "https://proavif.mirhosty.com";
+  final String baseUrl = "https://backendproavifeletana.mirhosty.com";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
