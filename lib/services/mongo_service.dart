@@ -8,6 +8,16 @@ import '../models/weighing_session.dart';
 import '../models/weight_standard.dart';
 import '../models/weight_history_entry.dart';
 import '../models/weekly_report.dart';
+import '../models/usine.dart';
+import '../models/usine_user.dart';
+import '../models/poste.dart';
+import '../models/poste_assignment.dart';
+import '../models/raw_material.dart';
+import '../models/formula.dart';
+import '../models/reception.dart';
+import '../models/raw_material_batch.dart';
+import '../models/stock_loss.dart';
+import '../models/cost_adjustment.dart';
 import './session_storage.dart';
 
 class LicenseBlockedException implements Exception {
@@ -19,7 +29,9 @@ class LicenseBlockedException implements Exception {
 
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "https://backendproavifeletana.mirhosty.com";
+  // TEMPORAIRE (test Partie 0 Usine Aliment) : backend local, remettre l'URL de
+  // production ("https://backendproavifeletana.mirhosty.com") avant tout build/déploiement.
+  final String baseUrl = "http://192.168.0.117:8010";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -256,6 +268,350 @@ class MongoService {
 
   Future<void> deleteLot(String id) async {
     await http.delete(Uri.parse('$baseUrl/lots/$id'));
+  }
+
+  // ---- Usine Aliment : Usines CRUD ----
+  Future<List<Usine>> getUsines() async {
+    final response = await http.get(Uri.parse('$baseUrl/usines'));
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((u) => Usine.fromMap(u)).toList();
+    }
+    return [];
+  }
+
+  Future<void> addUsine(Usine usine) async {
+    await http.post(
+      Uri.parse('$baseUrl/usines'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(usine.toMap()),
+    );
+  }
+
+  Future<void> updateUsine(Usine usine) async {
+    if (usine.id == null) return;
+    await http.put(
+      Uri.parse('$baseUrl/usines/${usine.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(usine.toMap()),
+    );
+  }
+
+  Future<void> deleteUsine(String id) async {
+    await http.delete(Uri.parse('$baseUrl/usines/$id'));
+  }
+
+  // ---- Usine Aliment : Utilisateurs usine CRUD (distincts des users de ferme) ----
+  Future<List<UsineUser>> getUsineUsers() async {
+    final response = await http.get(Uri.parse('$baseUrl/usine-users'));
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((u) => UsineUser.fromMap(u)).toList();
+    }
+    return [];
+  }
+
+  /// Renvoie l'utilisateur créé (avec son id) pour permettre une affectation immédiate.
+  Future<UsineUser?> addUsineUser(UsineUser user) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/usine-users'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(user.toMap()),
+    );
+    if (response.statusCode == 201) {
+      return UsineUser.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<void> updateUsineUser(UsineUser user) async {
+    if (user.id == null) return;
+    await http.put(
+      Uri.parse('$baseUrl/usine-users/${user.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(user.toMap()),
+    );
+  }
+
+  Future<void> deleteUsineUser(String id) async {
+    await http.delete(Uri.parse('$baseUrl/usine-users/$id'));
+  }
+
+  // ---- Usine Aliment : Postes CRUD ----
+  Future<List<Poste>> getPostes() async {
+    final response = await http.get(Uri.parse('$baseUrl/postes'));
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((p) => Poste.fromMap(p)).toList();
+    }
+    return [];
+  }
+
+  Future<void> addPoste(Poste poste) async {
+    await http.post(
+      Uri.parse('$baseUrl/postes'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(poste.toMap()),
+    );
+  }
+
+  Future<void> updatePoste(Poste poste) async {
+    if (poste.id == null) return;
+    await http.put(
+      Uri.parse('$baseUrl/postes/${poste.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(poste.toMap()),
+    );
+  }
+
+  Future<void> deletePoste(String id) async {
+    await http.delete(Uri.parse('$baseUrl/postes/$id'));
+  }
+
+  // ---- Usine Aliment : Affectations poste <-> utilisateur <-> usine ----
+  Future<List<PosteAssignment>> getPosteAssignments({String? userId, String? usineId}) async {
+    final queryParams = <String, String>{};
+    if (userId != null) queryParams['userId'] = userId;
+    if (usineId != null) queryParams['usineId'] = usineId;
+    final uri = Uri.parse('$baseUrl/poste-assignments').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((a) => PosteAssignment.fromMap(a)).toList();
+    }
+    return [];
+  }
+
+  Future<void> addPosteAssignment(PosteAssignment assignment) async {
+    await http.post(
+      Uri.parse('$baseUrl/poste-assignments'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(assignment.toMap()),
+    );
+  }
+
+  Future<void> deletePosteAssignment(String id) async {
+    await http.delete(Uri.parse('$baseUrl/poste-assignments/$id'));
+  }
+
+  // ---- Usine Aliment : Matières premières CRUD (référentiel par usine) ----
+  Future<List<RawMaterial>> getRawMaterials(String usineId) async {
+    final uri = Uri.parse('$baseUrl/raw-materials').replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((m) => RawMaterial.fromMap(m)).toList();
+    }
+    return [];
+  }
+
+  Future<void> addRawMaterial(RawMaterial material) async {
+    await http.post(
+      Uri.parse('$baseUrl/raw-materials'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(material.toMap()),
+    );
+  }
+
+  Future<void> updateRawMaterial(RawMaterial material) async {
+    if (material.id == null) return;
+    await http.put(
+      Uri.parse('$baseUrl/raw-materials/${material.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(material.toMap()),
+    );
+  }
+
+  Future<void> deleteRawMaterial(String id) async {
+    await http.delete(Uri.parse('$baseUrl/raw-materials/$id'));
+  }
+
+  // ---- Usine Aliment : Formules CRUD (référentiel par usine) ----
+  Future<List<Formula>> getFormulas(String usineId) async {
+    final uri = Uri.parse('$baseUrl/formulas').replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((f) => Formula.fromMap(f)).toList();
+    }
+    return [];
+  }
+
+  Future<void> addFormula(Formula formula) async {
+    await http.post(
+      Uri.parse('$baseUrl/formulas'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(formula.toMap()),
+    );
+  }
+
+  Future<void> updateFormula(Formula formula) async {
+    if (formula.id == null) return;
+    await http.put(
+      Uri.parse('$baseUrl/formulas/${formula.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(formula.toMap()),
+    );
+  }
+
+  Future<void> deleteFormula(String id) async {
+    await http.delete(Uri.parse('$baseUrl/formulas/$id'));
+  }
+
+  // ---- Usine Aliment : Réceptions (approvisionnement) ----
+  Future<List<Reception>> getReceptions({String? usineId, String? status, String? rawMaterialId}) async {
+    final queryParams = <String, String>{};
+    if (usineId != null) queryParams['usineId'] = usineId;
+    if (status != null) queryParams['status'] = status;
+    if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
+    final uri = Uri.parse('$baseUrl/receptions').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((r) => Reception.fromMap(r)).toList();
+    }
+    return [];
+  }
+
+  Future<void> addReception(Reception reception) async {
+    await http.post(
+      Uri.parse('$baseUrl/receptions'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(reception.toCreateMap()),
+    );
+  }
+
+  /// Renvoie un message d'erreur (côté serveur) si la valorisation échoue, sinon null.
+  Future<String?> valorizeReception(String id, double unitPrice) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/receptions/$id/valorize'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'unitPrice': unitPrice}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  // ---- Usine Aliment : Lots de matières premières (« par lot ») ----
+  Future<List<RawMaterialBatch>> getRawMaterialBatches({String? usineId, String? rawMaterialId, String? status}) async {
+    final queryParams = <String, String>{};
+    if (usineId != null) queryParams['usineId'] = usineId;
+    if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
+    if (status != null) queryParams['status'] = status;
+    final uri = Uri.parse('$baseUrl/raw-material-batches').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((b) => RawMaterialBatch.fromMap(b)).toList();
+    }
+    return [];
+  }
+
+  Future<String?> closeRawMaterialBatch(String id, double countedQuantity, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/raw-material-batches/$id/close'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'countedQuantity': countedQuantity, 'reason': reason}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  // ---- Usine Aliment : Pertes / avaries (matières « globales ») ----
+  Future<List<StockLoss>> getStockLosses({String? usineId, String? rawMaterialId}) async {
+    final queryParams = <String, String>{};
+    if (usineId != null) queryParams['usineId'] = usineId;
+    if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
+    final uri = Uri.parse('$baseUrl/stock-losses').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((l) => StockLoss.fromMap(l)).toList();
+    }
+    return [];
+  }
+
+  Future<String?> declareStockLoss(StockLoss loss) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/stock-losses'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(loss.toCreateMap()),
+    );
+    if (response.statusCode == 201) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  // ---- Usine Aliment : Ajustement manuel du CUMP (matières « globales ») ----
+  Future<List<CostAdjustment>> getCostAdjustments({String? usineId, String? rawMaterialId}) async {
+    final queryParams = <String, String>{};
+    if (usineId != null) queryParams['usineId'] = usineId;
+    if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
+    final uri = Uri.parse('$baseUrl/cost-adjustments').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((a) => CostAdjustment.fromMap(a)).toList();
+    }
+    return [];
+  }
+
+  Future<String?> adjustRawMaterialCost(String rawMaterialId, double newCost, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/cost-adjustments/$rawMaterialId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'newCost': newCost, 'reason': reason}),
+    );
+    if (response.statusCode == 201) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  // ---- Usine Aliment : Inventaire ----
+  /// [counts] : {rawMaterialId: quantité comptée}. Renvoie la liste des écarts appliqués.
+  Future<List<Map<String, dynamic>>> applyInventory(String usineId, Map<String, double> counts, {String? comment}) async {
+    final body = {
+      'usineId': usineId,
+      'counts': counts.entries.map((e) => {'rawMaterialId': e.key, 'countedQuantity': e.value}).toList(),
+      'comment': comment,
+    };
+    final response = await http.post(
+      Uri.parse('$baseUrl/inventory/apply'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Fusion (OR logique) des permissions de tous les postes d'un utilisateur pour une
+  /// usine donnée (ou globalement si [usineId] est nul). Utile pour piloter l'affichage
+  /// (masquage des coûts...) une fois connecté.
+  Future<PostePermissions> getEffectivePermissions(String userId, {String? usineId}) async {
+    final queryParams = usineId != null ? {'usineId': usineId} : null;
+    final uri = Uri.parse('$baseUrl/poste-assignments/effective-permissions/$userId').replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return PostePermissions.fromMap(jsonDecode(response.body));
+    }
+    return const PostePermissions();
   }
 
   // Weighing Sessions
