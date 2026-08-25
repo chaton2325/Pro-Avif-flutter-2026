@@ -34,6 +34,10 @@ class Delivery {
   final double totalCost;
   final DateTime createdAt;
   final String? performedBy;
+  final String status; // "confirmee" | "annulee"
+  final DateTime? cancelledAt;
+  final String? cancelledBy;
+  final String? cancelReason;
 
   Delivery({
     required this.id,
@@ -51,9 +55,14 @@ class Delivery {
     required this.totalCost,
     required this.createdAt,
     this.performedBy,
+    this.status = 'confirmee',
+    this.cancelledAt,
+    this.cancelledBy,
+    this.cancelReason,
   });
 
   String get lotsLabel => batchesUsed.map((b) => b.lotNumber).join('+');
+  bool get isCancelled => status == 'annulee';
 
   factory Delivery.fromMap(Map<String, dynamic> map) {
     return Delivery(
@@ -74,6 +83,12 @@ class Delivery {
       totalCost: (map['totalCost'] as num?)?.toDouble() ?? 0,
       createdAt: DateTime.parse(map['createdAt'] as String),
       performedBy: map['performedBy'] as String?,
+      status: map['status'] as String? ?? 'confirmee',
+      cancelledAt: map['cancelledAt'] != null
+          ? DateTime.tryParse(map['cancelledAt'].toString())
+          : null,
+      cancelledBy: map['cancelledBy'] as String?,
+      cancelReason: map['cancelReason'] as String?,
     );
   }
 }

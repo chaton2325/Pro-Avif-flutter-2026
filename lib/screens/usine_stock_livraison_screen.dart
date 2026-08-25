@@ -666,6 +666,187 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     );
   }
 
+  /// Détail d'une livraison + action d'annulation : la quantité prélevée revient sur les
+  /// lots d'aliment d'où elle venait (jamais un simple retrait de l'historique — la
+  /// livraison reste visible, marquée « annulée » avec son motif).
+  void _showDeliveryDetailDialog(Delivery d) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '${d.farmName} — ${d.roomName}',
+          style: const TextStyle(
+            color: Colors.orange,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (d.isCancelled)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Annulée${d.cancelledAt != null ? " le ${DateFormat('dd/MM/yyyy').format(d.cancelledAt!)}" : ""}'
+                      '${d.cancelledBy != null ? " par ${d.cancelledBy}" : ""} : ${d.cancelReason ?? ""}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.red.shade800,
+                      ),
+                    ),
+                  ),
+                _detailRow(
+                  'Date',
+                  DateFormat('dd/MM/yyyy · HH:mm').format(d.createdAt),
+                ),
+                _detailRow(
+                  'Aliment',
+                  '${d.formulaName} · ${d.quantity.toStringAsFixed(0)} kg',
+                ),
+                _detailRow('Lot(s) d\'aliment', d.lotsLabel),
+                if (d.lotNumberSujets != null)
+                  _detailRow('Lot de sujets', d.lotNumberSujets!),
+                if (d.driverName != null)
+                  _detailRow('Chauffeur', d.driverName!),
+                if (d.vehicle != null) _detailRow('Véhicule', d.vehicle!),
+                if (_perms.seeCosts)
+                  _detailRow('Coût', '${d.totalCost.toStringAsFixed(0)} F'),
+                if (d.performedBy != null)
+                  _detailRow('Enregistrée par', d.performedBy!),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer', style: TextStyle(color: Colors.grey)),
+          ),
+          if (!d.isCancelled && _perms.manageDelivery)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _showCancelDeliveryDialog(d);
+              },
+              child: const Text(
+                'Annuler la livraison',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCancelDeliveryDialog(Delivery d) {
+    final reasonController = TextEditingController();
+    String? error;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Annuler la livraison',
+            style: TextStyle(
+              color: Colors.redAccent,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${d.quantity.toStringAsFixed(0)} kg de ${d.formulaName} reviendront en stock (lots ${d.lotsLabel}).',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                decoration: InputDecoration(
+                  labelText: 'Motif',
+                  errorText: error,
+                ),
+                autofocus: true,
+                maxLines: 2,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Retour', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
+              onPressed: () async {
+                if (reasonController.text.trim().isEmpty) {
+                  setDialogState(() => error = 'Motif requis');
+                  return;
+                }
+                final err = await _mongoService.cancelDelivery(
+                  d.id,
+                  reasonController.text.trim(),
+                );
+                if (err != null) {
+                  setDialogState(() => error = err);
+                  return;
+                }
+                await _refreshAll();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _snack('Livraison annulée, stock reversé.');
+              },
+              child: const Text('Confirmer l\'annulation'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHistoryTab() {
     final page = _deliveryPage;
     final totalPages = page == null || page.totalCount == 0
@@ -721,34 +902,81 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         border: Border.all(color: Colors.grey.shade100),
                       ),
                       child: ListTile(
+                        onTap: () => _showDeliveryDetailDialog(d),
                         leading: CircleAvatar(
-                          backgroundColor: Colors.teal.withValues(alpha: 0.1),
-                          child: const Icon(
-                            Icons.local_shipping_outlined,
-                            color: Colors.teal,
+                          backgroundColor:
+                              (d.isCancelled ? Colors.grey : Colors.teal)
+                                  .withValues(alpha: 0.1),
+                          child: Icon(
+                            d.isCancelled
+                                ? Icons.undo_rounded
+                                : Icons.local_shipping_outlined,
+                            color: d.isCancelled ? Colors.grey : Colors.teal,
                             size: 20,
                           ),
                         ),
                         title: Text(
                           '${DateFormat('dd/MM/yyyy').format(d.createdAt)} · ${d.farmName} — ${d.roomName}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 13,
+                            color: d.isCancelled ? Colors.grey : Colors.black,
+                            decoration: d.isCancelled
+                                ? TextDecoration.lineThrough
+                                : null,
                           ),
                         ),
                         subtitle: Text(
-                          '${d.lotNumberSujets != null ? "Lot ${d.lotNumberSujets} (sujets) · " : ""}'
-                          '${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}'
-                          '${d.driverName != null ? " · " : ""}aliment ${d.lotsLabel}'
-                          '${_perms.seeCosts ? " · ${d.totalCost.toStringAsFixed(0)} F" : ""}',
+                          d.isCancelled
+                              ? 'Annulée : ${d.cancelReason ?? ""}'
+                              : '${d.lotNumberSujets != null ? "Lot ${d.lotNumberSujets} (sujets) · " : ""}'
+                                    '${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}'
+                                    '${d.driverName != null ? " · " : ""}aliment ${d.lotsLabel}'
+                                    '${_perms.seeCosts ? " · ${d.totalCost.toStringAsFixed(0)} F" : ""}',
                           style: TextStyle(
-                            color: Colors.grey.shade600,
+                            color: d.isCancelled
+                                ? Colors.red.shade300
+                                : Colors.grey.shade600,
                             fontSize: 11.5,
                           ),
                         ),
-                        trailing: Text(
-                          '${d.quantity.toStringAsFixed(0)} kg',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${d.quantity.toStringAsFixed(0)} kg',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: d.isCancelled
+                                    ? Colors.grey
+                                    : Colors.black,
+                                decoration: d.isCancelled
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
+                            if (d.isCancelled)
+                              Container(
+                                margin: const EdgeInsets.only(top: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  'ANNULÉE',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.red.shade700,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     );

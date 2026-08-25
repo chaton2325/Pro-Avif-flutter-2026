@@ -36,7 +36,7 @@ class MongoService {
   static final MongoService _instance = MongoService._internal();
   // TEMPORAIRE (test Partie 0 Usine Aliment) : backend local, remettre l'URL de
   // production ("https://backendproavifeletana.mirhosty.com") avant tout build/déploiement.
-  final String baseUrl = "http://192.168.0.117:8010";
+  final String baseUrl = "http://192.168.1.187:8010";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -1100,6 +1100,23 @@ class MongoService {
       limit: limit,
       skip: skip,
     );
+  }
+
+  /// Annule une livraison confirmée : le stock d'aliment prélevé revient sur les lots
+  /// d'où il venait (jamais un simple retrait de l'historique).
+  Future<String?> cancelDelivery(String id, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/deliveries/$id/cancel'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'reason': reason, 'performedBy': _performedBy}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
   }
 
   // ---- Usine Aliment : Statistiques & traçabilité ----
