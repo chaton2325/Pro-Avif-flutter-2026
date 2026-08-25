@@ -1,3 +1,18 @@
+/// Accès complet à tout — utilisé quand un écran usine est ouvert depuis le chemin
+/// admin/test (usine_admin_screen), qui n'a pas de session utilisateur usine connectée
+/// et doit donc tout voir, exactement comme avant l'introduction du cloisonnement.
+const PostePermissions fullAccessPermissions = PostePermissions(
+  seeCosts: true,
+  manageReception: true,
+  setPrice: true,
+  adjustCost: true,
+  manageProduction: true,
+  validateCost: true,
+  manageDelivery: true,
+  manageAdmin: true,
+  viewStats: true,
+);
+
 /// Ce qu'un poste autorise dans le module Usine Aliment. Le nom du poste est libre
 /// (choisi par l'admin, ex. "Magasinier de l'usine", "Caissier") ; ce sont ces
 /// booléens qui pilotent l'accès aux écrans et le masquage des coûts, pas le nom.
@@ -38,16 +53,26 @@ class PostePermissions {
 
   bool operator [](String key) {
     switch (key) {
-      case 'seeCosts': return seeCosts;
-      case 'manageReception': return manageReception;
-      case 'setPrice': return setPrice;
-      case 'adjustCost': return adjustCost;
-      case 'manageProduction': return manageProduction;
-      case 'validateCost': return validateCost;
-      case 'manageDelivery': return manageDelivery;
-      case 'manageAdmin': return manageAdmin;
-      case 'viewStats': return viewStats;
-      default: return false;
+      case 'seeCosts':
+        return seeCosts;
+      case 'manageReception':
+        return manageReception;
+      case 'setPrice':
+        return setPrice;
+      case 'adjustCost':
+        return adjustCost;
+      case 'manageProduction':
+        return manageProduction;
+      case 'validateCost':
+        return validateCost;
+      case 'manageDelivery':
+        return manageDelivery;
+      case 'manageAdmin':
+        return manageAdmin;
+      case 'viewStats':
+        return viewStats;
+      default:
+        return false;
     }
   }
 
@@ -106,11 +131,29 @@ class PosteTemplate {
 }
 
 const List<PosteTemplate> posteTemplates = [
-  PosteTemplate("Magasinier de l'usine", PostePermissions(manageReception: true)),
-  PosteTemplate('Responsable de production', PostePermissions(manageProduction: true)),
-  PosteTemplate('Comptable / Caissier', PostePermissions(seeCosts: true, setPrice: true, adjustCost: true, validateCost: true, viewStats: true)),
+  PosteTemplate(
+    "Magasinier de l'usine",
+    PostePermissions(manageReception: true),
+  ),
+  PosteTemplate(
+    'Responsable de production',
+    PostePermissions(manageProduction: true),
+  ),
+  PosteTemplate(
+    'Comptable / Caissier',
+    PostePermissions(
+      seeCosts: true,
+      setPrice: true,
+      adjustCost: true,
+      validateCost: true,
+      viewStats: true,
+    ),
+  ),
   PosteTemplate('Logistique', PostePermissions(manageDelivery: true)),
-  PosteTemplate('Administrateur usine', PostePermissions(manageAdmin: true, viewStats: true)),
+  PosteTemplate(
+    'Administrateur usine',
+    PostePermissions(manageAdmin: true, viewStats: true),
+  ),
   PosteTemplate('Direction', PostePermissions(seeCosts: true, viewStats: true)),
 ];
 
@@ -139,7 +182,9 @@ class Poste {
     return Poste(
       id: map['_id'] as String?,
       name: map['name'] as String,
-      permissions: PostePermissions.fromMap(map['permissions'] as Map<String, dynamic>?),
+      permissions: PostePermissions.fromMap(
+        map['permissions'] as Map<String, dynamic>?,
+      ),
       isActive: map['isActive'] as bool? ?? true,
     );
   }

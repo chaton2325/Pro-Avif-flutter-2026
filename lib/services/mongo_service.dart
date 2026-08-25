@@ -47,13 +47,16 @@ class MongoService {
 
   Future<void> connect() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/users')).timeout(const Duration(seconds: 5));
+      final response = await http
+          .get(Uri.parse('$baseUrl/users'))
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         _isConnected = true;
         connectionError = null;
       } else {
         _isConnected = false;
-        connectionError = "Serveur répond avec le statut: ${response.statusCode}";
+        connectionError =
+            "Serveur répond avec le statut: ${response.statusCode}";
       }
     } catch (e) {
       _isConnected = false;
@@ -76,7 +79,9 @@ class MongoService {
         return currentUser;
       } else if (response.statusCode == 403) {
         final data = jsonDecode(response.body);
-        throw LicenseBlockedException(data['detail'] ?? "Application bloquée par l'administrateur.");
+        throw LicenseBlockedException(
+          data['detail'] ?? "Application bloquée par l'administrateur.",
+        );
       } else if (response.statusCode == 401) {
         throw Exception("Identifiants incorrects ou compte désactivé.");
       } else {
@@ -94,7 +99,9 @@ class MongoService {
   /// En cas d'erreur réseau, retourne "non bloqué" pour ne pas empêcher l'usage hors-ligne.
   Future<Map<String, dynamic>> getLicenseStatus() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/license/status')).timeout(const Duration(seconds: 6));
+      final response = await http
+          .get(Uri.parse('$baseUrl/license/status'))
+          .timeout(const Duration(seconds: 6));
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -146,12 +153,19 @@ class MongoService {
     await updateUser(updatedUser);
   }
 
-  Future<void> changePassword(String userId, String userName, String newPassword) async {
+  Future<void> changePassword(
+    String userId,
+    String userName,
+    String newPassword,
+  ) async {
     // Note: The backend PUT /users/{id} can handle password change
     final response = await http.get(Uri.parse('$baseUrl/users'));
     if (response.statusCode == 200) {
       final List<dynamic> users = jsonDecode(response.body);
-      final userData = users.firstWhere((u) => u['_id'] == userId, orElse: () => null);
+      final userData = users.firstWhere(
+        (u) => u['_id'] == userId,
+        orElse: () => null,
+      );
       if (userData != null) {
         userData['password'] = newPassword;
         await http.put(
@@ -163,11 +177,18 @@ class MongoService {
     }
   }
 
-  Future<void> updateUserPreferences(String userId, String language, int precision) async {
+  Future<void> updateUserPreferences(
+    String userId,
+    String language,
+    int precision,
+  ) async {
     final response = await http.get(Uri.parse('$baseUrl/users'));
     if (response.statusCode == 200) {
       final List<dynamic> users = jsonDecode(response.body);
-      final userData = users.firstWhere((u) => u['_id'] == userId, orElse: () => null);
+      final userData = users.firstWhere(
+        (u) => u['_id'] == userId,
+        orElse: () => null,
+      );
       if (userData != null) {
         userData['language'] = language;
         userData['scalePrecision'] = precision;
@@ -176,7 +197,7 @@ class MongoService {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(userData),
         );
-        
+
         if (currentUser?.id == userId) {
           currentUser = User.fromMap(userData);
         }
@@ -207,7 +228,7 @@ class MongoService {
     } catch (e) {
       print("Erreur getFarmById: $e");
     }
-    
+
     // Fallback: search in list if endpoint fails
     final farms = await getFarms();
     try {
@@ -328,7 +349,9 @@ class MongoService {
       return accountType;
     } else if (response.statusCode == 403) {
       final data = jsonDecode(response.body);
-      throw LicenseBlockedException(data['detail'] ?? "Application bloquée par l'administrateur.");
+      throw LicenseBlockedException(
+        data['detail'] ?? "Application bloquée par l'administrateur.",
+      );
     }
     return null;
   }
@@ -405,11 +428,16 @@ class MongoService {
   }
 
   // ---- Usine Aliment : Affectations poste <-> utilisateur <-> usine ----
-  Future<List<PosteAssignment>> getPosteAssignments({String? userId, String? usineId}) async {
+  Future<List<PosteAssignment>> getPosteAssignments({
+    String? userId,
+    String? usineId,
+  }) async {
     final queryParams = <String, String>{};
     if (userId != null) queryParams['userId'] = userId;
     if (usineId != null) queryParams['usineId'] = usineId;
-    final uri = Uri.parse('$baseUrl/poste-assignments').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final uri = Uri.parse(
+      '$baseUrl/poste-assignments',
+    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -432,7 +460,9 @@ class MongoService {
 
   // ---- Usine Aliment : Matières premières CRUD (référentiel par usine) ----
   Future<List<RawMaterial>> getRawMaterials(String usineId) async {
-    final uri = Uri.parse('$baseUrl/raw-materials').replace(queryParameters: {'usineId': usineId});
+    final uri = Uri.parse(
+      '$baseUrl/raw-materials',
+    ).replace(queryParameters: {'usineId': usineId});
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -464,7 +494,9 @@ class MongoService {
 
   // ---- Usine Aliment : Formules CRUD (référentiel par usine) ----
   Future<List<Formula>> getFormulas(String usineId) async {
-    final uri = Uri.parse('$baseUrl/formulas').replace(queryParameters: {'usineId': usineId});
+    final uri = Uri.parse(
+      '$baseUrl/formulas',
+    ).replace(queryParameters: {'usineId': usineId});
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -495,12 +527,18 @@ class MongoService {
   }
 
   // ---- Usine Aliment : Réceptions (approvisionnement) ----
-  Future<List<Reception>> getReceptions({String? usineId, String? status, String? rawMaterialId}) async {
+  Future<List<Reception>> getReceptions({
+    String? usineId,
+    String? status,
+    String? rawMaterialId,
+  }) async {
     final queryParams = <String, String>{};
     if (usineId != null) queryParams['usineId'] = usineId;
     if (status != null) queryParams['status'] = status;
     if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
-    final uri = Uri.parse('$baseUrl/receptions').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final uri = Uri.parse(
+      '$baseUrl/receptions',
+    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -526,19 +564,26 @@ class MongoService {
     );
     if (response.statusCode == 200) return null;
     try {
-      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
     } catch (_) {
       return 'Erreur inconnue';
     }
   }
 
   // ---- Usine Aliment : Lots de matières premières (« par lot ») ----
-  Future<List<RawMaterialBatch>> getRawMaterialBatches({String? usineId, String? rawMaterialId, String? status}) async {
+  Future<List<RawMaterialBatch>> getRawMaterialBatches({
+    String? usineId,
+    String? rawMaterialId,
+    String? status,
+  }) async {
     final queryParams = <String, String>{};
     if (usineId != null) queryParams['usineId'] = usineId;
     if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
     if (status != null) queryParams['status'] = status;
-    final uri = Uri.parse('$baseUrl/raw-material-batches').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final uri = Uri.parse(
+      '$baseUrl/raw-material-batches',
+    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -547,7 +592,11 @@ class MongoService {
     return [];
   }
 
-  Future<String?> closeRawMaterialBatch(String id, double countedQuantity, String reason) async {
+  Future<String?> closeRawMaterialBatch(
+    String id,
+    double countedQuantity,
+    String reason,
+  ) async {
     final response = await http.post(
       Uri.parse('$baseUrl/raw-material-batches/$id/close'),
       headers: {'Content-Type': 'application/json'},
@@ -555,18 +604,24 @@ class MongoService {
     );
     if (response.statusCode == 200) return null;
     try {
-      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
     } catch (_) {
       return 'Erreur inconnue';
     }
   }
 
   // ---- Usine Aliment : Pertes / avaries (matières « globales ») ----
-  Future<List<StockLoss>> getStockLosses({String? usineId, String? rawMaterialId}) async {
+  Future<List<StockLoss>> getStockLosses({
+    String? usineId,
+    String? rawMaterialId,
+  }) async {
     final queryParams = <String, String>{};
     if (usineId != null) queryParams['usineId'] = usineId;
     if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
-    final uri = Uri.parse('$baseUrl/stock-losses').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final uri = Uri.parse(
+      '$baseUrl/stock-losses',
+    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -583,18 +638,24 @@ class MongoService {
     );
     if (response.statusCode == 201) return null;
     try {
-      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
     } catch (_) {
       return 'Erreur inconnue';
     }
   }
 
   // ---- Usine Aliment : Ajustement manuel du CUMP (matières « globales ») ----
-  Future<List<CostAdjustment>> getCostAdjustments({String? usineId, String? rawMaterialId}) async {
+  Future<List<CostAdjustment>> getCostAdjustments({
+    String? usineId,
+    String? rawMaterialId,
+  }) async {
     final queryParams = <String, String>{};
     if (usineId != null) queryParams['usineId'] = usineId;
     if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
-    final uri = Uri.parse('$baseUrl/cost-adjustments').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final uri = Uri.parse(
+      '$baseUrl/cost-adjustments',
+    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -603,7 +664,11 @@ class MongoService {
     return [];
   }
 
-  Future<String?> adjustRawMaterialCost(String rawMaterialId, double newCost, String reason) async {
+  Future<String?> adjustRawMaterialCost(
+    String rawMaterialId,
+    double newCost,
+    String reason,
+  ) async {
     final response = await http.post(
       Uri.parse('$baseUrl/cost-adjustments/$rawMaterialId'),
       headers: {'Content-Type': 'application/json'},
@@ -611,7 +676,8 @@ class MongoService {
     );
     if (response.statusCode == 201) return null;
     try {
-      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
     } catch (_) {
       return 'Erreur inconnue';
     }
@@ -619,10 +685,16 @@ class MongoService {
 
   // ---- Usine Aliment : Inventaire ----
   /// [counts] : {rawMaterialId: quantité comptée}. Renvoie la liste des écarts appliqués.
-  Future<List<Map<String, dynamic>>> applyInventory(String usineId, Map<String, double> counts, {String? comment}) async {
+  Future<List<Map<String, dynamic>>> applyInventory(
+    String usineId,
+    Map<String, double> counts, {
+    String? comment,
+  }) async {
     final body = {
       'usineId': usineId,
-      'counts': counts.entries.map((e) => {'rawMaterialId': e.key, 'countedQuantity': e.value}).toList(),
+      'counts': counts.entries
+          .map((e) => {'rawMaterialId': e.key, 'countedQuantity': e.value})
+          .toList(),
       'comment': comment,
     };
     final response = await http.post(
@@ -637,12 +709,36 @@ class MongoService {
     return [];
   }
 
+  /// Historique des inventaires réalisés — y compris ceux sans le moindre écart, pour
+  /// que "un inventaire a été fait le XX/XX" reste toujours traçable.
+  Future<List<Map<String, dynamic>>> getInventorySessions(
+    String usineId,
+  ) async {
+    final uri = Uri.parse(
+      '$baseUrl/inventory/sessions',
+    ).replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
   // ---- Usine Aliment : Production & coût de revient ----
-  Future<ProductionCheckResult> checkProduction(String usineId, String formulaId, double quantityTarget) async {
+  Future<ProductionCheckResult> checkProduction(
+    String usineId,
+    String formulaId,
+    double quantityTarget,
+  ) async {
     final response = await http.post(
       Uri.parse('$baseUrl/production/check'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'usineId': usineId, 'formulaId': formulaId, 'quantityTarget': quantityTarget}),
+      body: jsonEncode({
+        'usineId': usineId,
+        'formulaId': formulaId,
+        'quantityTarget': quantityTarget,
+      }),
     );
     if (response.statusCode == 200) {
       return ProductionCheckResult.fromMap(jsonDecode(response.body));
@@ -669,20 +765,33 @@ class MongoService {
       }),
     );
     if (response.statusCode == 201) {
-      return (batch: ProductionBatch.fromMap(jsonDecode(response.body)), error: null);
+      return (
+        batch: ProductionBatch.fromMap(jsonDecode(response.body)),
+        error: null,
+      );
     }
     try {
-      return (batch: null, error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue');
+      return (
+        batch: null,
+        error:
+            jsonDecode(response.body)['detail']?.toString() ??
+            'Erreur inconnue',
+      );
     } catch (_) {
       return (batch: null, error: 'Erreur inconnue');
     }
   }
 
-  Future<List<ProductionBatch>> getProductionBatches({String? usineId, String? status}) async {
+  Future<List<ProductionBatch>> getProductionBatches({
+    String? usineId,
+    String? status,
+  }) async {
     final queryParams = <String, String>{};
     if (usineId != null) queryParams['usineId'] = usineId;
     if (status != null) queryParams['status'] = status;
-    final uri = Uri.parse('$baseUrl/production').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final uri = Uri.parse(
+      '$baseUrl/production',
+    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -691,15 +800,23 @@ class MongoService {
     return [];
   }
 
-  Future<String?> validateProduction(String id, {double adjustment = 0, String? adjustmentReason}) async {
+  Future<String?> validateProduction(
+    String id, {
+    double adjustment = 0,
+    String? adjustmentReason,
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/production/$id/validate'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'adjustment': adjustment, 'adjustmentReason': adjustmentReason}),
+      body: jsonEncode({
+        'adjustment': adjustment,
+        'adjustmentReason': adjustmentReason,
+      }),
     );
     if (response.statusCode == 200) return null;
     try {
-      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
     } catch (_) {
       return 'Erreur inconnue';
     }
@@ -708,9 +825,14 @@ class MongoService {
   /// Fusion (OR logique) des permissions de tous les postes d'un utilisateur pour une
   /// usine donnée (ou globalement si [usineId] est nul). Utile pour piloter l'affichage
   /// (masquage des coûts...) une fois connecté.
-  Future<PostePermissions> getEffectivePermissions(String userId, {String? usineId}) async {
+  Future<PostePermissions> getEffectivePermissions(
+    String userId, {
+    String? usineId,
+  }) async {
     final queryParams = usineId != null ? {'usineId': usineId} : null;
-    final uri = Uri.parse('$baseUrl/poste-assignments/effective-permissions/$userId').replace(queryParameters: queryParams);
+    final uri = Uri.parse(
+      '$baseUrl/poste-assignments/effective-permissions/$userId',
+    ).replace(queryParameters: queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       return PostePermissions.fromMap(jsonDecode(response.body));
@@ -723,12 +845,14 @@ class MongoService {
     try {
       final payload = jsonEncode(session.toMap());
       print("Sending WeighingSession payload: $payload");
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/weighings'),
-        headers: {'Content-Type': 'application/json'},
-        body: payload,
-      ).timeout(const Duration(seconds: 5));
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/weighings'),
+            headers: {'Content-Type': 'application/json'},
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception("Serveur erreur: ${response.statusCode}");
@@ -771,7 +895,9 @@ class MongoService {
         'lotId': lotId,
         'age': age.toString(),
       };
-      final uri = Uri.parse('$baseUrl/weighings/check-duplicate').replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$baseUrl/weighings/check-duplicate',
+      ).replace(queryParameters: queryParams);
       final response = await http.get(uri).timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -784,7 +910,9 @@ class MongoService {
 
   Future<Map<String, dynamic>> getStatsSummary() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/weighings/stats/summary'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/weighings/stats/summary'),
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -844,9 +972,11 @@ class MongoService {
         if (endDate != null) 'endDate': endDate.toIso8601String(),
       };
 
-      final uri = Uri.parse('$baseUrl/weighings/all').replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$baseUrl/weighings/all',
+      ).replace(queryParameters: queryParams);
       final response = await http.get(uri);
-      
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -869,18 +999,22 @@ class MongoService {
         'sex': sex,
         if (lotNumber != null) 'lotNumber': lotNumber,
       };
-      final uri = Uri.parse('$baseUrl/weighings/analysis/latest').replace(queryParameters: queryParams);
-      
+      final uri = Uri.parse(
+        '$baseUrl/weighings/analysis/latest',
+      ).replace(queryParameters: queryParams);
+
       print("🔍 API CALL (Latest): $uri");
-      
+
       final response = await http.get(uri);
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print("✅ API RESPONSE (Latest): ${data.keys}");
         return data;
       } else {
-        print("❌ API ERROR (Latest): ${response.statusCode} - ${response.body}");
+        print(
+          "❌ API ERROR (Latest): ${response.statusCode} - ${response.body}",
+        );
       }
     } catch (e) {
       print("Erreur getLatestAnalysis: $e");
@@ -903,18 +1037,22 @@ class MongoService {
         if (lotNumber != null) 'lotNumber': lotNumber,
         if (sex != null) 'sex': sex,
       };
-      final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
-      
+      final uri = Uri.parse(
+        '$baseUrl/weighings/analysis/homogeneity',
+      ).replace(queryParameters: queryParams);
+
       print("🔍 API CALL (Homogeneity): $uri");
-      
+
       final response = await http.get(uri);
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print("✅ API RESPONSE (Homogeneity): ${data.keys}");
         return data;
       } else {
-        print("❌ API ERROR (Homogeneity): ${response.statusCode} - ${response.body}");
+        print(
+          "❌ API ERROR (Homogeneity): ${response.statusCode} - ${response.body}",
+        );
       }
     } catch (e) {
       print("Erreur getHomogeneityAnalysis: $e");
@@ -924,9 +1062,11 @@ class MongoService {
 
   Future<Map<String, dynamic>> getClusteringAnalysis(String farmName) async {
     try {
-      final uri = Uri.parse('$baseUrl/weighings/analysis/clustering').replace(queryParameters: {'farmName': farmName});
+      final uri = Uri.parse(
+        '$baseUrl/weighings/analysis/clustering',
+      ).replace(queryParameters: {'farmName': farmName});
       final response = await http.get(uri);
-      
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -936,34 +1076,41 @@ class MongoService {
     return {};
   }
 
-  Future<List<dynamic>> getRoomHomogeneityHistory(String farmName, String roomName, String sex, {String? lotNumber}) async {
+  Future<List<dynamic>> getRoomHomogeneityHistory(
+    String farmName,
+    String roomName,
+    String sex, {
+    String? lotNumber,
+  }) async {
     try {
-      final queryParams = { 
+      final queryParams = {
         'farmName': farmName,
         'roomName': roomName,
         'sex': sex,
         if (lotNumber != null) 'lotNumber': lotNumber,
       };
-      final uri = Uri.parse('$baseUrl/weighings/analysis/homogeneity').replace(queryParameters: queryParams);
-      
+      final uri = Uri.parse(
+        '$baseUrl/weighings/analysis/homogeneity',
+      ).replace(queryParameters: queryParams);
+
       print("🔍 API CALL (History): $uri");
-      
+
       final response = await http.get(uri);
-      
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         print("✅ API RESPONSE (History): ${data.keys}");
-        
+
         // Format: "Room - Sex (Lot: Number)"
         String keyWithLot = '$roomName - $sex (Lot: $lotNumber)';
         String keySimple = '$roomName - $sex';
-        
+
         if (data.containsKey(keyWithLot)) {
           return List<dynamic>.from(data[keyWithLot]);
         } else if (data.containsKey(keySimple)) {
           return List<dynamic>.from(data[keySimple]);
         }
-        
+
         // Fallback: search for any key containing the room and sex
         for (var k in data.keys) {
           if (k.contains(roomName) && k.contains(sex)) {
@@ -973,7 +1120,9 @@ class MongoService {
           }
         }
       } else {
-        print("❌ API ERROR (History): ${response.statusCode} - ${response.body}");
+        print(
+          "❌ API ERROR (History): ${response.statusCode} - ${response.body}",
+        );
       }
     } catch (e) {
       print("Erreur getRoomHomogeneityHistory: $e");
@@ -981,15 +1130,20 @@ class MongoService {
     return [];
   }
 
-  Future<Map<String, dynamic>> getPredictiveClustering(String weighingId, {String? sex}) async {
+  Future<Map<String, dynamic>> getPredictiveClustering(
+    String weighingId, {
+    String? sex,
+  }) async {
     try {
       final queryParams = {
         'weighingId': weighingId,
         if (sex != null) 'sex': sex,
       };
-      final uri = Uri.parse('$baseUrl/weighings/predict/clustering').replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$baseUrl/weighings/predict/clustering',
+      ).replace(queryParameters: queryParams);
       final response = await http.get(uri);
-      
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -1016,9 +1170,11 @@ class MongoService {
         'lotNumber': lotNumber,
         'clusterId': clusterId.toString(),
       };
-      final uri = Uri.parse('$baseUrl/weighings/predict/simulate-move').replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$baseUrl/weighings/predict/simulate-move',
+      ).replace(queryParameters: queryParams);
       final response = await http.post(uri);
-      
+
       return jsonDecode(response.body);
     } catch (e) {
       print("Erreur simulateMove: $e");
@@ -1039,12 +1195,13 @@ class MongoService {
   // Weight Standards
   Future<List<WeightStandard>> getWeightStandards(String sex) async {
     try {
-      final endpoint = sex.toLowerCase() == 'mâle' || sex.toLowerCase() == 'male'
+      final endpoint =
+          sex.toLowerCase() == 'mâle' || sex.toLowerCase() == 'male'
           ? '/standards/weight-evolution/male'
           : '/standards/weight-evolution/female';
-      
+
       final response = await http.get(Uri.parse('$baseUrl$endpoint'));
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((s) => WeightStandard.fromJson(s)).toList();
@@ -1069,10 +1226,12 @@ class MongoService {
         'sex': sex,
         if (lotNumber != null) 'lotNumber': lotNumber,
       };
-      final uri = Uri.parse('$baseUrl/weighings/analysis/weight-evolution').replace(queryParameters: queryParams);
-      
+      final uri = Uri.parse(
+        '$baseUrl/weighings/analysis/weight-evolution',
+      ).replace(queryParameters: queryParams);
+
       final response = await http.get(uri);
-      
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         if (data.containsKey('history')) {
@@ -1098,7 +1257,9 @@ class MongoService {
         'lotNumber': lotNumber,
         if (week != null) 'week': week.toString(),
       };
-      final uri = Uri.parse('$baseUrl/weighings/reports/weekly-summary').replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$baseUrl/weighings/reports/weekly-summary',
+      ).replace(queryParameters: queryParams);
       final response = await http.get(uri);
 
       if (response.statusCode == 200) {
@@ -1118,7 +1279,7 @@ class MongoService {
   void logout() {
     currentUser = null;
   }
-  
+
   Future<void> close() async {
     // Nothing to close for http
   }
