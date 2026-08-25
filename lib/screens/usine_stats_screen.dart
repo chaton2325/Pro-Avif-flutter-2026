@@ -10,10 +10,19 @@ import '../models/usine_stats.dart';
 import '../services/mongo_service.dart';
 
 const Map<String, String> _journalTypeLabels = {
-  'receptions': 'Réceptions',
+  'referentiel': 'Référentiel',
+  'approvisionnement': 'Approvisionnement',
   'prix_cump': 'Prix / CUMP',
   'production': 'Production',
   'livraisons': 'Livraisons',
+  'logistique': 'Logistique',
+  'administration': 'Administration',
+};
+
+const Map<String, (String, Color, IconData)> _journalActionMeta = {
+  'CREATE': ('Création', Colors.green, Icons.add_circle_outline),
+  'UPDATE': ('Modification', Colors.blue, Icons.edit_outlined),
+  'DELETE': ('Suppression', Colors.red, Icons.delete_outline),
 };
 
 /// Parcours 05 — Statistiques & traçabilité (maquette écrans 31-36), condensé en un seul
@@ -55,6 +64,9 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
   AuditLogPagedResult? _journalPage;
   bool _journalLoading = true;
   String? _journalType;
+  String? _journalAction;
+  DateTimeRange? _journalDateRange;
+  final TextEditingController _journalUserController = TextEditingController();
   int _journalPageIndex = 0;
 
   late Timer _clockTimer;
@@ -77,6 +89,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
     _clockTimer.cancel();
     _tabController.dispose();
     _traceController.dispose();
+    _journalUserController.dispose();
     super.dispose();
   }
 
@@ -128,6 +141,12 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
     final page = await _mongoService.getUsineJournal(
       usineId: widget.usine.id!,
       type: _journalType,
+      action: _journalAction,
+      performedBy: _journalUserController.text.trim().isEmpty
+          ? null
+          : _journalUserController.text.trim(),
+      dateFrom: _journalDateRange?.start,
+      dateTo: _journalDateRange?.end,
       skip: _journalPageIndex * _journalPageSize,
       limit: _journalPageSize,
     );
@@ -144,6 +163,122 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
       _journalPageIndex = 0;
     });
     _loadJournalPage();
+  }
+
+  void _applyJournalAction(String? action) {
+    setState(() {
+      _journalAction = action;
+      _journalPageIndex = 0;
+    });
+    _loadJournalPage();
+  }
+
+  void _applyJournalUser() {
+    setState(() => _journalPageIndex = 0);
+    _loadJournalPage();
+  }
+
+  Future<void> _pickJournalDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 3),
+      lastDate: now,
+      initialDateRange: _journalDateRange,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: Colors.orange),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+    setState(() {
+      _journalDateRange = picked;
+      _journalPageIndex = 0;
+    });
+    _loadJournalPage();
+  }
+
+  void _clearJournalDateRange() {
+    setState(() {
+      _journalDateRange = null;
+      _journalPageIndex = 0;
+    });
+    _loadJournalPage();
+  }
+
+  Widget _journalDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showJournalDetailDialog(AuditLogEntry e) {
+    final meta =
+        _journalActionMeta[e.action] ??
+        (e.action, Colors.grey, Icons.circle_outlined);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(meta.$3, color: meta.$2),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                meta.$1,
+                style: TextStyle(color: meta.$2, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _journalDetailRow('Utilisateur', e.userName),
+              _journalDetailRow(
+                'Date',
+                DateFormat('dd/MM/yyyy à HH:mm:ss').format(e.timestamp),
+              ),
+              const Divider(height: 24),
+              Text(e.details, style: const TextStyle(fontSize: 13.5)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _runTrace() async {
@@ -783,30 +918,99 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
     final totalPages = page == null || page.totalCount == 0
         ? 1
         : (page.totalCount / _journalPageSize).ceil();
+    final dateLabel = _journalDateRange == null
+        ? 'Toute la période'
+        : '${DateFormat('dd/MM/yy').format(_journalDateRange!.start)} - ${DateFormat('dd/MM/yy').format(_journalDateRange!.end)}';
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('Tous'),
-                  selected: _journalType == null,
-                  onSelected: (_) => _applyJournalFilter(null),
-                ),
-                const SizedBox(width: 8),
-                for (final entry in _journalTypeLabels.entries) ...[
-                  ChoiceChip(
-                    label: Text(entry.value),
-                    selected: _journalType == entry.key,
-                    onSelected: (_) => _applyJournalFilter(entry.key),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _journalUserController,
+                      decoration: InputDecoration(
+                        labelText: 'Rechercher un utilisateur',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.arrow_forward, size: 16),
+                          onPressed: _applyJournalUser,
+                        ),
+                      ),
+                      onSubmitted: (_) => _applyJournalUser(),
+                    ),
                   ),
                   const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _pickJournalDateRange,
+                    icon: const Icon(Icons.date_range_outlined, size: 16),
+                    label: Text(
+                      dateLabel,
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                  ),
+                  if (_journalDateRange != null)
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16),
+                      onPressed: _clearJournalDateRange,
+                    ),
                 ],
-              ],
-            ),
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Tous'),
+                      selected: _journalType == null,
+                      onSelected: (_) => _applyJournalFilter(null),
+                    ),
+                    const SizedBox(width: 8),
+                    for (final entry in _journalTypeLabels.entries) ...[
+                      ChoiceChip(
+                        label: Text(entry.value),
+                        selected: _journalType == entry.key,
+                        onSelected: (_) => _applyJournalFilter(entry.key),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Toute action'),
+                      selected: _journalAction == null,
+                      onSelected: (_) => _applyJournalAction(null),
+                      avatar: const Icon(Icons.all_inclusive, size: 14),
+                    ),
+                    const SizedBox(width: 8),
+                    for (final entry in _journalActionMeta.entries) ...[
+                      ChoiceChip(
+                        label: Text(entry.value.$1),
+                        selected: _journalAction == entry.key,
+                        onSelected: (_) => _applyJournalAction(entry.key),
+                        avatar: Icon(
+                          entry.value.$3,
+                          size: 14,
+                          color: entry.value.$2,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -826,6 +1030,9 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                   itemCount: page.data.length,
                   itemBuilder: (context, index) {
                     final e = page.data[index];
+                    final meta =
+                        _journalActionMeta[e.action] ??
+                        (e.action, Colors.grey, Icons.circle_outlined);
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       decoration: BoxDecoration(
@@ -835,14 +1042,11 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                       ),
                       child: ListTile(
                         dense: true,
+                        onTap: () => _showJournalDetailDialog(e),
                         leading: CircleAvatar(
-                          backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                          backgroundColor: meta.$2.withValues(alpha: 0.1),
                           radius: 16,
-                          child: const Icon(
-                            Icons.history,
-                            size: 16,
-                            color: Colors.orange,
-                          ),
+                          child: Icon(meta.$3, size: 16, color: meta.$2),
                         ),
                         title: Text.rich(
                           TextSpan(
@@ -860,6 +1064,8 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                               ),
                             ],
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: Text(
                           DateFormat('dd/MM/yyyy, HH:mm').format(e.timestamp),
@@ -867,6 +1073,11 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                             color: Colors.grey.shade500,
                             fontSize: 10.5,
                           ),
+                        ),
+                        trailing: const Icon(
+                          Icons.chevron_right,
+                          color: Colors.grey,
+                          size: 18,
                         ),
                       ),
                     );

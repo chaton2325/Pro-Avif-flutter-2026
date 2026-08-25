@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../models/usine.dart';
 import '../models/usine_user.dart';
 import '../models/poste.dart';
 import '../models/poste_assignment.dart';
+import '../models/usine_stats.dart';
 import '../services/mongo_service.dart';
 import 'usine_referentiel_screen.dart';
 import 'usine_appro_screen.dart';
@@ -21,6 +24,16 @@ import 'usine_stats_screen.dart';
 /// - Affectations : un utilisateur usine peut cumuler plusieurs postes, chacun sur une
 ///   usine précise (pas de portée "toutes les usines" — l'utilisateur ne voit que
 ///   l'interface de son/ses usine(s) affectée(s)).
+const Map<String, String> _adminJournalTypeLabels = {
+  'referentiel': 'Référentiel',
+  'approvisionnement': 'Approvisionnement',
+  'prix_cump': 'Prix / CUMP',
+  'production': 'Production',
+  'livraisons': 'Livraisons',
+  'logistique': 'Logistique',
+  'administration': 'Administration',
+};
+
 class UsineAdminScreen extends StatefulWidget {
   const UsineAdminScreen({super.key});
 
@@ -40,16 +53,48 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
   bool _isLoading = true;
   String? _error;
 
+  // Aperçu (toutes usines) : statistiques + graphique de chaque usine, pour que l'admin
+  // n'ait pas besoin d'entrer dans chaque usine une à une pour se faire une idée globale.
+  Map<String, DashboardStats> _usineDashboards = {};
+  bool _dashboardsLoading = true;
+
+  // Journal (toutes usines) : tous les filtres possibles — usine, catégorie, action,
+  // utilisateur, période — pour un logiciel de gestion où il doit être possible de
+  // retrouver n'importe quelle écriture, pas seulement de tout parcourir en scrollant.
+  static const int _journalPageSize = 20;
+  AuditLogPagedResult? _journalPage;
+  bool _journalLoading = true;
+  String? _journalType;
+  String? _journalAction;
+  String? _journalUsineId; // null = toutes les usines
+  DateTimeRange? _journalDateRange; // null = toute période
+  final TextEditingController _journalUserController = TextEditingController();
+  int _journalPageIndex = 0;
+
+  // Aperçu : filtre par usine (null = toutes, cartes résumées) ; une usine précise charge
+  // en plus budgets & tendances (pertes) pour cette usine, sans les demander pour toutes
+  // les usines à chaque rafraîchissement.
+  String? _apercuUsineId;
+  BudgetsStats? _apercuBudgets;
+  TrendsStats? _apercuTrends;
+  bool _apercuDetailLoading = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
+    // Le bouton + n'a de sens que sur les onglets de gestion (pas Aperçu / Journal, qui ne
+    // sont que de la lecture) : il faut donc reconstruire le Scaffold au changement d'onglet.
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _refreshData();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _journalUserController.dispose();
     super.dispose();
   }
 
@@ -71,6 +116,7 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
         _usineUsers = usineUsers;
         _isLoading = false;
       });
+      await Future.wait([_loadDashboards(), _loadJournalPage()]);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -78,6 +124,863 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadDashboards() async {
+    setState(() => _dashboardsLoading = true);
+    final entries = await Future.wait(
+      _usines.where((u) => u.id != null).map((u) async {
+        final stats = await _mongoService.getUsineDashboard(u.id!);
+        return MapEntry(u.id!, stats);
+      }),
+    );
+    if (!mounted) return;
+    setState(() {
+      _usineDashboards = {
+        for (final e in entries)
+          if (e.value != null) e.key: e.value!,
+      };
+      _dashboardsLoading = false;
+    });
+  }
+
+  Future<void> _loadJournalPage() async {
+    setState(() => _journalLoading = true);
+    final page = await _mongoService.getUsineJournal(
+      usineId: _journalUsineId,
+      type: _journalType,
+      action: _journalAction,
+      performedBy: _journalUserController.text.trim().isEmpty
+          ? null
+          : _journalUserController.text.trim(),
+      dateFrom: _journalDateRange?.start,
+      dateTo: _journalDateRange?.end,
+      skip: _journalPageIndex * _journalPageSize,
+      limit: _journalPageSize,
+    );
+    if (!mounted) return;
+    setState(() {
+      _journalPage = page;
+      _journalLoading = false;
+    });
+  }
+
+  void _applyJournalFilter(String? type) {
+    setState(() {
+      _journalType = type;
+      _journalPageIndex = 0;
+    });
+    _loadJournalPage();
+  }
+
+  void _applyJournalAction(String? action) {
+    setState(() {
+      _journalAction = action;
+      _journalPageIndex = 0;
+    });
+    _loadJournalPage();
+  }
+
+  void _applyJournalUsine(String? usineId) {
+    setState(() {
+      _journalUsineId = usineId;
+      _journalPageIndex = 0;
+    });
+    _loadJournalPage();
+  }
+
+  void _applyJournalUser() {
+    setState(() => _journalPageIndex = 0);
+    _loadJournalPage();
+  }
+
+  Future<void> _pickJournalDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 3),
+      lastDate: now,
+      initialDateRange: _journalDateRange,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: Colors.orange),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+    setState(() {
+      _journalDateRange = picked;
+      _journalPageIndex = 0;
+    });
+    _loadJournalPage();
+  }
+
+  void _clearJournalDateRange() {
+    setState(() {
+      _journalDateRange = null;
+      _journalPageIndex = 0;
+    });
+    _loadJournalPage();
+  }
+
+  Future<void> _applyApercuUsine(String? usineId) async {
+    setState(() {
+      _apercuUsineId = usineId;
+      _apercuBudgets = null;
+      _apercuTrends = null;
+    });
+    if (usineId == null) return;
+    setState(() => _apercuDetailLoading = true);
+    final results = await Future.wait([
+      _mongoService.getBudgets(usineId),
+      _mongoService.getTrends(usineId),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _apercuBudgets = results[0] as BudgetsStats?;
+      _apercuTrends = results[1] as TrendsStats?;
+      _apercuDetailLoading = false;
+    });
+  }
+
+  String _usineNameFor(String? usineId) {
+    if (usineId == null) return '—';
+    return _usines
+            .cast<Usine?>()
+            .firstWhere((u) => u?.id == usineId, orElse: () => null)
+            ?.name ??
+        'Usine supprimée';
+  }
+
+  // ----------------------------------------------------------------- Aperçu
+
+  Widget _buildMiniBarChart(List<MonthlyPoint> points, Color color) {
+    if (points.isEmpty || points.every((p) => p.value == 0)) {
+      return const SizedBox(
+        height: 90,
+        child: Center(
+          child: Text(
+            'Pas encore de données.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+        ),
+      );
+    }
+    final maxY = points.map((p) => p.value).reduce((a, b) => a > b ? a : b);
+    return SizedBox(
+      height: 120,
+      child: BarChart(
+        BarChartData(
+          maxY: maxY <= 0 ? 1 : maxY * 1.25,
+          gridData: const FlGridData(show: false),
+          borderData: FlBorderData(show: false),
+          titlesData: FlTitlesData(
+            leftTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (value, meta) {
+                  final i = value.toInt();
+                  if (i < 0 || i >= points.length) return const SizedBox();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      points[i].label,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          barGroups: [
+            for (int i = 0; i < points.length; i++)
+              BarChartGroupData(
+                x: i,
+                barRods: [
+                  BarChartRodData(
+                    toY: points[i].value,
+                    color: color,
+                    width: 14,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statMini(IconData icon, String value, String label) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: Colors.orange, size: 16),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              label,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 10.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Vue d'ensemble : statistiques + graphique de production de CHAQUE usine, sans avoir à
+  /// entrer dans chacune une par une — le tableau de bord de l'admin, pas celui d'une usine.
+  Widget _budgetStatusChip(String status) {
+    final (label, color) = switch (status) {
+      'depasse' => ('DÉPASSÉ', Colors.red),
+      'sans_budget' => ('SANS BUDGET', Colors.grey),
+      _ => ('OK', Colors.green),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
+  /// Détail budgets & tendances d'UNE usine (chargé à la demande, pas pour toutes les
+  /// usines à chaque fois) : ce que l'onglet Budgets d'une usine montre déjà, condensé ici
+  /// pour que l'admin n'ait pas besoin d'y entrer pour ces mêmes chiffres.
+  Widget _buildApercuDrilldown() {
+    if (_apercuDetailLoading) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 20),
+        child: Center(child: CircularProgressIndicator(color: Colors.orange)),
+      );
+    }
+    final budgets = _apercuBudgets;
+    final trends = _apercuTrends;
+    final valueFmt = NumberFormat.compact(locale: 'fr_FR');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        _sectionLabel('BUDGETS DU MOIS'),
+        const SizedBox(height: 10),
+        if (budgets == null || budgets.categories.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Aucun budget configuré pour cette usine.',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          )
+        else ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade100),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _statMini(
+                      Icons.account_balance_outlined,
+                      valueFmt.format(budgets.totalBudget),
+                      'Budget total',
+                    ),
+                    const SizedBox(width: 8),
+                    _statMini(
+                      Icons.shopping_cart_outlined,
+                      valueFmt.format(budgets.totalRealized),
+                      'Réalisé',
+                    ),
+                    const SizedBox(width: 8),
+                    _statMini(
+                      budgets.variancePercent > 0
+                          ? Icons.trending_up_rounded
+                          : Icons.trending_down_rounded,
+                      '${budgets.variancePercent.toStringAsFixed(0)}%',
+                      'Écart',
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+                for (final c in budgets.categories)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            c.category,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
+                        _budgetStatusChip(c.status),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${valueFmt.format(c.realizedFcfa)} / ${valueFmt.format(c.budgetFcfa)}',
+                          style: const TextStyle(fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        _sectionLabel('PERTES / AVARIES (6 MOIS)'),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade100),
+          ),
+          child: _buildMiniBarChart(
+            trends?.lossesTrend ?? [],
+            Colors.amber.shade700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: Colors.grey.shade500,
+        fontWeight: FontWeight.w800,
+        fontSize: 11,
+        letterSpacing: .5,
+      ),
+    );
+  }
+
+  Widget _buildApercuTab() {
+    if (_dashboardsLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.orange),
+      );
+    }
+    if (_usines.isEmpty) {
+      return const Center(
+        child: Text(
+          'Aucune usine configurée.',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+    final valueFmt = NumberFormat.compact(locale: 'fr_FR');
+    final visibleUsines = _apercuUsineId == null
+        ? _usines
+        : _usines.where((u) => u.id == _apercuUsineId).toList();
+    return RefreshIndicator(
+      onRefresh: _loadDashboards,
+      color: Colors.orange,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        children: [
+          DropdownButtonFormField<String?>(
+            isExpanded: true,
+            value: _apercuUsineId,
+            decoration: const InputDecoration(
+              labelText: 'Usine',
+              isDense: true,
+              prefixIcon: Icon(Icons.factory_outlined, size: 18),
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Toutes les usines'),
+              ),
+              ..._usines
+                  .where((u) => u.id != null)
+                  .map(
+                    (u) => DropdownMenuItem(value: u.id, child: Text(u.name)),
+                  ),
+            ],
+            onChanged: _applyApercuUsine,
+          ),
+          const SizedBox(height: 16),
+          for (final usine in visibleUsines) ...[
+            Builder(
+              builder: (context) {
+                final d = usine.id != null ? _usineDashboards[usine.id!] : null;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.shade100),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor:
+                                (usine.isActive ? Colors.orange : Colors.grey)
+                                    .withValues(alpha: 0.1),
+                            child: Icon(
+                              Icons.factory_rounded,
+                              color: usine.isActive
+                                  ? Colors.orange
+                                  : Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              usine.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (d == null)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 12),
+                          child: Text(
+                            'Aucune donnée pour cette usine.',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        )
+                      else ...[
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            _statMini(
+                              Icons.trending_up_rounded,
+                              '${d.productionThisMonthKg.toStringAsFixed(0)} kg',
+                              'Production',
+                            ),
+                            const SizedBox(width: 8),
+                            _statMini(
+                              Icons.payments_outlined,
+                              '${d.avgCostPerKg.toStringAsFixed(0)} F',
+                              'Coût moyen /kg',
+                            ),
+                            const SizedBox(width: 8),
+                            _statMini(
+                              Icons.account_balance_wallet_outlined,
+                              valueFmt.format(d.stockValueFcfa),
+                              'Valeur stock',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _buildMiniBarChart(d.monthlyProduction, Colors.orange),
+                      ],
+                      if (_apercuUsineId == usine.id) _buildApercuDrilldown(),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ----------------------------------------------------------------- Journal
+
+  static const Map<String, String> _collectionLabels = {
+    'raw_materials': 'Matières premières',
+    'formulas': 'Formules',
+    'receptions': 'Réceptions',
+    'raw_material_batches': 'Lots matières premières',
+    'cost_adjustments': 'Ajustements CUMP',
+    'stock_losses': 'Pertes / avaries',
+    'production_batches': 'Production',
+    'inventory_sessions': 'Inventaires',
+    'feed_stock_batches': 'Stock aliment produit',
+    'deliveries': 'Livraisons',
+    'usines': 'Usines',
+    'usine_users': 'Utilisateurs usine',
+    'postes': 'Postes',
+    'poste_assignments': 'Affectations',
+    'drivers': 'Chauffeurs',
+    'vehicles': 'Véhicules',
+  };
+
+  static const Map<String, (String, Color, IconData)> _actionMeta = {
+    'CREATE': ('Création', Colors.green, Icons.add_circle_outline),
+    'UPDATE': ('Modification', Colors.blue, Icons.edit_outlined),
+    'DELETE': ('Suppression', Colors.red, Icons.delete_outline),
+  };
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Détail d'une entrée du journal, ouvert au clic — la ligne de liste ne donne qu'un
+  /// résumé compact, tout le reste (usine, catégorie technique, horodatage précis) apparaît
+  /// ici plutôt que d'alourdir chaque ligne.
+  void _showJournalDetailDialog(AuditLogEntry e) {
+    final meta =
+        _actionMeta[e.action] ?? (e.action, Colors.grey, Icons.circle_outlined);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(meta.$3, color: meta.$2),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                meta.$1,
+                style: TextStyle(color: meta.$2, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _detailRow('Usine', _usineNameFor(e.usineId)),
+              _detailRow('Utilisateur', e.userName),
+              _detailRow(
+                'Catégorie',
+                _collectionLabels[e.collection] ?? e.collection,
+              ),
+              _detailRow(
+                'Date',
+                DateFormat('dd/MM/yyyy à HH:mm:ss').format(e.timestamp),
+              ),
+              const Divider(height: 24),
+              Text(e.details, style: const TextStyle(fontSize: 13.5)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Historique de TOUTES les usines confondues par défaut — filtrable par usine,
+  /// catégorie, action, utilisateur et période : un logiciel de gestion doit pouvoir
+  /// retrouver n'importe quelle écriture, pas seulement la parcourir en scrollant.
+  Widget _buildJournalTab() {
+    final page = _journalPage;
+    final totalPages = page == null || page.totalCount == 0
+        ? 1
+        : (page.totalCount / _journalPageSize).ceil();
+    final dateLabel = _journalDateRange == null
+        ? 'Toute la période'
+        : '${DateFormat('dd/MM/yy').format(_journalDateRange!.start)} - ${DateFormat('dd/MM/yy').format(_journalDateRange!.end)}';
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String?>(
+                      isExpanded: true,
+                      value: _journalUsineId,
+                      decoration: const InputDecoration(
+                        labelText: 'Usine',
+                        isDense: true,
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Toutes les usines'),
+                        ),
+                        ..._usines
+                            .where((u) => u.id != null)
+                            .map(
+                              (u) => DropdownMenuItem(
+                                value: u.id,
+                                child: Text(u.name),
+                              ),
+                            ),
+                      ],
+                      onChanged: _applyJournalUsine,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _pickJournalDateRange,
+                    icon: const Icon(Icons.date_range_outlined, size: 16),
+                    label: Text(
+                      dateLabel,
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                  ),
+                  if (_journalDateRange != null)
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16),
+                      onPressed: _clearJournalDateRange,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _journalUserController,
+                decoration: InputDecoration(
+                  labelText: 'Rechercher un utilisateur',
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.arrow_forward, size: 16),
+                    onPressed: _applyJournalUser,
+                  ),
+                ),
+                onSubmitted: (_) => _applyJournalUser(),
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Tous'),
+                      selected: _journalType == null,
+                      onSelected: (_) => _applyJournalFilter(null),
+                    ),
+                    const SizedBox(width: 8),
+                    for (final entry in _adminJournalTypeLabels.entries) ...[
+                      ChoiceChip(
+                        label: Text(entry.value),
+                        selected: _journalType == entry.key,
+                        onSelected: (_) => _applyJournalFilter(entry.key),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Toute action'),
+                      selected: _journalAction == null,
+                      onSelected: (_) => _applyJournalAction(null),
+                      avatar: const Icon(Icons.all_inclusive, size: 14),
+                    ),
+                    const SizedBox(width: 8),
+                    for (final entry in _actionMeta.entries) ...[
+                      ChoiceChip(
+                        label: Text(entry.value.$1),
+                        selected: _journalAction == entry.key,
+                        onSelected: (_) => _applyJournalAction(entry.key),
+                        avatar: Icon(
+                          entry.value.$3,
+                          size: 14,
+                          color: entry.value.$2,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _journalLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: Colors.orange),
+                )
+              : (page == null || page.data.isEmpty)
+              ? const Center(
+                  child: Text(
+                    'Aucune activité pour ce filtre.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  itemCount: page.data.length,
+                  itemBuilder: (context, index) {
+                    final e = page.data[index];
+                    final meta =
+                        _actionMeta[e.action] ??
+                        (e.action, Colors.grey, Icons.circle_outlined);
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.grey.shade100),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        onTap: () => _showJournalDetailDialog(e),
+                        leading: CircleAvatar(
+                          backgroundColor: meta.$2.withValues(alpha: 0.1),
+                          radius: 16,
+                          child: Icon(meta.$3, size: 16, color: meta.$2),
+                        ),
+                        title: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${_usineNameFor(e.usineId)} · ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12.5,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                              TextSpan(
+                                text: '${e.userName} ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              TextSpan(
+                                text: '— ${e.details}',
+                                style: const TextStyle(fontSize: 12.5),
+                              ),
+                            ],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          DateFormat('dd/MM/yyyy, HH:mm').format(e.timestamp),
+                          style: TextStyle(
+                            color: Colors.grey.shade500,
+                            fontSize: 10.5,
+                          ),
+                        ),
+                        trailing: const Icon(
+                          Icons.chevron_right,
+                          color: Colors.grey,
+                          size: 18,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        if (page != null && totalPages > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _journalPageIndex > 0
+                      ? () {
+                          setState(() => _journalPageIndex--);
+                          _loadJournalPage();
+                        }
+                      : null,
+                ),
+                Text(
+                  'Page ${_journalPageIndex + 1} / $totalPages',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _journalPageIndex < totalPages - 1
+                      ? () {
+                          setState(() => _journalPageIndex++);
+                          _loadJournalPage();
+                        }
+                      : null,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   // ---------------------------------------------------------------- Usines
@@ -1237,10 +2140,13 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           labelColor: Colors.orange,
           unselectedLabelColor: Colors.grey,
           indicatorColor: Colors.orange,
           tabs: const [
+            Tab(text: 'Aperçu'),
+            Tab(text: 'Journal'),
             Tab(text: 'Usines'),
             Tab(text: 'Postes'),
             Tab(text: 'Utilisateurs'),
@@ -1264,26 +2170,30 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
           : TabBarView(
               controller: _tabController,
               children: [
+                _buildApercuTab(),
+                _buildJournalTab(),
                 _buildUsinesTab(),
                 _buildPostesTab(),
                 _buildUsineUsersTab(),
                 _buildAssignmentsTab(),
               ],
             ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.orange,
-        onPressed: () {
-          if (_tabController.index == 0)
-            _showUsineDialog();
-          else if (_tabController.index == 1)
-            _showPosteDialog();
-          else if (_tabController.index == 2)
-            _showUsineUserDialog();
-          else
-            _showAssignmentDialog();
-        },
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      floatingActionButton: _tabController.index < 2
+          ? null
+          : FloatingActionButton(
+              backgroundColor: Colors.orange,
+              onPressed: () {
+                if (_tabController.index == 2)
+                  _showUsineDialog();
+                else if (_tabController.index == 3)
+                  _showPosteDialog();
+                else if (_tabController.index == 4)
+                  _showUsineUserDialog();
+                else
+                  _showAssignmentDialog();
+              },
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
     );
   }
 }

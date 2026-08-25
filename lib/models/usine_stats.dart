@@ -325,6 +325,7 @@ class AuditLogEntry {
   final String collection;
   final String details;
   final DateTime timestamp;
+  final String? usineId;
 
   AuditLogEntry({
     required this.id,
@@ -333,6 +334,7 @@ class AuditLogEntry {
     required this.collection,
     required this.details,
     required this.timestamp,
+    this.usineId,
   });
 
   factory AuditLogEntry.fromMap(Map<String, dynamic> map) {
@@ -343,6 +345,7 @@ class AuditLogEntry {
       collection: map['collection'] as String? ?? '',
       details: map['details'] as String? ?? '',
       timestamp: DateTime.parse(map['timestamp'] as String),
+      usineId: map['usineId'] as String?,
     );
   }
 }
