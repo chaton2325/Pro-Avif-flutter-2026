@@ -4,6 +4,7 @@ import '../models/raw_material.dart';
 import '../models/formula.dart';
 import '../services/mongo_service.dart';
 import 'usine_appro_screen.dart';
+import 'usine_production_screen.dart';
 
 const List<String> _rawMaterialCategories = ['Énergie', 'Protéine', 'Minéral', 'Additif', 'Autre'];
 
@@ -417,6 +418,11 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen> with Si
             icon: const Icon(Icons.local_shipping_outlined, color: Colors.orange),
             tooltip: 'Approvisionnement',
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UsineApproScreen(usine: widget.usine))),
+          ),
+          IconButton(
+            icon: const Icon(Icons.precision_manufacturing_outlined, color: Colors.orange),
+            tooltip: 'Production',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UsineProductionScreen(usine: widget.usine))),
           ),
           IconButton(icon: const Icon(Icons.refresh, color: Colors.orange), onPressed: _refreshData),
         ],

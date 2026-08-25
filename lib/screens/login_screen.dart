@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../models/usine.dart';
 import '../services/mongo_service.dart';
 import 'admin_dashboard.dart';
 import 'blocked_screen.dart';
 import 'user_dashboard.dart';
+import 'usine_home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -39,15 +41,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final user = await mongoService.login(
+      // Un seul écran, un seul appel : le serveur cherche le couple (nom, mot de passe)
+      // dans les deux collections et dit lequel a matché — jamais d'ambiguïté possible
+      // (contrôle fait à la création/édition des comptes, voir credentials_taken_elsewhere).
+      final accountType = await mongoService.unifiedLogin(
         _nameController.text.trim(),
         _passwordController.text.trim(),
       );
-      
-      if (!mounted) return;
-      setState(() => _isLoading = false);
 
-      if (user != null) {
+      if (!mounted) return;
+
+      if (accountType == 'user') {
+        final user = mongoService.currentUser!;
+        setState(() => _isLoading = false);
         // Sync offline data after login
         mongoService.syncOfflineSessions().then((count) {
           if (count > 0 && mounted) {
@@ -68,7 +74,10 @@ class _LoginScreenState extends State<LoginScreen> {
             MaterialPageRoute(builder: (_) => UserDashboard(user: user)),
           );
         }
+      } else if (accountType == 'usine_user') {
+        await _routeUsineUser();
       } else {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Identifiants incorrects')),
         );
@@ -87,6 +96,74 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red),
       );
     }
+  }
+
+  /// Post-connexion pour un utilisateur usine : retrouve son (ses) usine(s) affectée(s)
+  /// et entre directement dedans (ou propose un choix s'il en a plusieurs) — jamais de
+  /// vue "toutes les usines".
+  Future<void> _routeUsineUser() async {
+    final mongoService = MongoService();
+    final user = mongoService.currentUsineUser!;
+    final assignments = await mongoService.getPosteAssignments(userId: user.id);
+    if (!mounted) return;
+
+    if (assignments.isEmpty) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Aucune usine ni poste ne vous a été affecté. Contactez l'administrateur.")),
+      );
+      return;
+    }
+
+    final usines = await mongoService.getUsines();
+    final usineIds = assignments.map((a) => a.usineId).toSet().toList();
+    final assignedUsines = usines.where((u) => usineIds.contains(u.id)).toList();
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (assignedUsines.length == 1) {
+      await _enterUsine(user.id!, assignedUsines.first);
+    } else {
+      _showUsinePicker(user.id!, assignedUsines);
+    }
+  }
+
+  Future<void> _enterUsine(String userId, Usine usine) async {
+    final mongoService = MongoService();
+    setState(() => _isLoading = true);
+    final permissions = await mongoService.getEffectivePermissions(userId, usineId: usine.id);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => UsineHomeScreen(usine: usine, usineUser: mongoService.currentUsineUser!, permissions: permissions)),
+    );
+  }
+
+  void _showUsinePicker(String userId, List<Usine> usines) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Choisissez une usine', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: usines
+                .map((u) => ListTile(
+                      leading: const Icon(Icons.factory_rounded, color: Colors.orange),
+                      title: Text(u.name),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _enterUsine(userId, u);
+                      },
+                    ))
+                .toList(),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -160,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
               
               const SizedBox(height: 32),
-              
+
               // Status indicator
               _buildConnectionStatus(connected),
             ],

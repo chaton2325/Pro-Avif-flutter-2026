@@ -18,6 +18,7 @@ import '../models/reception.dart';
 import '../models/raw_material_batch.dart';
 import '../models/stock_loss.dart';
 import '../models/cost_adjustment.dart';
+import '../models/production_batch.dart';
 import './session_storage.dart';
 
 class LicenseBlockedException implements Exception {
@@ -31,7 +32,7 @@ class MongoService {
   static final MongoService _instance = MongoService._internal();
   // TEMPORAIRE (test Partie 0 Usine Aliment) : backend local, remettre l'URL de
   // production ("https://backendproavifeletana.mirhosty.com") avant tout build/déploiement.
-  final String baseUrl = "http://192.168.0.117:8010";
+  final String baseUrl = "http://192.168.1.187:8010";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -299,6 +300,41 @@ class MongoService {
 
   Future<void> deleteUsine(String id) async {
     await http.delete(Uri.parse('$baseUrl/usines/$id'));
+  }
+
+  // ---- Usine Aliment : session courante (utilisateur usine connecté) ----
+  UsineUser? currentUsineUser;
+
+  /// Un seul écran de connexion pour toute l'app : le serveur cherche le couple
+  /// (nom, mot de passe) dans les deux collections (users de ferme puis usine_users) et
+  /// indique lequel a matché. Comme ce couple ne peut jamais exister dans les deux à la
+  /// fois (contrôle fait à la création/édition des comptes), il n'y a jamais d'ambiguïté.
+  /// Renvoie 'user' ou 'usine_user' dans `accountType`, null si identifiants incorrects.
+  /// Lève [LicenseBlockedException] si l'app est bloquée par l'admin.
+  Future<String?> unifiedLogin(String name, String password) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name, 'password': password}),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final accountType = data['accountType'] as String;
+      if (accountType == 'user') {
+        currentUser = User.fromMap(data['user']);
+      } else {
+        currentUsineUser = UsineUser.fromMap(data['user']);
+      }
+      return accountType;
+    } else if (response.statusCode == 403) {
+      final data = jsonDecode(response.body);
+      throw LicenseBlockedException(data['detail'] ?? "Application bloquée par l'administrateur.");
+    }
+    return null;
+  }
+
+  void logoutUsineUser() {
+    currentUsineUser = null;
   }
 
   // ---- Usine Aliment : Utilisateurs usine CRUD (distincts des users de ferme) ----
@@ -599,6 +635,74 @@ class MongoService {
       return data.cast<Map<String, dynamic>>();
     }
     return [];
+  }
+
+  // ---- Usine Aliment : Production & coût de revient ----
+  Future<ProductionCheckResult> checkProduction(String usineId, String formulaId, double quantityTarget) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/production/check'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'usineId': usineId, 'formulaId': formulaId, 'quantityTarget': quantityTarget}),
+    );
+    if (response.statusCode == 200) {
+      return ProductionCheckResult.fromMap(jsonDecode(response.body));
+    }
+    return ProductionCheckResult(canLaunch: false, lines: []);
+  }
+
+  /// Lance la fabrication (consomme réellement le stock / les lots FIFO). Renvoie le lot
+  /// créé si succès, ou un message d'erreur serveur sinon.
+  Future<({ProductionBatch? batch, String? error})> launchProduction({
+    required String usineId,
+    required String formulaId,
+    required double quantityTarget,
+    required double actualQuantityProduced,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/production/launch'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'usineId': usineId,
+        'formulaId': formulaId,
+        'quantityTarget': quantityTarget,
+        'actualQuantityProduced': actualQuantityProduced,
+      }),
+    );
+    if (response.statusCode == 201) {
+      return (batch: ProductionBatch.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (batch: null, error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue');
+    } catch (_) {
+      return (batch: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<List<ProductionBatch>> getProductionBatches({String? usineId, String? status}) async {
+    final queryParams = <String, String>{};
+    if (usineId != null) queryParams['usineId'] = usineId;
+    if (status != null) queryParams['status'] = status;
+    final uri = Uri.parse('$baseUrl/production').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((b) => ProductionBatch.fromMap(b)).toList();
+    }
+    return [];
+  }
+
+  Future<String?> validateProduction(String id, {double adjustment = 0, String? adjustmentReason}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/production/$id/validate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'adjustment': adjustment, 'adjustmentReason': adjustmentReason}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
   }
 
   /// Fusion (OR logique) des permissions de tous les postes d'un utilisateur pour une
