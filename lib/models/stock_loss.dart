@@ -8,6 +8,7 @@ class StockLoss {
   final String source; // "perte" | "inventaire" | "cloture_lot"
   final String? batchId;
   final DateTime? createdAt;
+  final String? performedBy;
 
   StockLoss({
     this.id,
@@ -19,6 +20,7 @@ class StockLoss {
     this.source = 'perte',
     this.batchId,
     this.createdAt,
+    this.performedBy,
   });
 
   Map<String, dynamic> toCreateMap() {
@@ -28,6 +30,7 @@ class StockLoss {
       'quantity': quantity,
       'reason': reason,
       'note': note,
+      'performedBy': performedBy,
     };
   }
 
@@ -41,7 +44,10 @@ class StockLoss {
       note: map['note'] as String?,
       source: map['source'] as String? ?? 'perte',
       batchId: map['batchId'] as String?,
-      createdAt: map['createdAt'] != null ? DateTime.tryParse(map['createdAt'].toString()) : null,
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt'].toString())
+          : null,
+      performedBy: map['performedBy'] as String?,
     );
   }
 }

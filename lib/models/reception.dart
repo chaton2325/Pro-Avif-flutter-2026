@@ -11,6 +11,8 @@ class Reception {
   final double? totalAmount;
   final DateTime? createdAt;
   final DateTime? valorizedAt;
+  final String? createdBy;
+  final String? valorizedBy;
 
   Reception({
     this.id,
@@ -25,17 +27,20 @@ class Reception {
     this.totalAmount,
     this.createdAt,
     this.valorizedAt,
+    this.createdBy,
+    this.valorizedBy,
   });
 
   bool get isPending => status == 'en_attente';
 
-  Map<String, dynamic> toCreateMap() {
+  Map<String, dynamic> toCreateMap({String? performedBy}) {
     return {
       'usineId': usineId,
       'rawMaterialId': rawMaterialId,
       'supplier': supplier,
       'quantity': quantity,
       'note': note,
+      'performedBy': performedBy,
     };
   }
 
@@ -51,8 +56,14 @@ class Reception {
       status: map['status'] as String? ?? 'en_attente',
       unitPrice: (map['unitPrice'] as num?)?.toDouble(),
       totalAmount: (map['totalAmount'] as num?)?.toDouble(),
-      createdAt: map['createdAt'] != null ? DateTime.tryParse(map['createdAt'].toString()) : null,
-      valorizedAt: map['valorizedAt'] != null ? DateTime.tryParse(map['valorizedAt'].toString()) : null,
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt'].toString())
+          : null,
+      valorizedAt: map['valorizedAt'] != null
+          ? DateTime.tryParse(map['valorizedAt'].toString())
+          : null,
+      createdBy: map['createdBy'] as String?,
+      valorizedBy: map['valorizedBy'] as String?,
     );
   }
 }

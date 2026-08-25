@@ -547,11 +547,16 @@ class MongoService {
     return [];
   }
 
+  /// Nom affiché comme auteur des écritures du module Usine Aliment (réceptions, pertes,
+  /// ajustements, inventaires...) — "Admin" par défaut sur le chemin admin/test, sans
+  /// utilisateur usine connecté.
+  String get _performedBy => currentUsineUser?.name ?? 'Admin';
+
   Future<void> addReception(Reception reception) async {
     await http.post(
       Uri.parse('$baseUrl/receptions'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(reception.toCreateMap()),
+      body: jsonEncode(reception.toCreateMap(performedBy: _performedBy)),
     );
   }
 
@@ -560,7 +565,7 @@ class MongoService {
     final response = await http.post(
       Uri.parse('$baseUrl/receptions/$id/valorize'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'unitPrice': unitPrice}),
+      body: jsonEncode({'unitPrice': unitPrice, 'performedBy': _performedBy}),
     );
     if (response.statusCode == 200) return null;
     try {
@@ -600,7 +605,11 @@ class MongoService {
     final response = await http.post(
       Uri.parse('$baseUrl/raw-material-batches/$id/close'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'countedQuantity': countedQuantity, 'reason': reason}),
+      body: jsonEncode({
+        'countedQuantity': countedQuantity,
+        'reason': reason,
+        'performedBy': _performedBy,
+      }),
     );
     if (response.statusCode == 200) return null;
     try {
@@ -631,10 +640,11 @@ class MongoService {
   }
 
   Future<String?> declareStockLoss(StockLoss loss) async {
+    final body = loss.toCreateMap()..['performedBy'] = _performedBy;
     final response = await http.post(
       Uri.parse('$baseUrl/stock-losses'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(loss.toCreateMap()),
+      body: jsonEncode(body),
     );
     if (response.statusCode == 201) return null;
     try {
@@ -672,7 +682,11 @@ class MongoService {
     final response = await http.post(
       Uri.parse('$baseUrl/cost-adjustments/$rawMaterialId'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'newCost': newCost, 'reason': reason}),
+      body: jsonEncode({
+        'newCost': newCost,
+        'reason': reason,
+        'performedBy': _performedBy,
+      }),
     );
     if (response.statusCode == 201) return null;
     try {
@@ -696,6 +710,7 @@ class MongoService {
           .map((e) => {'rawMaterialId': e.key, 'countedQuantity': e.value})
           .toList(),
       'comment': comment,
+      'performedBy': _performedBy,
     };
     final response = await http.post(
       Uri.parse('$baseUrl/inventory/apply'),

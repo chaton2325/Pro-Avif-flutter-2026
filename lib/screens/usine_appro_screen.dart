@@ -18,15 +18,28 @@ class _HistoryEntry {
   final String title;
   final String subtitle;
   final bool isPending;
+  final String
+  type; // 'attente' | 'reception' | 'perte' | 'ajustement' | 'inventaire'
+  final String? performedBy;
   _HistoryEntry({
     required this.date,
     required this.icon,
     required this.color,
     required this.title,
     required this.subtitle,
+    required this.type,
     this.isPending = false,
+    this.performedBy,
   });
 }
+
+const Map<String, String> _historyTypeLabels = {
+  'attente': 'En attente',
+  'reception': 'Réceptions',
+  'perte': 'Pertes / écarts',
+  'ajustement': 'Ajustements CUMP',
+  'inventaire': 'Inventaires',
+};
 
 const List<String> _lossReasons = [
   'Avarie (humidité)',
@@ -64,6 +77,13 @@ class _UsineApproScreenState extends State<UsineApproScreen>
   List<_HistoryEntry> _history = [];
   bool _isLoading = true;
   String? _error;
+
+  // Historique : filtre par type, par utilisateur, tri par date, pagination par 30.
+  String _historyTypeFilter = 'tous';
+  String _historyUserFilter = 'tous';
+  bool _historySortDescending = true;
+  int _historyPage = 0;
+  static const int _historyPageSize = 30;
 
   @override
   void initState() {
@@ -133,6 +153,8 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             subtitle:
                 '${r.lotNumber} · ${r.quantity.toStringAsFixed(0)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
             isPending: true,
+            type: 'attente',
+            performedBy: r.createdBy,
           ),
         ),
         ...valorized.map(
@@ -144,6 +166,8 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             subtitle: showCosts
                 ? '${r.lotNumber} · ${r.quantity.toStringAsFixed(0)} ${materialUnit(r.rawMaterialId)} @ ${r.unitPrice?.toStringAsFixed(2) ?? "—"} F${r.supplier != null ? " · ${r.supplier}" : ""}'
                 : '${r.lotNumber} · ${r.quantity.toStringAsFixed(0)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
+            type: 'reception',
+            performedBy: r.valorizedBy ?? r.createdBy,
           ),
         ),
         ...losses.map((l) {
@@ -162,6 +186,8 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             title: '$sourceLabel — ${materialName(l.rawMaterialId)}',
             subtitle:
                 '${isGain ? "+" : "-"}${l.quantity.abs().toStringAsFixed(0)} ${materialUnit(l.rawMaterialId)} · ${l.reason}',
+            type: 'perte',
+            performedBy: l.performedBy,
           );
         }),
         if (showCosts)
@@ -173,6 +199,8 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               title: 'Ajustement CUMP — ${materialName(a.rawMaterialId)}',
               subtitle:
                   '${a.previousCost.toStringAsFixed(2)} → ${a.newCost.toStringAsFixed(2)} F/${materialUnit(a.rawMaterialId)} · ${a.reason}',
+              type: 'ajustement',
+              performedBy: a.performedBy,
             ),
           ),
         ...inventorySessions.map((s) {
@@ -191,6 +219,8 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 : 'Inventaire — $varianceCount écart(s)',
             subtitle:
                 '$materialsCount matière(s) contrôlée(s)${comment != null && comment.isNotEmpty ? " · $comment" : ""}',
+            type: 'inventaire',
+            performedBy: s['performedBy'] as String?,
           );
         }),
       ]..sort((a, b) => b.date.compareTo(a.date));
@@ -778,6 +808,55 @@ class _UsineApproScreenState extends State<UsineApproScreen>
 
   // ------------------------------------------------------- Ajustement du CUMP
 
+  void _showMissingCostDialog(List<RawMaterial> materials) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Matières sans coût de référence',
+          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+        ),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tant qu\'aucun coût n\'est défini, le premier CUMP se calculera à partir de zéro dès la prochaine réception. Définissez un coût de référence pour chacune avant de réceptionner :',
+                style: TextStyle(fontSize: 12.5, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              ...materials.map(
+                (m) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    m.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  trailing: TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showAdjustCostDialog(m);
+                    },
+                    child: const Text('Définir'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAdjustCostDialog(RawMaterial material) {
     final costController = TextEditingController();
     final reasonController = TextEditingController();
@@ -791,7 +870,9 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text(
-            'Ajuster le CUMP — ${material.name}',
+            material.weightedCost == null
+                ? 'Définir le coût — ${material.name}'
+                : 'Ajuster le CUMP — ${material.name}',
             style: const TextStyle(
               color: Colors.orange,
               fontWeight: FontWeight.bold,
@@ -801,7 +882,9 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Coût actuel : ${material.weightedCost?.toStringAsFixed(2) ?? "—"} F/${material.unit}',
+                material.weightedCost == null
+                    ? 'Aucun coût de référence défini pour l\'instant.'
+                    : 'Coût actuel : ${material.weightedCost!.toStringAsFixed(2)} F/${material.unit}',
                 style: const TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 16),
@@ -1101,12 +1184,53 @@ class _UsineApproScreenState extends State<UsineApproScreen>
   }
 
   Widget _buildStockTab() {
+    // Matières « globales » sans aucun coût de référence : la comptabilité doit le
+    // définir *avant* la première réception, sinon le premier CUMP se recalcule sur une
+    // base à 0 (voir la formule pondérée). On le dit activement, pas juste en silence
+    // dans un menu — c'est un système de gestion, ça doit être explicite.
+    final materialsWithoutCost = _materials
+        .where((m) => !m.isParLot && m.weightedCost == null)
+        .toList();
+
     return RefreshIndicator(
       onRefresh: _refreshData,
       color: Colors.orange,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         children: [
+          if (_perms.adjustCost && materialsWithoutCost.isNotEmpty)
+            GestureDetector(
+              onTap: () => _showMissingCostDialog(materialsWithoutCost),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.priority_high_rounded,
+                      color: Colors.red.shade700,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${materialsWithoutCost.length} matière(s) sans CUMP défini — veuillez ajuster le coût avant la prochaine réception',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.red.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (_pendingReceptions.isNotEmpty)
             GestureDetector(
               onTap: _showPendingReceptionsDialog,
@@ -1270,6 +1394,23 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     );
   }
 
+  List<_HistoryEntry> get _filteredSortedHistory {
+    final list = _history.where((h) {
+      if (_historyTypeFilter != 'tous' && h.type != _historyTypeFilter)
+        return false;
+      if (_historyUserFilter != 'tous' &&
+          (h.performedBy ?? 'Inconnu') != _historyUserFilter)
+        return false;
+      return true;
+    }).toList();
+    list.sort(
+      (a, b) => _historySortDescending
+          ? b.date.compareTo(a.date)
+          : a.date.compareTo(b.date),
+    );
+    return list;
+  }
+
   Widget _buildHistoryTab() {
     if (_history.isEmpty) {
       return const Center(
@@ -1279,75 +1420,235 @@ class _UsineApproScreenState extends State<UsineApproScreen>
         ),
       );
     }
-    return RefreshIndicator(
-      onRefresh: _refreshData,
-      color: Colors.orange,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-        itemCount: _history.length,
-        itemBuilder: (context, index) {
-          final h = _history[index];
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade100),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
+
+    final availableTypes = _history.map((h) => h.type).toSet().toList();
+    final availableUsers =
+        _history.map((h) => h.performedBy ?? 'Inconnu').toSet().toList()
+          ..sort();
+    final filtered = _filteredSortedHistory;
+    final totalPages = filtered.isEmpty
+        ? 1
+        : (filtered.length / _historyPageSize).ceil();
+    final page = _historyPage.clamp(0, totalPages - 1);
+    final pageItems = filtered
+        .skip(page * _historyPageSize)
+        .take(_historyPageSize)
+        .toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Tous'),
+                      selected: _historyTypeFilter == 'tous',
+                      onSelected: (_) => setState(() {
+                        _historyTypeFilter = 'tous';
+                        _historyPage = 0;
+                      }),
+                    ),
+                    ...availableTypes.map(
+                      (t) => Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: ChoiceChip(
+                          label: Text(_historyTypeLabels[t] ?? t),
+                          selected: _historyTypeFilter == t,
+                          onSelected: (_) => setState(() {
+                            _historyTypeFilter = t;
+                            _historyPage = 0;
+                          }),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: _historyUserFilter,
+                      decoration: const InputDecoration(
+                        labelText: 'Utilisateur',
+                        isDense: true,
+                      ),
+                      items: [
+                        const DropdownMenuItem(
+                          value: 'tous',
+                          child: Text('Tous les utilisateurs'),
+                        ),
+                        ...availableUsers.map(
+                          (u) => DropdownMenuItem(
+                            value: u,
+                            child: Text(u, overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() {
+                        _historyUserFilter = v ?? 'tous';
+                        _historyPage = 0;
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: _historySortDescending
+                        ? 'Plus récent d\'abord'
+                        : 'Plus ancien d\'abord',
+                    icon: Icon(
+                      _historySortDescending
+                          ? Icons.arrow_downward_rounded
+                          : Icons.arrow_upward_rounded,
+                      color: Colors.orange,
+                    ),
+                    onPressed: () => setState(() {
+                      _historySortDescending = !_historySortDescending;
+                      _historyPage = 0;
+                    }),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: pageItems.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Aucun mouvement pour ce filtre.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _refreshData,
+                  color: Colors.orange,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                    itemCount: pageItems.length,
+                    itemBuilder: (context, index) {
+                      final h = pageItems[index];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.grey.shade100),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: h.color.withValues(alpha: 0.12),
+                            child: Icon(h.icon, color: h.color, size: 20),
+                          ),
+                          title: Text(
+                            h.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                h.subtitle,
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              if (h.performedBy != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    'par ${h.performedBy}',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 10.5,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          isThreeLine: h.performedBy != null,
+                          trailing: h.isPending
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade100,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    'EN ATTENTE',
+                                    style: TextStyle(
+                                      color: Colors.amber.shade900,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  DateFormat('dd/MM/yy').format(h.date),
+                                  style: TextStyle(
+                                    color: Colors.grey.shade500,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ),
+        if (totalPages > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: page > 0
+                      ? () => setState(() => _historyPage = page - 1)
+                      : null,
+                ),
+                Text(
+                  'Page ${page + 1} / $totalPages · ${filtered.length} mouvement(s)',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: page < totalPages - 1
+                      ? () => setState(() => _historyPage = page + 1)
+                      : null,
                 ),
               ],
             ),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: h.color.withValues(alpha: 0.12),
-                child: Icon(h.icon, color: h.color, size: 20),
-              ),
-              title: Text(
-                h.title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-              subtitle: Text(
-                h.subtitle,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-              ),
-              trailing: h.isPending
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.shade100,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        'EN ATTENTE',
-                        style: TextStyle(
-                          color: Colors.amber.shade900,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    )
-                  : Text(
-                      DateFormat('dd/MM/yy').format(h.date),
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-            ),
-          );
-        },
-      ),
+          ),
+      ],
     );
   }
 }

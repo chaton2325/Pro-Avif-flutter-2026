@@ -6,6 +6,7 @@ class CostAdjustment {
   final double newCost;
   final String reason;
   final DateTime? createdAt;
+  final String? performedBy;
 
   CostAdjustment({
     this.id,
@@ -15,6 +16,7 @@ class CostAdjustment {
     required this.newCost,
     required this.reason,
     this.createdAt,
+    this.performedBy,
   });
 
   factory CostAdjustment.fromMap(Map<String, dynamic> map) {
@@ -25,7 +27,10 @@ class CostAdjustment {
       previousCost: (map['previousCost'] as num).toDouble(),
       newCost: (map['newCost'] as num).toDouble(),
       reason: map['reason'] as String? ?? '',
-      createdAt: map['createdAt'] != null ? DateTime.tryParse(map['createdAt'].toString()) : null,
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt'].toString())
+          : null,
+      performedBy: map['performedBy'] as String?,
     );
   }
 }

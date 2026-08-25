@@ -170,6 +170,22 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                       ),
                     ],
                   ),
+                  if (material != null &&
+                      managementMode != material.managementMode &&
+                      material.currentStock > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        managementMode == 'par_lot'
+                            ? 'Le stock actuel (${material.currentStock.toStringAsFixed(0)} ${material.unit}) sera migré vers un lot unique à l\'enregistrement.'
+                            : 'Les lots actifs seront clôturés et fusionnés en un stock global avec un CUMP recalculé à l\'enregistrement.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.orange.shade800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: thresholdController,
