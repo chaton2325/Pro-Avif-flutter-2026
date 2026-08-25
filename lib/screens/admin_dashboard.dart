@@ -36,16 +36,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
   int _currentIndex = 0;
   bool _isLoading = false;
   String? _error;
-  
+
   final TextEditingController _userSearchController = TextEditingController();
   final TextEditingController _farmSearchController = TextEditingController();
   final TextEditingController _lotSearchController = TextEditingController();
 
   void _logout() {
     _mongoService.logout();
-    Navigator.pushReplacement(
+    // pushAndRemoveUntil : ce tableau de bord est maintenant poussé par-dessus l'écran de
+    // sélection Fermes/Usine (pas en remplacement direct de l'écran de connexion), un
+    // simple pushReplacement laisserait cet écran de sélection coincé sous l'écran de
+    // connexion, accessible par un retour arrière après déconnexion.
+    Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
     );
   }
 
@@ -69,21 +74,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
   void _filterUsers() {
     final query = _userSearchController.text.toLowerCase();
     setState(() {
-      _filteredUsers = _users.where((u) => u.name.toLowerCase().contains(query)).toList();
+      _filteredUsers = _users
+          .where((u) => u.name.toLowerCase().contains(query))
+          .toList();
     });
   }
 
   void _filterFarms() {
     final query = _farmSearchController.text.toLowerCase();
     setState(() {
-      _filteredFarms = _farms.where((f) => f.name.toLowerCase().contains(query)).toList();
+      _filteredFarms = _farms
+          .where((f) => f.name.toLowerCase().contains(query))
+          .toList();
     });
   }
 
   void _filterLots() {
     final query = _lotSearchController.text.toLowerCase();
     setState(() {
-      _filteredLots = _lots.where((l) => l.number.toLowerCase().contains(query)).toList();
+      _filteredLots = _lots
+          .where((l) => l.number.toLowerCase().contains(query))
+          .toList();
     });
   }
 
@@ -92,12 +103,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
       _isLoading = true;
       _error = null;
     });
-    
+
     try {
       if (!_mongoService.isConnected) {
         await _mongoService.connect();
       }
-      
+
       final users = await _mongoService.getUsers();
       final farms = await _mongoService.getFarms()
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -136,21 +147,39 @@ class _AdminDashboardState extends State<AdminDashboard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Ajouter Utilisateur', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Ajouter Utilisateur',
+            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nom')),
-                TextField(controller: passwordController, decoration: const InputDecoration(labelText: 'Mot de passe'), obscureText: true),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Nom'),
+                ),
+                TextField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(labelText: 'Mot de passe'),
+                  obscureText: true,
+                ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                   value: selectedRole,
                   decoration: const InputDecoration(labelText: 'Rôle'),
                   items: const [
-                    DropdownMenuItem(value: 'user', child: Text('Simple Utilisateur')),
-                    DropdownMenuItem(value: 'admin', child: Text('Administrateur')),
+                    DropdownMenuItem(
+                      value: 'user',
+                      child: Text('Simple Utilisateur'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'admin',
+                      child: Text('Administrateur'),
+                    ),
                   ],
                   onChanged: (val) => setDialogState(() => selectedRole = val!),
                 ),
@@ -159,24 +188,49 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   hint: const Text('Allouer à une ferme'),
                   value: selectedFarmId,
                   items: [
-                    const DropdownMenuItem<String>(value: null, child: Text('Aucune ferme')),
+                    const DropdownMenuItem<String>(
+                      value: null,
+                      child: Text('Aucune ferme'),
+                    ),
                     ..._farms
                         .where((f) => f.id != null)
-                        .fold<Map<String, Farm>>({}, (map, f) => map..putIfAbsent(f.id!, () => f))
+                        .fold<Map<String, Farm>>(
+                          {},
+                          (map, f) => map..putIfAbsent(f.id!, () => f),
+                        )
                         .values
-                        .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
+                        .map(
+                          (f) => DropdownMenuItem(
+                            value: f.id,
+                            child: Text(f.name),
+                          ),
+                        )
                         .toList(),
                   ],
-                  onChanged: (val) => setDialogState(() => selectedFarmId = val),
+                  onChanged: (val) =>
+                      setDialogState(() => selectedFarmId = val),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
             ElevatedButton(
               onPressed: () async {
-                await _mongoService.addUser(User(name: nameController.text.trim(), password: passwordController.text.trim(), role: selectedRole, farmId: selectedFarmId));
+                await _mongoService.addUser(
+                  User(
+                    name: nameController.text.trim(),
+                    password: passwordController.text.trim(),
+                    role: selectedRole,
+                    farmId: selectedFarmId,
+                  ),
+                );
                 _refreshData();
                 if (!context.mounted) return;
                 Navigator.pop(context);
@@ -203,21 +257,44 @@ class _AdminDashboardState extends State<AdminDashboard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('Modifier ${user.name}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            'Modifier ${user.name}',
+            style: const TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nom')),
-                TextField(controller: passwordController, decoration: const InputDecoration(labelText: 'Nouveau MDP (laisser vide si inchangé)'), obscureText: true),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Nom'),
+                ),
+                TextField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nouveau MDP (laisser vide si inchangé)',
+                  ),
+                  obscureText: true,
+                ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                   value: selectedRole,
                   decoration: const InputDecoration(labelText: 'Rôle'),
                   items: const [
-                    DropdownMenuItem(value: 'user', child: Text('Simple Utilisateur')),
-                    DropdownMenuItem(value: 'admin', child: Text('Administrateur')),
+                    DropdownMenuItem(
+                      value: 'user',
+                      child: Text('Simple Utilisateur'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'admin',
+                      child: Text('Administrateur'),
+                    ),
                   ],
                   onChanged: (val) => setDialogState(() => selectedRole = val!),
                 ),
@@ -226,27 +303,47 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   hint: const Text('Allouer à une ferme'),
                   value: selectedFarmId,
                   items: [
-                    const DropdownMenuItem<String>(value: null, child: Text('Aucune ferme')),
+                    const DropdownMenuItem<String>(
+                      value: null,
+                      child: Text('Aucune ferme'),
+                    ),
                     ..._farms
                         .where((f) => f.id != null)
-                        .fold<Map<String, Farm>>({}, (map, f) => map..putIfAbsent(f.id!, () => f))
+                        .fold<Map<String, Farm>>(
+                          {},
+                          (map, f) => map..putIfAbsent(f.id!, () => f),
+                        )
                         .values
-                        .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
+                        .map(
+                          (f) => DropdownMenuItem(
+                            value: f.id,
+                            child: Text(f.name),
+                          ),
+                        )
                         .toList(),
                   ],
-                  onChanged: (val) => setDialogState(() => selectedFarmId = val),
+                  onChanged: (val) =>
+                      setDialogState(() => selectedFarmId = val),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
             ElevatedButton(
               onPressed: () async {
                 final updatedUser = User(
                   id: user.id,
                   name: nameController.text.trim(),
-                  password: passwordController.text.trim().isEmpty ? user.password : passwordController.text.trim(),
+                  password: passwordController.text.trim().isEmpty
+                      ? user.password
+                      : passwordController.text.trim(),
                   role: selectedRole,
                   farmId: selectedFarmId,
                   isActive: user.isActive,
@@ -275,8 +372,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Créer un Bâtiment', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Créer un Bâtiment',
+            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -284,22 +386,38 @@ class _AdminDashboardState extends State<AdminDashboard> {
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Nom du Bâtiment (Site)', prefixIcon: Icon(Icons.apartment)),
+                  decoration: const InputDecoration(
+                    labelText: 'Nom du Bâtiment (Site)',
+                    prefixIcon: Icon(Icons.apartment),
+                  ),
                 ),
                 const SizedBox(height: 24),
-                const Text('Salles du bâtiment', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                const Text(
+                  'Salles du bâtiment',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: roomController,
-                        decoration: const InputDecoration(hintText: 'Nom de la salle', prefixIcon: Icon(Icons.meeting_room)),
+                        decoration: const InputDecoration(
+                          hintText: 'Nom de la salle',
+                          prefixIcon: Icon(Icons.meeting_room),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.add_circle, color: Colors.orange, size: 32),
+                      icon: const Icon(
+                        Icons.add_circle,
+                        color: Colors.orange,
+                        size: 32,
+                      ),
                       onPressed: () {
                         final roomName = roomController.text.trim();
                         if (roomName.isNotEmpty && !rooms.contains(roomName)) {
@@ -318,23 +436,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   child: Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: rooms.map((r) => Chip(
-                      label: Text(r),
-                      backgroundColor: Colors.orange.shade50,
-                      deleteIconColor: Colors.red,
-                      onDeleted: () => setDialogState(() => rooms.remove(r)),
-                    )).toList(),
+                    children: rooms
+                        .map(
+                          (r) => Chip(
+                            label: Text(r),
+                            backgroundColor: Colors.orange.shade50,
+                            deleteIconColor: Colors.red,
+                            onDeleted: () =>
+                                setDialogState(() => rooms.remove(r)),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
             ElevatedButton(
               onPressed: () async {
                 if (nameController.text.isNotEmpty) {
-                  await _mongoService.addFarm(Farm(name: nameController.text, rooms: rooms));
+                  await _mongoService.addFarm(
+                    Farm(name: nameController.text, rooms: rooms),
+                  );
                   _refreshData();
                   if (!context.mounted) return;
                   Navigator.pop(context);
@@ -357,8 +488,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Modifier le Bâtiment', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Modifier le Bâtiment',
+            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -366,22 +502,38 @@ class _AdminDashboardState extends State<AdminDashboard> {
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Nom du Bâtiment', prefixIcon: Icon(Icons.apartment)),
+                  decoration: const InputDecoration(
+                    labelText: 'Nom du Bâtiment',
+                    prefixIcon: Icon(Icons.apartment),
+                  ),
                 ),
                 const SizedBox(height: 24),
-                const Text('Salles', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                const Text(
+                  'Salles',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: roomController,
-                        decoration: const InputDecoration(hintText: 'Ajouter une salle', prefixIcon: Icon(Icons.meeting_room)),
+                        decoration: const InputDecoration(
+                          hintText: 'Ajouter une salle',
+                          prefixIcon: Icon(Icons.meeting_room),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.add_circle, color: Colors.orange, size: 32),
+                      icon: const Icon(
+                        Icons.add_circle,
+                        color: Colors.orange,
+                        size: 32,
+                      ),
                       onPressed: () {
                         final roomName = roomController.text.trim();
                         if (roomName.isNotEmpty && !rooms.contains(roomName)) {
@@ -400,23 +552,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   child: Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: rooms.map((r) => Chip(
-                      label: Text(r),
-                      backgroundColor: Colors.orange.shade50,
-                      deleteIconColor: Colors.red,
-                      onDeleted: () => setDialogState(() => rooms.remove(r)),
-                    )).toList(),
+                    children: rooms
+                        .map(
+                          (r) => Chip(
+                            label: Text(r),
+                            backgroundColor: Colors.orange.shade50,
+                            deleteIconColor: Colors.red,
+                            onDeleted: () =>
+                                setDialogState(() => rooms.remove(r)),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
             ElevatedButton(
               onPressed: () async {
                 if (nameController.text.isNotEmpty) {
-                  await _mongoService.updateFarm(Farm(id: farm.id, name: nameController.text, rooms: rooms));
+                  await _mongoService.updateFarm(
+                    Farm(id: farm.id, name: nameController.text, rooms: rooms),
+                  );
                   _refreshData();
                   if (!context.mounted) return;
                   Navigator.pop(context);
@@ -439,8 +604,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Nouveau numéro de lot', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Nouveau numéro de lot',
+            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -448,19 +618,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
               children: [
                 TextField(
                   controller: numberController,
-                  decoration: const InputDecoration(labelText: 'Numéro de lot (ex: LOT-2026-001)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Numéro de lot (ex: LOT-2026-001)',
+                  ),
                   textCapitalization: TextCapitalization.characters,
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: startAgeController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Âge de départ (semaines)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Âge de départ (semaines)',
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: Text('Date de départ : ${DateFormat('dd/MM/yyyy').format(startDate)}')),
+                    Expanded(
+                      child: Text(
+                        'Date de départ : ${DateFormat('dd/MM/yyyy').format(startDate)}',
+                      ),
+                    ),
                     TextButton(
                       onPressed: () async {
                         final picked = await showDatePicker(
@@ -469,7 +647,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           firstDate: DateTime(2020),
                           lastDate: DateTime(2100),
                         );
-                        if (picked != null) setDialogState(() => startDate = picked);
+                        if (picked != null)
+                          setDialogState(() => startDate = picked);
                       },
                       child: const Text('Choisir'),
                     ),
@@ -479,16 +658,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
             ElevatedButton(
               onPressed: () async {
                 if (numberController.text.isNotEmpty) {
-                  await _mongoService.addLot(Lot(
-                    number: numberController.text,
-                    createdAt: DateTime.now(),
-                    startAge: int.tryParse(startAgeController.text) ?? 1,
-                    startDate: startDate,
-                  ));
+                  await _mongoService.addLot(
+                    Lot(
+                      number: numberController.text,
+                      createdAt: DateTime.now(),
+                      startAge: int.tryParse(startAgeController.text) ?? 1,
+                      startDate: startDate,
+                    ),
+                  );
                   _refreshData();
                   if (!context.mounted) return;
                   Navigator.pop(context);
@@ -504,15 +691,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   void _showEditLotDialog(Lot lot) {
     final numberController = TextEditingController(text: lot.number);
-    final startAgeController = TextEditingController(text: lot.startAge.toString());
+    final startAgeController = TextEditingController(
+      text: lot.startAge.toString(),
+    );
     DateTime startDate = lot.startDate ?? lot.createdAt;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Modifier le lot', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Modifier le lot',
+            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -527,12 +721,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 TextField(
                   controller: startAgeController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Âge de départ (semaines)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Âge de départ (semaines)',
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: Text('Date de départ : ${DateFormat('dd/MM/yyyy').format(startDate)}')),
+                    Expanded(
+                      child: Text(
+                        'Date de départ : ${DateFormat('dd/MM/yyyy').format(startDate)}',
+                      ),
+                    ),
                     TextButton(
                       onPressed: () async {
                         final picked = await showDatePicker(
@@ -541,7 +741,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           firstDate: DateTime(2020),
                           lastDate: DateTime(2100),
                         );
-                        if (picked != null) setDialogState(() => startDate = picked);
+                        if (picked != null)
+                          setDialogState(() => startDate = picked);
                       },
                       child: const Text('Choisir'),
                     ),
@@ -551,17 +752,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
             ElevatedButton(
               onPressed: () async {
                 if (numberController.text.isNotEmpty) {
-                  await _mongoService.updateLot(Lot(
-                    id: lot.id,
-                    number: numberController.text,
-                    createdAt: lot.createdAt,
-                    startAge: int.tryParse(startAgeController.text) ?? 1,
-                    startDate: startDate,
-                  ));
+                  await _mongoService.updateLot(
+                    Lot(
+                      id: lot.id,
+                      number: numberController.text,
+                      createdAt: lot.createdAt,
+                      startAge: int.tryParse(startAgeController.text) ?? 1,
+                      startDate: startDate,
+                    ),
+                  );
                   _refreshData();
                   if (!context.mounted) return;
                   Navigator.pop(context);
@@ -580,19 +789,41 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final Widget bodyContent = _isLoading
         ? const Center(child: CircularProgressIndicator(color: Colors.orange))
         : _error != null
-          ? Center(child: Padding(padding: const EdgeInsets.all(20.0), child: Text(_error!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center)))
-          : _buildBody();
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
+        : _buildBody();
 
     return Scaffold(
       extendBody: !isDesktop,
       appBar: AppBar(
-        title: const Text('ADMINISTRATION', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 18)),
+        title: const Text(
+          'ADMINISTRATION',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.5,
+            fontSize: 18,
+          ),
+        ),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.refresh, color: Colors.orange), onPressed: _refreshData),
-          IconButton(icon: const Icon(Icons.logout, color: Colors.orange), onPressed: _logout),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.orange),
+            onPressed: _refreshData,
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.orange),
+            onPressed: _logout,
+          ),
         ],
       ),
       body: isDesktop
@@ -603,14 +834,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ],
             )
           : bodyContent,
-      floatingActionButton: (_currentIndex == 1 || _currentIndex == 2 || _currentIndex == 3) && !_isLoading
+      floatingActionButton:
+          (_currentIndex == 1 || _currentIndex == 2 || _currentIndex == 3) &&
+              !_isLoading
           ? FloatingActionButton(
               backgroundColor: Colors.orange,
               elevation: 6,
               onPressed: () {
-                if (_currentIndex == 1) _showAddUserDialog();
-                else if (_currentIndex == 2) _showAddFarmDialog();
-                else if (_currentIndex == 3) _showAddLotDialog();
+                if (_currentIndex == 1)
+                  _showAddUserDialog();
+                else if (_currentIndex == 2)
+                  _showAddFarmDialog();
+                else if (_currentIndex == 3)
+                  _showAddLotDialog();
               },
               child: const Icon(Icons.add, color: Colors.white),
             )
@@ -625,26 +861,55 @@ class _AdminDashboardState extends State<AdminDashboard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: NavigationRail(
           backgroundColor: Colors.transparent,
           selectedIndex: _currentIndex,
-          onDestinationSelected: (index) => setState(() => _currentIndex = index),
+          onDestinationSelected: (index) =>
+              setState(() => _currentIndex = index),
           extended: true,
           minExtendedWidth: 190,
           indicatorColor: Colors.orange.withValues(alpha: 0.1),
-          selectedIconTheme: const IconThemeData(color: Colors.orange, size: 22),
+          selectedIconTheme: const IconThemeData(
+            color: Colors.orange,
+            size: 22,
+          ),
           unselectedIconTheme: IconThemeData(color: Colors.grey[600], size: 22),
-          selectedLabelTextStyle: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 14),
-          unselectedLabelTextStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
+          selectedLabelTextStyle: const TextStyle(
+            color: Colors.orange,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+          unselectedLabelTextStyle: TextStyle(
+            color: Colors.grey[600],
+            fontSize: 14,
+          ),
           destinations: const [
-            NavigationRailDestination(icon: Icon(Icons.home_rounded), label: Text('Accueil')),
-            NavigationRailDestination(icon: Icon(Icons.people_rounded), label: Text('Membres')),
-            NavigationRailDestination(icon: Icon(Icons.agriculture_rounded), label: Text('Bâtiments')),
-            NavigationRailDestination(icon: Icon(Icons.inventory_2_rounded), label: Text('Lots')),
+            NavigationRailDestination(
+              icon: Icon(Icons.home_rounded),
+              label: Text('Accueil'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.people_rounded),
+              label: Text('Membres'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.agriculture_rounded),
+              label: Text('Bâtiments'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.inventory_2_rounded),
+              label: Text('Lots'),
+            ),
           ],
         ),
       ),
@@ -675,26 +940,52 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             _buildAdminHeaderCard(),
             const SizedBox(height: 32),
-            const Text('STATISTIQUES (TEMPS RÉEL)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2)),
+            const Text(
+              'STATISTIQUES (TEMPS RÉEL)',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: Colors.grey,
+                letterSpacing: 1.2,
+              ),
+            ),
             const SizedBox(height: 20),
             _buildStatsRow(),
             const SizedBox(height: 32),
-            const Text('ACTIONS RAPIDES', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2)),
+            const Text(
+              'ACTIONS RAPIDES',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: Colors.grey,
+                letterSpacing: 1.2,
+              ),
+            ),
             const SizedBox(height: 20),
             Row(
               children: [
                 _buildQuickAction(
-                  Icons.analytics_rounded, 
-                  'Historique', 
+                  Icons.analytics_rounded,
+                  'Historique',
                   Colors.indigo,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminHistoryScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminHistoryScreen(),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 _buildQuickAction(
-                  Icons.show_chart_rounded, 
-                  'Analyse', 
+                  Icons.show_chart_rounded,
+                  'Analyse',
                   Colors.orange,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminAnalysisScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminAnalysisScreen(),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -702,17 +993,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
             Row(
               children: [
                 _buildQuickAction(
-                  Icons.psychology_rounded, 
-                  'IA', 
+                  Icons.psychology_rounded,
+                  'IA',
                   Colors.purple,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPredictiveAnalysisScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminPredictiveAnalysisScreen(),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 _buildQuickAction(
-                  Icons.rule_rounded, 
-                  'Standards', 
+                  Icons.rule_rounded,
+                  'Standards',
                   Colors.teal,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminWeightStandardsScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminWeightStandardsScreen(),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -723,14 +1024,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   Icons.auto_graph_rounded,
                   'Croissance',
                   Colors.blue.shade700,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPerformanceSelectorScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminPerformanceSelectorScreen(),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 _buildQuickAction(
                   Icons.summarize_rounded,
                   'Rapports Hebdo',
                   Colors.pink,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WeeklyReportScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const WeeklyReportScreen(),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -741,7 +1052,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   Icons.factory_rounded,
                   'Usine Aliment',
                   Colors.brown,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsineAdminScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const UsineAdminScreen()),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 const Expanded(child: SizedBox.shrink()),
@@ -762,7 +1076,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
         color: Colors.orange.shade600,
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
-          BoxShadow(color: Colors.orange.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10)),
+          BoxShadow(
+            color: Colors.orange.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
         ],
       ),
       child: Column(
@@ -771,15 +1089,30 @@ class _AdminDashboardState extends State<AdminDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('ADMINISTRATEUR', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+              const Text(
+                'ADMINISTRATEUR',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
               Text(
                 '${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text('Système de Gestion Pro-Avif', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const Text(
+            'Système de Gestion Pro-Avif',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
         ],
       ),
     );
@@ -810,24 +1143,49 @@ class _AdminDashboardState extends State<AdminDashboard> {
       children: [
         Row(
           children: [
-            _buildStatCard('Total Pesées', '$total', Icons.inventory_2_rounded, Colors.indigo),
+            _buildStatCard(
+              'Total Pesées',
+              '$total',
+              Icons.inventory_2_rounded,
+              Colors.indigo,
+            ),
             const SizedBox(width: 16),
-            _buildStatCard('Dernière heure', '$lastHour', Icons.bolt_rounded, Colors.orange),
+            _buildStatCard(
+              'Dernière heure',
+              '$lastHour',
+              Icons.bolt_rounded,
+              Colors.orange,
+            ),
           ],
         ),
         const SizedBox(height: 16),
         Row(
           children: [
-            _buildStatCard('Dernière pesée', lastWeighingAgo, Icons.history_toggle_off_rounded, Colors.teal),
+            _buildStatCard(
+              'Dernière pesée',
+              lastWeighingAgo,
+              Icons.history_toggle_off_rounded,
+              Colors.teal,
+            ),
             const SizedBox(width: 16),
-            _buildStatCard('Homogénéité moy.', '${avgHomogeneity.toStringAsFixed(1)}%', Icons.auto_graph_rounded, Colors.green),
+            _buildStatCard(
+              'Homogénéité moy.',
+              '${avgHomogeneity.toStringAsFixed(1)}%',
+              Icons.auto_graph_rounded,
+              Colors.green,
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -835,22 +1193,39 @@ class _AdminDashboardState extends State<AdminDashboard> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.grey.shade100),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, color: color, size: 28),
             const SizedBox(height: 12),
-            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            Text(title, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            Text(
+              title,
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildQuickAction(IconData icon, String label, Color color, {VoidCallback? onTap}) {
+  Widget _buildQuickAction(
+    IconData icon,
+    String label,
+    Color color, {
+    VoidCallback? onTap,
+  }) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -860,14 +1235,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
-            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(icon, color: color, size: 32),
               const SizedBox(height: 12),
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                ),
+              ),
             ],
           ),
         ),
@@ -887,49 +1274,131 @@ class _AdminDashboardState extends State<AdminDashboard> {
               prefixIcon: const Icon(Icons.search, color: Colors.orange),
               filled: true,
               fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: Colors.grey.shade100, width: 1)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide(color: Colors.grey.shade100, width: 1),
+              ),
             ),
           ),
         ),
         Expanded(
-          child: _filteredUsers.isEmpty 
-            ? const Center(child: Text('Aucun membre trouvé', style: TextStyle(color: Colors.grey)))
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                itemCount: _filteredUsers.length,
-                itemBuilder: (context, index) {
-                  final user = _filteredUsers[index];
-                  final farm = _farms.cast<Farm?>().firstWhere((f) => f?.id == user.farmId, orElse: () => null);
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.grey.shade100),
-                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      leading: CircleAvatar(
-                        backgroundColor: user.isActive ? (user.role == 'admin' ? Colors.orange.withValues(alpha: 0.1) : Colors.blue.withValues(alpha: 0.1)) : Colors.grey.withValues(alpha: 0.1),
-                        child: Icon(user.role == 'admin' ? Icons.security_rounded : Icons.person_rounded, color: user.isActive ? (user.role == 'admin' ? Colors.orange : Colors.blue) : Colors.grey),
-                      ),
-                      title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                      subtitle: Text('${user.role.toUpperCase()} • ${farm?.name ?? "Sans site"}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(icon: Icon(user.isActive ? Icons.toggle_on_rounded : Icons.toggle_off_rounded, color: user.isActive ? Colors.green : Colors.grey, size: 32), onPressed: () async { await _mongoService.toggleUserStatus(user); _refreshData(); }),
-                          IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20), onPressed: () => _showEditUserDialog(user)),
-                          IconButton(icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20), onPressed: () async { await _mongoService.deleteUser(user.id!); _refreshData(); }),
+          child: _filteredUsers.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Aucun membre trouvé',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                  itemCount: _filteredUsers.length,
+                  itemBuilder: (context, index) {
+                    final user = _filteredUsers[index];
+                    final farm = _farms.cast<Farm?>().firstWhere(
+                      (f) => f?.id == user.farmId,
+                      orElse: () => null,
+                    );
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.grey.shade100),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
                         ],
                       ),
-                    ),
-                  );
-                },
-              ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: user.isActive
+                              ? (user.role == 'admin'
+                                    ? Colors.orange.withValues(alpha: 0.1)
+                                    : Colors.blue.withValues(alpha: 0.1))
+                              : Colors.grey.withValues(alpha: 0.1),
+                          child: Icon(
+                            user.role == 'admin'
+                                ? Icons.security_rounded
+                                : Icons.person_rounded,
+                            color: user.isActive
+                                ? (user.role == 'admin'
+                                      ? Colors.orange
+                                      : Colors.blue)
+                                : Colors.grey,
+                          ),
+                        ),
+                        title: Text(
+                          user.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${user.role.toUpperCase()} • ${farm?.name ?? "Sans site"}',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                user.isActive
+                                    ? Icons.toggle_on_rounded
+                                    : Icons.toggle_off_rounded,
+                                color: user.isActive
+                                    ? Colors.green
+                                    : Colors.grey,
+                                size: 32,
+                              ),
+                              onPressed: () async {
+                                await _mongoService.toggleUserStatus(user);
+                                _refreshData();
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.edit_rounded,
+                                color: Colors.blue,
+                                size: 20,
+                              ),
+                              onPressed: () => _showEditUserDialog(user),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.redAccent,
+                                size: 20,
+                              ),
+                              onPressed: () async {
+                                await _mongoService.deleteUser(user.id!);
+                                _refreshData();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -947,44 +1416,104 @@ class _AdminDashboardState extends State<AdminDashboard> {
               prefixIcon: const Icon(Icons.search, color: Colors.orange),
               filled: true,
               fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: Colors.grey.shade100, width: 1)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide(color: Colors.grey.shade100, width: 1),
+              ),
             ),
           ),
         ),
         Expanded(
           child: _filteredFarms.isEmpty
-            ? const Center(child: Text('Aucun bâtiment trouvé', style: TextStyle(color: Colors.grey)))
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                itemCount: _filteredFarms.length,
-                itemBuilder: (context, index) {
-                  final farm = _filteredFarms[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.grey.shade100),
-                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      leading: CircleAvatar(backgroundColor: Colors.green.withValues(alpha: 0.1), child: const Icon(Icons.agriculture_rounded, color: Colors.green)),
-                      title: Text(farm.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                      subtitle: Text('${farm.rooms.length} salle(s) : ${farm.rooms.join(", ")}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20), onPressed: () => _showEditFarmDialog(farm)),
-                          IconButton(icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20), onPressed: () async { await _mongoService.deleteFarm(farm.id!); _refreshData(); }),
+              ? const Center(
+                  child: Text(
+                    'Aucun bâtiment trouvé',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                  itemCount: _filteredFarms.length,
+                  itemBuilder: (context, index) {
+                    final farm = _filteredFarms[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.grey.shade100),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
                         ],
                       ),
-                    ),
-                  );
-                },
-              ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.green.withValues(alpha: 0.1),
+                          child: const Icon(
+                            Icons.agriculture_rounded,
+                            color: Colors.green,
+                          ),
+                        ),
+                        title: Text(
+                          farm.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${farm.rooms.length} salle(s) : ${farm.rooms.join(", ")}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.edit_rounded,
+                                color: Colors.blue,
+                                size: 20,
+                              ),
+                              onPressed: () => _showEditFarmDialog(farm),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.redAccent,
+                                size: 20,
+                              ),
+                              onPressed: () async {
+                                await _mongoService.deleteFarm(farm.id!);
+                                _refreshData();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -1002,37 +1531,78 @@ class _AdminDashboardState extends State<AdminDashboard> {
               prefixIcon: const Icon(Icons.search, color: Colors.orange),
               filled: true,
               fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
         ),
         Expanded(
           child: _filteredLots.isEmpty
-            ? const Center(child: Text('Aucun lot trouvé', style: TextStyle(color: Colors.grey)))
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
-                itemCount: _filteredLots.length,
-                itemBuilder: (context, index) {
-                  final lot = _filteredLots[index];
-                  return Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade100)),
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    child: ListTile(
-                      leading: CircleAvatar(backgroundColor: Colors.purple.withValues(alpha: 0.1), child: const Icon(Icons.inventory_2, color: Colors.purple)),
-                      title: Text(lot.number, style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
-                      subtitle: Text('Âge actuel : ${lot.currentAge} sem. • Départ : ${lot.startDate != null ? DateFormat('dd/MM/yyyy').format(lot.startDate!) : '-'}'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20), onPressed: () => _showEditLotDialog(lot)),
-                          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () async { await _mongoService.deleteLot(lot.id!); _refreshData(); }),
-                        ],
+              ? const Center(
+                  child: Text(
+                    'Aucun lot trouvé',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
+                  itemCount: _filteredLots.length,
+                  itemBuilder: (context, index) {
+                    final lot = _filteredLots[index];
+                    return Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        side: BorderSide(color: Colors.grey.shade100),
                       ),
-                    ),
-                  );
-                },
-              ),
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.purple.withValues(alpha: 0.1),
+                          child: const Icon(
+                            Icons.inventory_2,
+                            color: Colors.purple,
+                          ),
+                        ),
+                        title: Text(
+                          lot.number,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        subtitle: Text(
+                          'Âge actuel : ${lot.currentAge} sem. • Départ : ${lot.startDate != null ? DateFormat('dd/MM/yyyy').format(lot.startDate!) : '-'}',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.edit_rounded,
+                                color: Colors.blue,
+                                size: 20,
+                              ),
+                              onPressed: () => _showEditLotDialog(lot),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.redAccent,
+                              ),
+                              onPressed: () async {
+                                await _mongoService.deleteLot(lot.id!);
+                                _refreshData();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -1041,7 +1611,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget _buildGoogleNavBar() {
     return Container(
       margin: const EdgeInsets.fromLTRB(30, 0, 30, 30),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(35), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))]),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(35),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: GNav(

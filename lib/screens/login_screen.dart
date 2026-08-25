@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/usine.dart';
 import '../services/mongo_service.dart';
-import 'admin_dashboard.dart';
+import 'admin_mode_selector_screen.dart';
 import 'blocked_screen.dart';
 import 'user_dashboard.dart';
 import 'usine_home_screen.dart';
@@ -23,7 +23,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mongoService.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur de connexion : ${mongoService.connectionError ?? "Base de données non joignable"}'),
+          content: Text(
+            'Erreur de connexion : ${mongoService.connectionError ?? "Base de données non joignable"}',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -58,7 +60,10 @@ class _LoginScreenState extends State<LoginScreen> {
         mongoService.syncOfflineSessions().then((count) {
           if (count > 0 && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('$count pesées synchronisées avec succès !'), backgroundColor: Colors.green),
+              SnackBar(
+                content: Text('$count pesées synchronisées avec succès !'),
+                backgroundColor: Colors.green,
+              ),
             );
           }
         });
@@ -66,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (user.role == 'admin') {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const AdminDashboard()),
+            MaterialPageRoute(builder: (_) => const AdminModeSelectorScreen()),
           );
         } else {
           Navigator.pushReplacement(
@@ -110,14 +115,20 @@ class _LoginScreenState extends State<LoginScreen> {
     if (assignments.isEmpty) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Aucune usine ni poste ne vous a été affecté. Contactez l'administrateur.")),
+        const SnackBar(
+          content: Text(
+            "Aucune usine ni poste ne vous a été affecté. Contactez l'administrateur.",
+          ),
+        ),
       );
       return;
     }
 
     final usines = await mongoService.getUsines();
     final usineIds = assignments.map((a) => a.usineId).toSet().toList();
-    final assignedUsines = usines.where((u) => usineIds.contains(u.id)).toList();
+    final assignedUsines = usines
+        .where((u) => usineIds.contains(u.id))
+        .toList();
     if (!mounted) return;
     setState(() => _isLoading = false);
 
@@ -131,12 +142,21 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _enterUsine(String userId, Usine usine) async {
     final mongoService = MongoService();
     setState(() => _isLoading = true);
-    final permissions = await mongoService.getEffectivePermissions(userId, usineId: usine.id);
+    final permissions = await mongoService.getEffectivePermissions(
+      userId,
+      usineId: usine.id,
+    );
     if (!mounted) return;
     setState(() => _isLoading = false);
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => UsineHomeScreen(usine: usine, usineUser: mongoService.currentUsineUser!, permissions: permissions)),
+      MaterialPageRoute(
+        builder: (_) => UsineHomeScreen(
+          usine: usine,
+          usineUser: mongoService.currentUsineUser!,
+          permissions: permissions,
+        ),
+      ),
     );
   }
 
@@ -145,20 +165,28 @@ class _LoginScreenState extends State<LoginScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Choisissez une usine', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Choisissez une usine',
+          style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+        ),
         content: SizedBox(
           width: 320,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: usines
-                .map((u) => ListTile(
-                      leading: const Icon(Icons.factory_rounded, color: Colors.orange),
-                      title: Text(u.name),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _enterUsine(userId, u);
-                      },
-                    ))
+                .map(
+                  (u) => ListTile(
+                    leading: const Icon(
+                      Icons.factory_rounded,
+                      color: Colors.orange,
+                    ),
+                    title: Text(u.name),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _enterUsine(userId, u);
+                    },
+                  ),
+                )
                 .toList(),
           ),
         ),
@@ -207,17 +235,30 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Gestion de Fermes',
-                style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: 48),
-              
+
               // Input fields with modern styling
-              _buildTextField(controller: _nameController, label: 'Nom d\'utilisateur', icon: Icons.person),
+              _buildTextField(
+                controller: _nameController,
+                label: 'Nom d\'utilisateur',
+                icon: Icons.person,
+              ),
               const SizedBox(height: 16),
-              _buildTextField(controller: _passwordController, label: 'Mot de passe', icon: Icons.lock, obscure: true),
-              
+              _buildTextField(
+                controller: _passwordController,
+                label: 'Mot de passe',
+                icon: Icons.lock,
+                obscure: true,
+              ),
+
               const SizedBox(height: 32),
-              
+
               // Login button
               _isLoading
                   ? const CircularProgressIndicator(color: Colors.orange)
@@ -228,14 +269,24 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: _login,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                           elevation: 4,
                           shadowColor: Colors.orange.withValues(alpha: 0.5),
                         ),
-                        child: const Text('SE CONNECTER', style: TextStyle(fontSize: 16, letterSpacing: 1.2, fontWeight: FontWeight.bold, color: Colors.white)),
+                        child: const Text(
+                          'SE CONNECTER',
+                          style: TextStyle(
+                            fontSize: 16,
+                            letterSpacing: 1.2,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
-              
+
               const SizedBox(height: 32),
 
               // Status indicator
@@ -247,7 +298,12 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, bool obscure = false}) {
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool obscure = false,
+  }) {
     return TextField(
       controller: controller,
       obscureText: obscure,
@@ -257,7 +313,10 @@ class _LoginScreenState extends State<LoginScreen> {
         prefixIcon: Icon(icon, color: Colors.orange.shade300),
         filled: true,
         fillColor: Colors.grey.shade50,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 16,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -291,7 +350,11 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(width: 8),
             Text(
               connected ? 'Serveur en ligne' : 'Serveur hors ligne',
-              style: TextStyle(color: connected ? Colors.green : Colors.red, fontSize: 13, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: connected ? Colors.green : Colors.red,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -299,10 +362,18 @@ class _LoginScreenState extends State<LoginScreen> {
           TextButton(
             onPressed: () async {
               setState(() => _isLoading = true);
-              try { await MongoService().connect(); } catch (e) {}
+              try {
+                await MongoService().connect();
+              } catch (e) {}
               setState(() => _isLoading = false);
             },
-            child: const Text('Réessayer la connexion', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Réessayer la connexion',
+              style: TextStyle(
+                color: Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
       ],
     );
