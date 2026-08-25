@@ -9,6 +9,7 @@ class RawMaterialBatch {
   final DateTime? receivedAt;
   final String status; // "actif" | "cloture"
   final String? receptionId;
+  final String? materialName; // rempli uniquement par l'historique paginé
 
   RawMaterialBatch({
     this.id,
@@ -21,6 +22,7 @@ class RawMaterialBatch {
     this.receivedAt,
     this.status = 'actif',
     this.receptionId,
+    this.materialName,
   });
 
   bool get isActive => status == 'actif';
@@ -34,9 +36,40 @@ class RawMaterialBatch {
       receivedQuantity: (map['receivedQuantity'] as num).toDouble(),
       remainingQuantity: (map['remainingQuantity'] as num).toDouble(),
       unitCost: (map['unitCost'] as num).toDouble(),
-      receivedAt: map['receivedAt'] != null ? DateTime.tryParse(map['receivedAt'].toString()) : null,
+      receivedAt: map['receivedAt'] != null
+          ? DateTime.tryParse(map['receivedAt'].toString())
+          : null,
       status: map['status'] as String? ?? 'actif',
       receptionId: map['receptionId'] as String?,
+      materialName: map['materialName'] as String?,
+    );
+  }
+}
+
+/// Une page de l'historique des lots (matières « par lot »), triée du plus récent au
+/// plus ancien — [totalCount] permet de calculer le nombre de pages sans jamais avoir
+/// à charger l'ensemble des lots côté client.
+class RawMaterialBatchPage {
+  final int totalCount;
+  final List<RawMaterialBatch> items;
+  final int limit;
+  final int skip;
+
+  RawMaterialBatchPage({
+    required this.totalCount,
+    required this.items,
+    required this.limit,
+    required this.skip,
+  });
+
+  factory RawMaterialBatchPage.fromMap(Map<String, dynamic> map) {
+    return RawMaterialBatchPage(
+      totalCount: map['total_count'] as int? ?? 0,
+      items: (map['data'] as List<dynamic>? ?? [])
+          .map((b) => RawMaterialBatch.fromMap(b as Map<String, dynamic>))
+          .toList(),
+      limit: map['limit'] as int? ?? 30,
+      skip: map['skip'] as int? ?? 0,
     );
   }
 }

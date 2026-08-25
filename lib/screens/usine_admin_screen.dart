@@ -7,6 +7,9 @@ import '../services/mongo_service.dart';
 import 'usine_referentiel_screen.dart';
 import 'usine_appro_screen.dart';
 import 'usine_production_screen.dart';
+import 'usine_simulation_screen.dart';
+import 'usine_stock_livraison_screen.dart';
+import 'usine_stats_screen.dart';
 
 /// Administration transverse du module Usine Aliment (Partie 0) :
 /// - Usines (comme les fermes, on peut en créer plusieurs)
@@ -308,6 +311,66 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                   context,
                   MaterialPageRoute(
                     builder: (_) => UsineProductionScreen(usine: usine),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.local_shipping_outlined,
+                color: Colors.teal,
+              ),
+              title: const Text('Stock & livraison'),
+              subtitle: const Text(
+                'Stock d\'aliment produit, livraisons',
+                style: TextStyle(fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UsineStockLivraisonScreen(usine: usine),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.calculate_outlined,
+                color: Colors.orange,
+              ),
+              title: const Text('Simulation'),
+              subtitle: const Text(
+                'Ce qu\'on peut produire, plan optimisé',
+                style: TextStyle(fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UsineSimulationScreen(usine: usine),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.bar_chart_rounded,
+                color: Colors.blueGrey,
+              ),
+              title: const Text('Statistiques'),
+              subtitle: const Text(
+                'Consommation, traçabilité, budgets',
+                style: TextStyle(fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UsineStatsScreen(usine: usine),
                   ),
                 );
               },

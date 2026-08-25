@@ -7,6 +7,7 @@ import '../models/raw_material_batch.dart';
 import '../models/stock_loss.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import 'usine_lots_history_screen.dart';
 
 /// Une ligne du fil d'historique (réception valorisée, perte ou ajustement CUMP fondus
 /// dans une seule chronologie) — c'était le trou signalé : aucune trace consultable des
@@ -247,6 +248,22 @@ class _UsineApproScreenState extends State<UsineApproScreen>
 
   List<RawMaterialBatch> _batchesFor(String materialId) =>
       _activeBatches.where((b) => b.rawMaterialId == materialId).toList();
+
+  /// Écran 05, annotation C : valorisation totale du stock de matières premières,
+  /// recalculée à chaque mouvement — un indicateur uniquement comptable/admin.
+  double get _totalStockValueFcfa {
+    double total = 0;
+    for (final m in _materials) {
+      if (m.isParLot) {
+        total += _batchesFor(
+          m.id ?? '',
+        ).fold(0.0, (sum, b) => sum + b.remainingQuantity * b.unitCost);
+      } else {
+        total += m.currentStock * (m.weightedCost ?? 0);
+      }
+    }
+    return total;
+  }
 
   void _snack(String message) {
     if (!mounted) return;
@@ -595,6 +612,151 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Écran 07 — fiche matière première, réservée à la comptabilité (seeCosts) : stock/CUMP/
+  /// couverture en jours puis l'historique complet (réceptions + ajustements CUMP) d'UNE
+  /// matière gérée en CUMP global. Les matières « par lot » ouvrent la liste des lots
+  /// (écran 08, _showLotsDialog) à la place — jamais cette fiche.
+  void _showMaterialFicheDialog(RawMaterial material) async {
+    final fiche = await _mongoService.getMaterialFiche(material.id!);
+    if (!mounted) return;
+    if (fiche == null) {
+      _snack('Erreur de chargement de la fiche.');
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          fiche.materialName,
+          style: const TextStyle(
+            color: Colors.orange,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _ficheStat(
+                      fiche.currentStock.toStringAsFixed(0),
+                      'Stock ${fiche.unit}',
+                    ),
+                    _ficheStat(
+                      fiche.weightedCost != null
+                          ? fiche.weightedCost!.toStringAsFixed(1)
+                          : '—',
+                      'CUMP F/${fiche.unit}',
+                    ),
+                    _ficheStat(
+                      fiche.coverageDays != null
+                          ? '${fiche.coverageDays!.toStringAsFixed(0)} j'
+                          : '—',
+                      'Couverture',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Historique — réceptions & ajustements',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (fiche.history.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: Text(
+                      'Aucun mouvement enregistré.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                else
+                  ...fiche.history.map(
+                    (h) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(
+                        '${DateFormat('dd/MM/yyyy').format(h.date)} · ${h.label}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                      subtitle: Text(
+                        h.detail,
+                        style: const TextStyle(fontSize: 11.5),
+                      ),
+                      trailing: h.type == 'reception_attente'
+                          ? const Icon(
+                              Icons.circle,
+                              size: 10,
+                              color: Colors.amber,
+                            )
+                          : (h.amountFcfa != null
+                                ? Text(
+                                    h.amountFcfa!.toStringAsFixed(0),
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )
+                                : null),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    "Le coût pondéré lisse les variations de prix d'un fournisseur à l'autre ; les ajustements manuels apparaissent dans la même chronologie.",
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ficheStat(String value, String label) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 10.5),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -1198,6 +1360,31 @@ class _UsineApproScreenState extends State<UsineApproScreen>
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         children: [
+          if (_perms.seeCosts && _materials.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: Colors.grey,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Valeur totale du stock de matières premières : ${NumberFormat('#,###', 'fr_FR').format(_totalStockValueFcfa)} FCFA',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_perms.adjustCost && materialsWithoutCost.isNotEmpty)
             GestureDetector(
               onTap: () => _showMissingCostDialog(materialsWithoutCost),
@@ -1298,6 +1485,50 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 trailing: const Icon(Icons.chevron_right, color: Colors.grey),
               ),
             ),
+          if ((_perms.manageReception || _perms.seeCosts) &&
+              _materials.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ListTile(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UsineLotsHistoryScreen(
+                      usine: widget.usine,
+                      permissions: widget.permissions,
+                    ),
+                  ),
+                ),
+                leading: CircleAvatar(
+                  backgroundColor: Colors.indigo.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.inventory_2_outlined,
+                    color: Colors.indigo,
+                  ),
+                ),
+                title: const Text(
+                  'Historique des lots',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                subtitle: const Text(
+                  'Tous les lots, paginé',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
+            ),
           if (_materials.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 40),
@@ -1327,9 +1558,16 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 ],
               ),
               child: ListTile(
-                onTap: (m.isParLot && _perms.manageReception)
-                    ? () => _showLotsDialog(m)
-                    : null,
+                // Écran 01, annotation A : une matière « par lot » ouvre la liste des lots
+                // (écran 08) ; une matière en CUMP global ouvre sa fiche comptable (écran 07,
+                // annotation A de l'écran 05) — jamais accessible à qui n'a pas seeCosts.
+                onTap: m.isParLot
+                    ? ((_perms.manageReception || _perms.seeCosts)
+                          ? () => _showLotsDialog(m)
+                          : null)
+                    : (_perms.seeCosts
+                          ? () => _showMaterialFicheDialog(m)
+                          : null),
                 leading: CircleAvatar(
                   backgroundColor: (isLow ? Colors.orange : Colors.green)
                       .withValues(alpha: 0.1),
@@ -1357,21 +1595,31 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   ),
                 ),
                 trailing:
-                    ((m.isParLot && _perms.manageReception) ||
+                    ((m.isParLot &&
+                            (_perms.manageReception || _perms.seeCosts)) ||
                         (!m.isParLot &&
-                            (_perms.manageReception || _perms.adjustCost)))
+                            (_perms.manageReception ||
+                                _perms.adjustCost ||
+                                _perms.seeCosts)))
                     ? PopupMenuButton<String>(
                         icon: const Icon(Icons.more_vert, color: Colors.grey),
                         onSelected: (value) {
                           if (value == 'lots') _showLotsDialog(m);
+                          if (value == 'fiche') _showMaterialFicheDialog(m);
                           if (value == 'perte') _showDeclareLossDialog(m);
                           if (value == 'ajuster') _showAdjustCostDialog(m);
                         },
                         itemBuilder: (context) => [
-                          if (m.isParLot && _perms.manageReception)
+                          if (m.isParLot &&
+                              (_perms.manageReception || _perms.seeCosts))
                             const PopupMenuItem(
                               value: 'lots',
                               child: Text('Voir les lots'),
+                            ),
+                          if (!m.isParLot && _perms.seeCosts)
+                            const PopupMenuItem(
+                              value: 'fiche',
+                              child: Text('Voir la fiche'),
                             ),
                           if (!m.isParLot && _perms.manageReception)
                             const PopupMenuItem(

@@ -19,6 +19,10 @@ import '../models/raw_material_batch.dart';
 import '../models/stock_loss.dart';
 import '../models/cost_adjustment.dart';
 import '../models/production_batch.dart';
+import '../models/simulation.dart';
+import '../models/feed_stock.dart';
+import '../models/delivery.dart';
+import '../models/usine_stats.dart';
 import './session_storage.dart';
 
 class LicenseBlockedException implements Exception {
@@ -32,7 +36,7 @@ class MongoService {
   static final MongoService _instance = MongoService._internal();
   // TEMPORAIRE (test Partie 0 Usine Aliment) : backend local, remettre l'URL de
   // production ("https://backendproavifeletana.mirhosty.com") avant tout build/déploiement.
-  final String baseUrl = "http://192.168.1.187:8010";
+  final String baseUrl = "http://192.168.0.117:8010";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -471,9 +475,22 @@ class MongoService {
     return [];
   }
 
+  Future<MaterialFiche?> getMaterialFiche(String materialId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/raw-materials/$materialId/fiche'),
+    );
+    if (response.statusCode == 200) {
+      return MaterialFiche.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
   Future<void> addRawMaterial(RawMaterial material) async {
+    final uri = Uri.parse(
+      '$baseUrl/raw-materials',
+    ).replace(queryParameters: {'performedBy': _performedBy});
     await http.post(
-      Uri.parse('$baseUrl/raw-materials'),
+      uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(material.toMap()),
     );
@@ -481,15 +498,21 @@ class MongoService {
 
   Future<void> updateRawMaterial(RawMaterial material) async {
     if (material.id == null) return;
+    final uri = Uri.parse(
+      '$baseUrl/raw-materials/${material.id}',
+    ).replace(queryParameters: {'performedBy': _performedBy});
     await http.put(
-      Uri.parse('$baseUrl/raw-materials/${material.id}'),
+      uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(material.toMap()),
     );
   }
 
   Future<void> deleteRawMaterial(String id) async {
-    await http.delete(Uri.parse('$baseUrl/raw-materials/$id'));
+    final uri = Uri.parse(
+      '$baseUrl/raw-materials/$id',
+    ).replace(queryParameters: {'performedBy': _performedBy});
+    await http.delete(uri);
   }
 
   // ---- Usine Aliment : Formules CRUD (référentiel par usine) ----
@@ -506,8 +529,11 @@ class MongoService {
   }
 
   Future<void> addFormula(Formula formula) async {
+    final uri = Uri.parse(
+      '$baseUrl/formulas',
+    ).replace(queryParameters: {'performedBy': _performedBy});
     await http.post(
-      Uri.parse('$baseUrl/formulas'),
+      uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(formula.toMap()),
     );
@@ -515,15 +541,21 @@ class MongoService {
 
   Future<void> updateFormula(Formula formula) async {
     if (formula.id == null) return;
+    final uri = Uri.parse(
+      '$baseUrl/formulas/${formula.id}',
+    ).replace(queryParameters: {'performedBy': _performedBy});
     await http.put(
-      Uri.parse('$baseUrl/formulas/${formula.id}'),
+      uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(formula.toMap()),
     );
   }
 
   Future<void> deleteFormula(String id) async {
-    await http.delete(Uri.parse('$baseUrl/formulas/$id'));
+    final uri = Uri.parse(
+      '$baseUrl/formulas/$id',
+    ).replace(queryParameters: {'performedBy': _performedBy});
+    await http.delete(uri);
   }
 
   // ---- Usine Aliment : Réceptions (approvisionnement) ----
@@ -595,6 +627,38 @@ class MongoService {
       return data.map((b) => RawMaterialBatch.fromMap(b)).toList();
     }
     return [];
+  }
+
+  /// Historique paginé de tous les lots d'une usine (toutes matières « par lot »
+  /// confondues sauf filtre), trié du plus récent au plus ancien — tout le tri et le
+  /// filtrage se font côté serveur, jamais un chargement complet côté client.
+  Future<RawMaterialBatchPage> getRawMaterialBatchesHistory({
+    required String usineId,
+    String? rawMaterialId,
+    String? status,
+    int limit = 30,
+    int skip = 0,
+  }) async {
+    final queryParams = <String, String>{
+      'usineId': usineId,
+      'limit': '$limit',
+      'skip': '$skip',
+    };
+    if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
+    if (status != null) queryParams['status'] = status;
+    final uri = Uri.parse(
+      '$baseUrl/raw-material-batches/history',
+    ).replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return RawMaterialBatchPage.fromMap(jsonDecode(response.body));
+    }
+    return RawMaterialBatchPage(
+      totalCount: 0,
+      items: [],
+      limit: limit,
+      skip: skip,
+    );
   }
 
   Future<String?> closeRawMaterialBatch(
@@ -740,6 +804,48 @@ class MongoService {
     return [];
   }
 
+  // ---- Usine Aliment : Simulation & optimisation ----
+  Future<List<SimulationLine>> simulateProduction(String usineId) async {
+    final uri = Uri.parse(
+      '$baseUrl/simulation',
+    ).replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['lines'] as List<dynamic>)
+          .map((l) => SimulationLine.fromMap(l))
+          .toList();
+    }
+    return [];
+  }
+
+  /// Plan optimisé (programmation linéaire). Renvoie null si le calcul échoue (ex. pas
+  /// de formule active) — le message d'erreur serveur est alors dans [error].
+  Future<({OptimizationResult? result, String? error})> optimizeProduction(
+    String usineId,
+  ) async {
+    final uri = Uri.parse(
+      '$baseUrl/simulation/optimize',
+    ).replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (
+        result: OptimizationResult.fromMap(jsonDecode(response.body)),
+        error: null,
+      );
+    }
+    try {
+      return (
+        result: null,
+        error:
+            jsonDecode(response.body)['detail']?.toString() ??
+            'Erreur inconnue',
+      );
+    } catch (_) {
+      return (result: null, error: 'Erreur inconnue');
+    }
+  }
+
   // ---- Usine Aliment : Production & coût de revient ----
   Future<ProductionCheckResult> checkProduction(
     String usineId,
@@ -777,6 +883,7 @@ class MongoService {
         'formulaId': formulaId,
         'quantityTarget': quantityTarget,
         'actualQuantityProduced': actualQuantityProduced,
+        'performedBy': _performedBy,
       }),
     );
     if (response.statusCode == 201) {
@@ -826,6 +933,7 @@ class MongoService {
       body: jsonEncode({
         'adjustment': adjustment,
         'adjustmentReason': adjustmentReason,
+        'performedBy': _performedBy,
       }),
     );
     if (response.statusCode == 200) return null;
@@ -835,6 +943,276 @@ class MongoService {
     } catch (_) {
       return 'Erreur inconnue';
     }
+  }
+
+  /// Écran 17 — clôture : corrige la quantité réellement produite (pesée de sortie,
+  /// souvent connue après le lancement) puis reste en brouillon ou part au comptable.
+  Future<String?> closeProduction(
+    String id, {
+    required double actualQuantityProduced,
+    required bool sendToAccountant,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/production/$id/close'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actualQuantityProduced': actualQuantityProduced,
+        'sendToAccountant': sendToAccountant,
+        'performedBy': _performedBy,
+      }),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  /// Écran 19 — « Renvoyer » : la comptabilité signale un problème sur le lot sans toucher
+  /// au stock déjà consommé (déjà réel physiquement), un simple drapeau tracé.
+  Future<String?> rejectProduction(String id, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/production/$id/reject'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'reason': reason, 'performedBy': _performedBy}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  // ---- Usine Aliment : Stock & livraison ----
+
+  Future<List<FeedStockSummary>> getFeedStock(String usineId) async {
+    final uri = Uri.parse(
+      '$baseUrl/feed-stock',
+    ).replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['items'] as List<dynamic>)
+          .map((i) => FeedStockSummary.fromMap(i))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<String?> getCurrentLotForRoom(String farmName, String roomName) async {
+    final uri = Uri.parse(
+      '$baseUrl/deliveries/current-lot',
+    ).replace(queryParameters: {'farmName': farmName, 'roomName': roomName});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['lotNumber'] as String?;
+    }
+    return null;
+  }
+
+  Future<({Delivery? delivery, String? error})> createDelivery({
+    required String usineId,
+    required String formulaId,
+    required String farmName,
+    required String roomName,
+    required double quantity,
+    String? driverName,
+    String? vehicle,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/deliveries'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'usineId': usineId,
+        'formulaId': formulaId,
+        'farmName': farmName,
+        'roomName': roomName,
+        'quantity': quantity,
+        'driverName': driverName,
+        'vehicle': vehicle,
+        'performedBy': _performedBy,
+      }),
+    );
+    if (response.statusCode == 201) {
+      return (
+        delivery: Delivery.fromMap(jsonDecode(response.body)),
+        error: null,
+      );
+    }
+    try {
+      return (
+        delivery: null,
+        error:
+            jsonDecode(response.body)['detail']?.toString() ??
+            'Erreur inconnue',
+      );
+    } catch (_) {
+      return (delivery: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<DeliveryPagedResult> getDeliveries({
+    required String usineId,
+    String? formulaId,
+    String? farmName,
+    int skip = 0,
+    int limit = 30,
+  }) async {
+    final queryParams = <String, String>{
+      'usineId': usineId,
+      'skip': '$skip',
+      'limit': '$limit',
+    };
+    if (formulaId != null) queryParams['formulaId'] = formulaId;
+    if (farmName != null) queryParams['farmName'] = farmName;
+    final uri = Uri.parse(
+      '$baseUrl/deliveries',
+    ).replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return DeliveryPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return DeliveryPagedResult(
+      totalCount: 0,
+      data: [],
+      limit: limit,
+      skip: skip,
+    );
+  }
+
+  // ---- Usine Aliment : Statistiques & traçabilité ----
+
+  Future<DashboardStats?> getUsineDashboard(String usineId) async {
+    final uri = Uri.parse(
+      '$baseUrl/stats/dashboard',
+    ).replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return DashboardStats.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<List<RoomConsumption>> getConsumptionByRoom(
+    String usineId, {
+    int? month,
+    int? year,
+  }) async {
+    final queryParams = <String, String>{'usineId': usineId};
+    if (month != null) queryParams['month'] = '$month';
+    if (year != null) queryParams['year'] = '$year';
+    final uri = Uri.parse(
+      '$baseUrl/stats/consumption-by-room',
+    ).replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['rooms'] as List<dynamic>)
+          .map((r) => RoomConsumption.fromMap(r))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<TraceResult?> traceLot(String lotNumber) async {
+    final uri = Uri.parse(
+      '$baseUrl/stats/trace',
+    ).replace(queryParameters: {'lotNumber': lotNumber});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return TraceResult.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<BudgetsStats?> getBudgets(
+    String usineId, {
+    int? month,
+    int? year,
+  }) async {
+    final queryParams = <String, String>{'usineId': usineId};
+    if (month != null) queryParams['month'] = '$month';
+    if (year != null) queryParams['year'] = '$year';
+    final uri = Uri.parse(
+      '$baseUrl/stats/budgets',
+    ).replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return BudgetsStats.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<void> setBudget({
+    required String usineId,
+    required String category,
+    required int month,
+    required int year,
+    required double amountFcfa,
+  }) async {
+    await http.post(
+      Uri.parse('$baseUrl/stats/budgets/config'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'usineId': usineId,
+        'category': category,
+        'month': month,
+        'year': year,
+        'amountFcfa': amountFcfa,
+        'performedBy': _performedBy,
+      }),
+    );
+  }
+
+  Future<TrendsStats?> getTrends(
+    String usineId, {
+    String? rawMaterialId,
+    String? formulaId,
+  }) async {
+    final queryParams = <String, String>{'usineId': usineId};
+    if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
+    if (formulaId != null) queryParams['formulaId'] = formulaId;
+    final uri = Uri.parse(
+      '$baseUrl/stats/trends',
+    ).replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return TrendsStats.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<AuditLogPagedResult> getUsineJournal({
+    required String usineId,
+    String? performedBy,
+    String? type,
+    int skip = 0,
+    int limit = 30,
+  }) async {
+    final queryParams = <String, String>{
+      'usineId': usineId,
+      'skip': '$skip',
+      'limit': '$limit',
+    };
+    if (performedBy != null) queryParams['performedBy'] = performedBy;
+    if (type != null) queryParams['type'] = type;
+    final uri = Uri.parse(
+      '$baseUrl/audit-logs/usine',
+    ).replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return AuditLogPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return AuditLogPagedResult(
+      totalCount: 0,
+      data: [],
+      limit: limit,
+      skip: skip,
+    );
   }
 
   /// Fusion (OR logique) des permissions de tous les postes d'un utilisateur pour une

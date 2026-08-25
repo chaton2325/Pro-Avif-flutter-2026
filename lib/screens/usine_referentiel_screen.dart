@@ -299,6 +299,40 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
     );
   }
 
+  void _confirmDeleteMaterial(RawMaterial m) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Supprimer cette matière ?',
+          style: TextStyle(
+            color: Colors.redAccent,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Cela supprime "${m.name}" du référentiel. L\'historique déjà enregistré (réceptions, lots, ajustements) reste consultable mais ne pointera plus vers une matière existante. Préférez la désactiver si elle n\'est pas utilisée pour l\'instant.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () async {
+              Navigator.pop(context);
+              await _mongoService.deleteRawMaterial(m.id!);
+              _refreshData();
+            },
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMaterialsTab() {
     if (_materials.isEmpty)
       return const Center(
@@ -328,8 +362,12 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           ),
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: Colors.green.withValues(alpha: 0.1),
-              child: const Icon(Icons.grass_rounded, color: Colors.green),
+              backgroundColor: (m.isActive ? Colors.green : Colors.grey)
+                  .withValues(alpha: 0.1),
+              child: Icon(
+                Icons.grass_rounded,
+                color: m.isActive ? Colors.green : Colors.grey,
+              ),
             ),
             title: Text(
               m.name,
@@ -342,6 +380,27 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (m.isActive ? Colors.green : Colors.grey.shade400)
+                        .withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    m.isActive ? 'ACTIF' : 'INACTIF',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: m.isActive
+                          ? Colors.green.shade800
+                          : Colors.grey.shade600,
+                    ),
+                  ),
+                ),
                 IconButton(
                   icon: const Icon(
                     Icons.edit_rounded,
@@ -356,10 +415,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                     color: Colors.redAccent,
                     size: 20,
                   ),
-                  onPressed: () async {
-                    await _mongoService.deleteRawMaterial(m.id!);
-                    _refreshData();
-                  },
+                  onPressed: () => _confirmDeleteMaterial(m),
                 ),
               ],
             ),
@@ -383,6 +439,9 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
       return;
     }
     final nameController = TextEditingController(text: formula?.name ?? '');
+    final thresholdController = TextEditingController(
+      text: formula?.lowStockThreshold.toStringAsFixed(0) ?? '0',
+    );
     bool isActive = formula?.isActive ?? true;
     List<MapEntry<String, TextEditingController>> lines = (formula?.lines ?? [])
         .map(
@@ -549,6 +608,15 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                         style: TextStyle(fontSize: 11, color: Colors.orange),
                       ),
                     const SizedBox(height: 8),
+                    TextField(
+                      controller: thresholdController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Seuil de stock bas (kg d\'aliment produit)',
+                        prefixIcon: Icon(Icons.warning_amber_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Active'),
@@ -585,6 +653,8 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                         )
                         .toList(),
                     isActive: isActive,
+                    lowStockThreshold:
+                        double.tryParse(thresholdController.text) ?? 0,
                   );
                   if (formula == null) {
                     await _mongoService.addFormula(newFormula);

@@ -7,6 +7,8 @@ import 'login_screen.dart';
 import 'usine_appro_screen.dart';
 import 'usine_production_screen.dart';
 import 'usine_referentiel_screen.dart';
+import 'usine_stock_livraison_screen.dart';
+import 'usine_stats_screen.dart';
 
 /// Accueil d'un utilisateur usine connecté : n'affiche que les sections que ses postes
 /// autorisent sur CETTE usine — c'est ici que le cloisonnement par poste (magasinier vs
@@ -41,6 +43,7 @@ class UsineHomeScreen extends StatelessWidget {
         permissions.seeCosts;
     final canProduction =
         permissions.manageProduction || permissions.validateCost;
+    final canStockLivraison = permissions.manageDelivery;
     final canAdmin = permissions.manageAdmin;
     final canStats = permissions.viewStats;
 
@@ -73,6 +76,22 @@ class UsineHomeScreen extends StatelessWidget {
             ),
           ),
         ),
+      if (canStockLivraison)
+        _SectionCard(
+          icon: Icons.local_shipping_outlined,
+          color: Colors.teal,
+          title: 'Stock & livraison',
+          subtitle: "Stock d'aliment produit, livraisons",
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UsineStockLivraisonScreen(
+                usine: usine,
+                permissions: permissions,
+              ),
+            ),
+          ),
+        ),
       if (canAdmin)
         _SectionCard(
           icon: Icons.inventory_2_outlined,
@@ -91,10 +110,12 @@ class UsineHomeScreen extends StatelessWidget {
           icon: Icons.bar_chart_rounded,
           color: Colors.blueGrey,
           title: 'Statistiques',
-          subtitle: 'Bientôt disponible',
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Module statistiques pas encore disponible.'),
+          subtitle: 'Consommation, traçabilité, budgets',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  UsineStatsScreen(usine: usine, permissions: permissions),
             ),
           ),
         ),

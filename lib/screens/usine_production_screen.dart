@@ -5,6 +5,7 @@ import '../models/formula.dart';
 import '../models/production_batch.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import 'usine_simulation_screen.dart';
 
 /// Parcours 02 — Production & coût de revient (maquette écrans 14-19), condensé en un
 /// écran à 2 onglets : lancement d'une fabrication (avec répartition FIFO automatique
@@ -95,17 +96,11 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
 
   // ------------------------------------------------------- Nouvelle fabrication (wizard)
 
-  static const List<String> _wizardStepLabels = [
-    'Quantité',
-    'Vérification',
-    'Confirmation',
-  ];
+  static const List<String> _wizardStepLabels = ['Quantité', 'Lancement'];
 
   void _showLaunchWizard(Formula formula) {
     final quantityController = TextEditingController();
-    final actualController = TextEditingController();
-    int step =
-        0; // 0 = saisie quantité, 1 = vérification stock, 2 = confirmation sortie
+    int step = 0; // 0 = saisie quantité, 1 = vérification stock puis lancement
     ProductionCheckResult? checkResult;
     String? error;
     bool isBusy = false;
@@ -134,7 +129,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                   ),
                 ),
             ];
-          } else if (step == 1) {
+          } else {
             stepChildren = [
               const Text(
                 'Matières nécessaires vs stock',
@@ -189,6 +184,34 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                   ),
                 );
               }),
+              if (checkResult!.canLaunch && checkResult!.lines.isNotEmpty)
+                Builder(
+                  builder: (context) {
+                    // Écran 15, annotation B : anticipation basée sur la matière la plus
+                    // contrainte — combien de fabrications identiques restent possibles.
+                    final counts = checkResult!.lines
+                        .where((l) => l.needed > 0)
+                        .map((l) => (l.available / l.needed).floor());
+                    if (counts.isEmpty) return const SizedBox.shrink();
+                    final minCount = counts.reduce((a, b) => a < b ? a : b);
+                    if (minCount > 20) return const SizedBox.shrink();
+                    final limiting = checkResult!.lines.firstWhere(
+                      (l) =>
+                          l.needed > 0 &&
+                          (l.available / l.needed).floor() == minCount,
+                    );
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Au rythme actuel, le stock de ${limiting.materialName} permet encore ~$minCount fabrication(s) de cette taille avant rupture.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               if (!checkResult!.canLaunch)
                 const Padding(
                   padding: EdgeInsets.only(top: 4),
@@ -199,30 +222,6 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
-                  ),
-                ),
-            ];
-          } else {
-            stepChildren = [
-              TextField(
-                controller: actualController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Quantité produite (pesée de sortie, kg)',
-                ),
-                autofocus: true,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Les matières ci-dessus seront prélevées du stock à la confirmation.',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12),
                   ),
                 ),
             ];
@@ -238,7 +237,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: (step + 1) / 3,
+                      value: (step + 1) / 2,
                       minHeight: 5,
                       color: Colors.orange,
                       backgroundColor: Colors.orange.shade50,
@@ -246,7 +245,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Étape ${step + 1}/3 · ${_wizardStepLabels[step]}',
+                    'Étape ${step + 1}/2 · ${_wizardStepLabels[step]}',
                     style: const TextStyle(
                       fontSize: 11,
                       color: Colors.grey,
@@ -295,7 +294,6 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                           formula.id!,
                           qty,
                         );
-                        actualController.text = qty.toStringAsFixed(0);
                         setDialogState(() {
                           checkResult = result;
                           isBusy = false;
@@ -305,50 +303,32 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                 child: const Text('Vérifier le stock'),
               ),
             ];
-          } else if (step == 1) {
-            actions = [
-              TextButton(
-                onPressed: () => setDialogState(() => step = 0),
-                child: const Text(
-                  'Retour',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: checkResult!.canLaunch
-                    ? () => setDialogState(() => step = 2)
-                    : null,
-                child: const Text('Continuer'),
-              ),
-            ];
           } else {
             actions = [
               TextButton(
-                onPressed: isBusy ? null : () => setDialogState(() => step = 1),
+                onPressed: isBusy ? null : () => setDialogState(() => step = 0),
                 child: const Text(
                   'Retour',
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
               ElevatedButton(
-                onPressed: isBusy
+                onPressed: (isBusy || !checkResult!.canLaunch)
                     ? null
                     : () async {
-                        final actual = double.tryParse(actualController.text);
-                        if (actual == null || actual <= 0) {
-                          setDialogState(() => error = 'Quantité invalide');
-                          return;
-                        }
                         setDialogState(() {
                           isBusy = true;
                           error = null;
                         });
                         final qty = double.parse(quantityController.text);
+                        // La quantité produite est provisoirement = la cible : la pesée de
+                        // sortie réelle, souvent connue plus tard, se corrige à la clôture
+                        // (écran 17) — le stock, lui, est bien consommé maintenant.
                         final result = await _mongoService.launchProduction(
                           usineId: widget.usine.id!,
                           formulaId: formula.id!,
                           quantityTarget: qty,
-                          actualQuantityProduced: actual,
+                          actualQuantityProduced: qty,
                         );
                         if (result.error != null) {
                           setDialogState(() {
@@ -360,11 +340,9 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         await _refreshData();
                         if (!context.mounted) return;
                         Navigator.pop(context);
-                        _snack(
-                          'Fabrication ${result.batch!.lotNumber} lancée, envoyée au comptable.',
-                        );
+                        _showCloseDialog(result.batch!, justLaunched: true);
                       },
-                child: const Text('Lancer & envoyer au comptable'),
+                child: const Text('Lancer la fabrication'),
               ),
             ];
           }
@@ -384,6 +362,171 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
             actions: actions,
           );
         },
+      ),
+    );
+  }
+
+  /// Écran 17 — clôture : le stock est déjà consommé (lancement), il ne reste qu'à
+  /// corriger la quantité réellement produite (pesée de sortie, souvent connue plus tard)
+  /// avant de rester en brouillon ou d'envoyer au comptable. Jamais de F/kg ni de FCFA ici
+  /// — cet écran reste celui de la production (annotation B).
+  void _showCloseDialog(ProductionBatch batch, {bool justLaunched = false}) {
+    final actualController = TextEditingController(
+      text: batch.actualQuantityProduced.toStringAsFixed(0),
+    );
+    String? error;
+    bool isBusy = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            '${batch.lotNumber} — Clôture',
+            style: const TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (justLaunched)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Fabrication lancée, stock déjà prélevé. Si la pesée de sortie n\'est pas encore connue, enregistrez en brouillon et revenez-y plus tard depuis l\'onglet Fabrication.',
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                      ),
+                    ),
+                  TextField(
+                    controller: actualController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Quantité produite (pesée de sortie, kg)',
+                      errorText: error,
+                    ),
+                    autofocus: !justLaunched,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Matières consommées',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ...batch.consumption.map(
+                    (c) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(c.materialName)),
+                          Text(
+                            '${c.quantityConsumed.toStringAsFixed(0)} kg',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (isBusy)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16),
+                      child: Center(
+                        child: CircularProgressIndicator(color: Colors.orange),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isBusy
+                  ? null
+                  : () async {
+                      final actual = double.tryParse(actualController.text);
+                      if (actual == null || actual <= 0) {
+                        setDialogState(() => error = 'Quantité invalide');
+                        return;
+                      }
+                      setDialogState(() {
+                        isBusy = true;
+                        error = null;
+                      });
+                      final err = await _mongoService.closeProduction(
+                        batch.id!,
+                        actualQuantityProduced: actual,
+                        sendToAccountant: false,
+                      );
+                      if (err != null) {
+                        setDialogState(() {
+                          error = err;
+                          isBusy = false;
+                        });
+                        return;
+                      }
+                      await _refreshData();
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      _snack(
+                        'Enregistré en brouillon — à finaliser plus tard.',
+                      );
+                    },
+              child: const Text(
+                'Brouillon',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: isBusy
+                  ? null
+                  : () async {
+                      final actual = double.tryParse(actualController.text);
+                      if (actual == null || actual <= 0) {
+                        setDialogState(() => error = 'Quantité invalide');
+                        return;
+                      }
+                      setDialogState(() {
+                        isBusy = true;
+                        error = null;
+                      });
+                      final err = await _mongoService.closeProduction(
+                        batch.id!,
+                        actualQuantityProduced: actual,
+                        sendToAccountant: true,
+                      );
+                      if (err != null) {
+                        setDialogState(() {
+                          error = err;
+                          isBusy = false;
+                        });
+                        return;
+                      }
+                      await _refreshData();
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      _snack('Lot ${batch.lotNumber} envoyé au comptable.');
+                    },
+              child: const Text('Envoyer au comptable'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -408,71 +551,254 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
         ),
       );
     }
-    if (_formulas.isEmpty)
-      return const Center(
-        child: Text(
-          'Aucune formule active. Créez-en une dans le référentiel.',
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      itemCount: _formulas.length,
-      itemBuilder: (context, index) {
-        final f = _formulas[index];
-        final isLimited = _isFormulaLimited(f);
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.grey.shade100),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ListTile(
-            onTap: () => _showLaunchWizard(f),
-            leading: CircleAvatar(
-              backgroundColor: Colors.deepPurple.withValues(alpha: 0.1),
-              child: const Icon(
-                Icons.science_rounded,
-                color: Colors.deepPurple,
-              ),
+    // Écran 17 : brouillons en attente de clôture — lancés (stock déjà prélevé) mais pas
+    // encore envoyés au comptable, soit fraîchement créés, soit renvoyés par la
+    // comptabilité (écran 19). Visible même sans validateCost, sinon la production n'a
+    // jamais connaissance des lots à finaliser ou des renvois.
+    final drafts = _batches.where((b) => b.isDraft).toList();
+    return Column(
+      children: [
+        if (drafts.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: drafts.any((b) => b.isRejected)
+                  ? Colors.red.shade50
+                  : Colors.grey.shade100,
+              border: drafts.any((b) => b.isRejected)
+                  ? Border.all(color: Colors.red.shade200)
+                  : null,
+              borderRadius: BorderRadius.circular(14),
             ),
-            title: Text(
-              f.name,
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-            subtitle: Text(
-              '${f.lines.length} matière(s) première(s)',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-            trailing: Chip(
-              visualDensity: VisualDensity.compact,
-              backgroundColor: isLimited
-                  ? Colors.amber.shade100
-                  : Colors.green.shade100,
-              label: Text(
-                isLimited ? 'LIMITE' : 'OK',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: isLimited ? Colors.brown : Colors.green.shade800,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.hourglass_top_rounded,
+                      color: drafts.any((b) => b.isRejected)
+                          ? Colors.red.shade400
+                          : Colors.grey.shade600,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${drafts.length} brouillon(s) à clôturer',
+                      style: TextStyle(
+                        color: drafts.any((b) => b.isRejected)
+                            ? Colors.red.shade800
+                            : Colors.grey.shade800,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+                ...drafts.map(
+                  (b) => InkWell(
+                    onTap: () => _showCloseDialog(b),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        b.isRejected
+                            ? '${b.lotNumber} — renvoyé : ${b.rejectionReason}'
+                            : '${b.lotNumber} — ${b.actualQuantityProduced.toStringAsFixed(0)} kg (à confirmer)',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: b.isRejected
+                              ? Colors.brown
+                              : Colors.grey.shade700,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        );
-      },
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+            itemCount: _formulas.isEmpty ? 2 : _formulas.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Colors.grey.shade100),
+                  ),
+                  child: ListTile(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineSimulationScreen(
+                          usine: widget.usine,
+                          permissions: widget.permissions,
+                        ),
+                      ),
+                    ),
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                      child: const Icon(
+                        Icons.calculate_outlined,
+                        color: Colors.orange,
+                      ),
+                    ),
+                    title: const Text(
+                      'Simulateur & optimisation',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Ce qu\'on peut produire, plan optimisé multi-formules',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey,
+                    ),
+                  ),
+                );
+              }
+              if (_formulas.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.only(top: 40),
+                  child: Center(
+                    child: Text(
+                      'Aucune formule active. Créez-en une dans le référentiel.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                );
+              }
+              final f = _formulas[index - 1];
+              final isLimited = _isFormulaLimited(f);
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.grey.shade100),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  onTap: () => _showLaunchWizard(f),
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.deepPurple.withValues(alpha: 0.1),
+                    child: const Icon(
+                      Icons.science_rounded,
+                      color: Colors.deepPurple,
+                    ),
+                  ),
+                  title: Text(
+                    f.name,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  subtitle: Text(
+                    '${f.lines.length} matière(s) première(s)',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+                  trailing: Chip(
+                    visualDensity: VisualDensity.compact,
+                    backgroundColor: isLimited
+                        ? Colors.amber.shade100
+                        : Colors.green.shade100,
+                    label: Text(
+                      isLimited ? 'LIMITE' : 'OK',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: isLimited ? Colors.brown : Colors.green.shade800,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
   // -------------------------------------------------------- Validation comptable
+
+  void _showRejectDialog(ProductionBatch batch) {
+    final reasonController = TextEditingController();
+    String? error;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            '${batch.lotNumber} — Renvoyer',
+            style: const TextStyle(
+              color: Colors.redAccent,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: TextField(
+            controller: reasonController,
+            decoration: InputDecoration(
+              labelText: 'Motif du renvoi',
+              errorText: error,
+            ),
+            autofocus: true,
+            maxLines: 2,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
+              onPressed: () async {
+                if (reasonController.text.trim().isEmpty) {
+                  setDialogState(() => error = 'Motif requis');
+                  return;
+                }
+                final err = await _mongoService.rejectProduction(
+                  batch.id!,
+                  reasonController.text.trim(),
+                );
+                if (err != null) {
+                  setDialogState(() => error = err);
+                  return;
+                }
+                await _refreshData();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _snack('Lot ${batch.lotNumber} renvoyé en production.');
+              },
+              child: const Text('Renvoyer en production'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _showValidateDialog(ProductionBatch batch) {
     final adjustmentController = TextEditingController(text: '0');
@@ -574,6 +900,16 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                 child: const Text(
                   'Annuler',
                   style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showRejectDialog(batch);
+                },
+                child: const Text(
+                  'Renvoyer',
+                  style: TextStyle(color: Colors.redAccent),
                 ),
               ),
               ElevatedButton(
@@ -710,7 +1046,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
       );
     }
     final filtered = _batches.where((b) {
-      if (_historyFilter == 'a_valider') return !b.isValidated;
+      if (_historyFilter == 'a_valider') return b.status == 'a_valider';
       if (_historyFilter == 'valide') return b.isValidated;
       return true;
     }).toList();
@@ -769,9 +1105,15 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         ],
                       ),
                       child: ListTile(
-                        onTap: () => b.isValidated
-                            ? _showBatchDetailDialog(b)
-                            : _showValidateDialog(b),
+                        onTap: () {
+                          if (b.isValidated) {
+                            _showBatchDetailDialog(b);
+                          } else if (b.isDraft) {
+                            _showCloseDialog(b);
+                          } else {
+                            _showValidateDialog(b);
+                          }
+                        },
                         leading: CircleAvatar(
                           backgroundColor:
                               (b.isValidated ? Colors.green : Colors.amber)
@@ -788,25 +1130,47 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                         subtitle: Text(
-                          '${b.actualQuantityProduced.toStringAsFixed(0)} kg · ${b.costPerUnit.toStringAsFixed(2)} F/kg',
+                          b.isRejected && !b.isValidated
+                              ? 'Renvoyé : ${b.rejectionReason}'
+                              : '${b.actualQuantityProduced.toStringAsFixed(0)} kg · ${b.costPerUnit.toStringAsFixed(2)} F/kg',
                           style: TextStyle(
-                            color: Colors.grey.shade600,
+                            color: b.isRejected && !b.isValidated
+                                ? Colors.redAccent
+                                : Colors.grey.shade600,
                             fontSize: 12,
+                            fontWeight: b.isRejected && !b.isValidated
+                                ? FontWeight.w600
+                                : FontWeight.normal,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                         trailing: Chip(
                           visualDensity: VisualDensity.compact,
                           backgroundColor: b.isValidated
                               ? Colors.green.shade100
-                              : Colors.amber.shade100,
+                              : (b.isRejected
+                                    ? Colors.red.shade100
+                                    : (b.isDraft
+                                          ? Colors.grey.shade200
+                                          : Colors.amber.shade100)),
                           label: Text(
-                            b.isValidated ? 'VALIDÉ' : 'À VALIDER',
+                            b.isValidated
+                                ? 'VALIDÉ'
+                                : (b.isRejected
+                                      ? 'RENVOYÉ'
+                                      : (b.isDraft
+                                            ? 'BROUILLON'
+                                            : 'À VALIDER')),
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                               color: b.isValidated
                                   ? Colors.green.shade800
-                                  : Colors.brown,
+                                  : (b.isRejected
+                                        ? Colors.red.shade800
+                                        : (b.isDraft
+                                              ? Colors.grey.shade700
+                                              : Colors.brown)),
                             ),
                           ),
                         ),

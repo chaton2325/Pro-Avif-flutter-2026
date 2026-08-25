@@ -59,3 +59,65 @@ class RawMaterial {
     );
   }
 }
+
+class MaterialFicheHistoryItem {
+  final DateTime date;
+  final String type; // "reception_attente" | "reception_validee" | "ajustement"
+  final String label;
+  final String detail;
+  final double? amountFcfa;
+
+  MaterialFicheHistoryItem({
+    required this.date,
+    required this.type,
+    required this.label,
+    required this.detail,
+    this.amountFcfa,
+  });
+
+  factory MaterialFicheHistoryItem.fromMap(Map<String, dynamic> map) {
+    return MaterialFicheHistoryItem(
+      date: DateTime.parse(map['date'] as String),
+      type: map['type'] as String? ?? '',
+      label: map['label'] as String? ?? '',
+      detail: map['detail'] as String? ?? '',
+      amountFcfa: (map['amountFcfa'] as num?)?.toDouble(),
+    );
+  }
+}
+
+class MaterialFiche {
+  final String materialId;
+  final String materialName;
+  final String unit;
+  final double currentStock;
+  final double? weightedCost;
+  final double? coverageDays;
+  final List<MaterialFicheHistoryItem> history;
+
+  MaterialFiche({
+    required this.materialId,
+    required this.materialName,
+    required this.unit,
+    required this.currentStock,
+    this.weightedCost,
+    this.coverageDays,
+    this.history = const [],
+  });
+
+  factory MaterialFiche.fromMap(Map<String, dynamic> map) {
+    return MaterialFiche(
+      materialId: map['materialId'] as String,
+      materialName: map['materialName'] as String? ?? '',
+      unit: map['unit'] as String? ?? 'kg',
+      currentStock: (map['currentStock'] as num?)?.toDouble() ?? 0,
+      weightedCost: (map['weightedCost'] as num?)?.toDouble(),
+      coverageDays: (map['coverageDays'] as num?)?.toDouble(),
+      history: (map['history'] as List<dynamic>? ?? [])
+          .map(
+            (h) => MaterialFicheHistoryItem.fromMap(h as Map<String, dynamic>),
+          )
+          .toList(),
+    );
+  }
+}

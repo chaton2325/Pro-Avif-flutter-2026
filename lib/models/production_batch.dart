@@ -28,7 +28,11 @@ class ProductionCheckLine {
       available: (map['available'] as num).toDouble(),
       status: map['status'] as String? ?? 'ok',
       isParLot: map['isParLot'] as bool? ?? false,
-      batchPreview: List<Map<String, dynamic>>.from((map['batchPreview'] as List<dynamic>? ?? []).map((e) => Map<String, dynamic>.from(e as Map))),
+      batchPreview: List<Map<String, dynamic>>.from(
+        (map['batchPreview'] as List<dynamic>? ?? []).map(
+          (e) => Map<String, dynamic>.from(e as Map),
+        ),
+      ),
     );
   }
 }
@@ -42,7 +46,9 @@ class ProductionCheckResult {
   factory ProductionCheckResult.fromMap(Map<String, dynamic> map) {
     return ProductionCheckResult(
       canLaunch: map['canLaunch'] as bool? ?? false,
-      lines: (map['lines'] as List<dynamic>? ?? []).map((l) => ProductionCheckLine.fromMap(l as Map<String, dynamic>)).toList(),
+      lines: (map['lines'] as List<dynamic>? ?? [])
+          .map((l) => ProductionCheckLine.fromMap(l as Map<String, dynamic>))
+          .toList(),
     );
   }
 }
@@ -71,7 +77,11 @@ class ProductionConsumptionLine {
       quantityConsumed: (map['quantityConsumed'] as num).toDouble(),
       unitCost: (map['unitCost'] as num).toDouble(),
       lineCost: (map['lineCost'] as num).toDouble(),
-      batchesUsed: List<Map<String, dynamic>>.from((map['batchesUsed'] as List<dynamic>? ?? []).map((e) => Map<String, dynamic>.from(e as Map))),
+      batchesUsed: List<Map<String, dynamic>>.from(
+        (map['batchesUsed'] as List<dynamic>? ?? []).map(
+          (e) => Map<String, dynamic>.from(e as Map),
+        ),
+      ),
     );
   }
 }
@@ -92,6 +102,11 @@ class ProductionBatch {
   final String status; // "a_valider" | "valide"
   final DateTime? createdAt;
   final DateTime? validatedAt;
+  final String? launchedBy;
+  final String? validatedBy;
+  final String? rejectionReason;
+  final DateTime? rejectedAt;
+  final String? rejectedBy;
 
   ProductionBatch({
     this.id,
@@ -109,9 +124,16 @@ class ProductionBatch {
     this.status = 'a_valider',
     this.createdAt,
     this.validatedAt,
+    this.launchedBy,
+    this.validatedBy,
+    this.rejectionReason,
+    this.rejectedAt,
+    this.rejectedBy,
   });
 
   bool get isValidated => status == 'valide';
+  bool get isDraft => status == 'brouillon';
+  bool get isRejected => rejectionReason != null;
 
   factory ProductionBatch.fromMap(Map<String, dynamic> map) {
     return ProductionBatch(
@@ -122,14 +144,29 @@ class ProductionBatch {
       lotNumber: map['lotNumber'] as String? ?? '',
       quantityTarget: (map['quantityTarget'] as num).toDouble(),
       actualQuantityProduced: (map['actualQuantityProduced'] as num).toDouble(),
-      consumption: (map['consumption'] as List<dynamic>? ?? []).map((c) => ProductionConsumptionLine.fromMap(c as Map<String, dynamic>)).toList(),
+      consumption: (map['consumption'] as List<dynamic>? ?? [])
+          .map(
+            (c) => ProductionConsumptionLine.fromMap(c as Map<String, dynamic>),
+          )
+          .toList(),
       totalCost: (map['totalCost'] as num?)?.toDouble() ?? 0,
       costAdjustment: (map['costAdjustment'] as num?)?.toDouble() ?? 0,
       adjustmentReason: map['adjustmentReason'] as String?,
       costPerUnit: (map['costPerUnit'] as num?)?.toDouble() ?? 0,
       status: map['status'] as String? ?? 'a_valider',
-      createdAt: map['createdAt'] != null ? DateTime.tryParse(map['createdAt'].toString()) : null,
-      validatedAt: map['validatedAt'] != null ? DateTime.tryParse(map['validatedAt'].toString()) : null,
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt'].toString())
+          : null,
+      validatedAt: map['validatedAt'] != null
+          ? DateTime.tryParse(map['validatedAt'].toString())
+          : null,
+      launchedBy: map['launchedBy'] as String?,
+      validatedBy: map['validatedBy'] as String?,
+      rejectionReason: map['rejectionReason'] as String?,
+      rejectedAt: map['rejectedAt'] != null
+          ? DateTime.tryParse(map['rejectedAt'].toString())
+          : null,
+      rejectedBy: map['rejectedBy'] as String?,
     );
   }
 }

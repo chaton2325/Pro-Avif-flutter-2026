@@ -4,7 +4,10 @@ class FormulaLine {
 
   FormulaLine({required this.rawMaterialId, required this.quantityPerTon});
 
-  Map<String, dynamic> toMap() => {'rawMaterialId': rawMaterialId, 'quantityPerTon': quantityPerTon};
+  Map<String, dynamic> toMap() => {
+    'rawMaterialId': rawMaterialId,
+    'quantityPerTon': quantityPerTon,
+  };
 
   factory FormulaLine.fromMap(Map<String, dynamic> map) {
     return FormulaLine(
@@ -20,6 +23,7 @@ class Formula {
   final String name;
   final List<FormulaLine> lines;
   final bool isActive;
+  final double lowStockThreshold;
 
   Formula({
     this.id,
@@ -27,6 +31,7 @@ class Formula {
     required this.name,
     this.lines = const [],
     this.isActive = true,
+    this.lowStockThreshold = 0,
   });
 
   double get totalPerTon => lines.fold(0, (sum, l) => sum + l.quantityPerTon);
@@ -37,6 +42,7 @@ class Formula {
       'name': name,
       'lines': lines.map((l) => l.toMap()).toList(),
       'isActive': isActive,
+      'lowStockThreshold': lowStockThreshold,
     };
   }
 
@@ -45,8 +51,11 @@ class Formula {
       id: map['_id'] as String?,
       usineId: map['usineId'] as String,
       name: map['name'] as String,
-      lines: (map['lines'] as List<dynamic>? ?? []).map((l) => FormulaLine.fromMap(l as Map<String, dynamic>)).toList(),
+      lines: (map['lines'] as List<dynamic>? ?? [])
+          .map((l) => FormulaLine.fromMap(l as Map<String, dynamic>))
+          .toList(),
       isActive: map['isActive'] as bool? ?? true,
+      lowStockThreshold: (map['lowStockThreshold'] as num?)?.toDouble() ?? 0,
     );
   }
 }
