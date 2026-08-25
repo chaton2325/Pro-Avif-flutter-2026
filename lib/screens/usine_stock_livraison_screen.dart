@@ -5,6 +5,7 @@ import '../models/formula.dart';
 import '../models/farm.dart';
 import '../models/feed_stock.dart';
 import '../models/delivery.dart';
+import '../models/delivery_resource.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
 
@@ -40,10 +41,14 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
   List<FeedStockSummary> _stock = [];
   List<Formula> _formulas = [];
   List<Farm> _farms = [];
+  List<DeliveryResource> _drivers = [];
+  List<DeliveryResource> _vehicles = [];
   DeliveryPagedResult? _deliveryPage;
   bool _isLoading = true;
   bool _isLoadingHistory = true;
   String? _historyFormulaFilter; // null = toutes les références
+  String _historySortBy = 'createdAt';
+  String _historySortOrder = 'desc';
   int _currentPage = 0;
 
   @override
@@ -64,12 +69,17 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
       _mongoService.getFeedStock(widget.usine.id!),
       _mongoService.getFormulas(widget.usine.id!),
       _mongoService.getFarms(),
+      _mongoService.getDrivers(widget.usine.id!),
+      _mongoService.getVehicles(widget.usine.id!),
     ]);
     if (!mounted) return;
     setState(() {
       _stock = results[0] as List<FeedStockSummary>;
       _formulas = results[1] as List<Formula>;
-      _farms = results[2] as List<Farm>;
+      _farms = (results[2] as List<Farm>)
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      _drivers = results[3] as List<DeliveryResource>;
+      _vehicles = results[4] as List<DeliveryResource>;
       _isLoading = false;
     });
     await _loadHistoryPage();
@@ -80,6 +90,8 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     final page = await _mongoService.getDeliveries(
       usineId: widget.usine.id!,
       formulaId: _historyFormulaFilter,
+      sortBy: _historySortBy,
+      sortOrder: _historySortOrder,
       skip: _currentPage * _pageSize,
       limit: _pageSize,
     );
@@ -93,6 +105,29 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
   void _applyHistoryFilter(String? formulaId) {
     setState(() {
       _historyFormulaFilter = formulaId;
+      _currentPage = 0;
+    });
+    _loadHistoryPage();
+  }
+
+  // Encodé "champ_ordre" (ex. "driverName_asc") pour tenir dans un seul DropdownButton.
+  static const Map<String, (String, String)> _historySortOptions = {
+    'createdAt_desc': ('createdAt', 'desc'),
+    'createdAt_asc': ('createdAt', 'asc'),
+    'farmName_asc': ('farmName', 'asc'),
+    'driverName_asc': ('driverName', 'asc'),
+    'vehicle_asc': ('vehicle', 'asc'),
+    'quantity_desc': ('quantity', 'desc'),
+    'quantity_asc': ('quantity', 'asc'),
+  };
+
+  void _applyHistorySort(String? key) {
+    if (key == null) return;
+    final option = _historySortOptions[key];
+    if (option == null) return;
+    setState(() {
+      _historySortBy = option.$1;
+      _historySortOrder = option.$2;
       _currentPage = 0;
     });
     _loadHistoryPage();
@@ -138,6 +173,320 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     return result;
   }
 
+  /// Sélecteur de ferme en feuille modale scrollable + recherche : contrairement à un
+  /// DropdownButtonFormField classique (menu qui peut déborder l'écran et devenir
+  /// inatteignable dès que la liste des fermes s'allonge), cette feuille reste toujours
+  /// pleinement navigable — au clavier via la recherche, ou au doigt via le scroll.
+  Future<Farm?> _pickFarm(BuildContext context) async {
+    final searchController = TextEditingController();
+    return showModalBottomSheet<Farm>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        List<Farm> filtered = List.of(_farms);
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            return SizedBox(
+              height: MediaQuery.of(sheetContext).size.height * 0.75,
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                    child: Text(
+                      'Choisir une ferme',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: TextField(
+                      controller: searchController,
+                      autofocus: false,
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher une ferme...',
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.orange,
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (query) {
+                        final q = query.toLowerCase();
+                        setSheetState(() {
+                          filtered = _farms
+                              .where((f) => f.name.toLowerCase().contains(q))
+                              .toList();
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Aucune ferme trouvée',
+                              style: TextStyle(color: Colors.grey.shade500),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) =>
+                                Divider(height: 1, color: Colors.grey.shade200),
+                            itemBuilder: (_, i) {
+                              final farm = filtered[i];
+                              return ListTile(
+                                leading: const CircleAvatar(
+                                  backgroundColor: Color(0xFFFFF3E0),
+                                  child: Icon(
+                                    Icons.agriculture_rounded,
+                                    color: Colors.orange,
+                                    size: 20,
+                                  ),
+                                ),
+                                title: Text(
+                                  farm.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${farm.rooms.length} bâtiment${farm.rooms.length > 1 ? 's' : ''}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                onTap: () => Navigator.pop(sheetContext, farm),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Gestion du référentiel chauffeurs/véhicules (logistique) : on ne saisit plus le nom
+  /// d'un chauffeur ou d'un véhicule en texte libre à chaque livraison, on choisit dans une
+  /// liste que la logistique tient à jour ici.
+  void _showManageDriversVehiclesDialog() {
+    bool showDrivers = true;
+    final nameController = TextEditingController();
+    bool isBusy = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final items = showDrivers ? _drivers : _vehicles;
+
+          Future<void> reload() async {
+            final results = await Future.wait([
+              _mongoService.getDrivers(widget.usine.id!),
+              _mongoService.getVehicles(widget.usine.id!),
+            ]);
+            if (!mounted) return;
+            setState(() {
+              _drivers = results[0];
+              _vehicles = results[1];
+            });
+            setDialogState(() {});
+          }
+
+          Future<void> add() async {
+            final name = nameController.text.trim();
+            if (name.isEmpty) return;
+            setDialogState(() => isBusy = true);
+            final error = showDrivers
+                ? await _mongoService.createDriver(widget.usine.id!, name)
+                : await _mongoService.createVehicle(widget.usine.id!, name);
+            nameController.clear();
+            if (error != null) _snack(error);
+            await reload();
+            setDialogState(() => isBusy = false);
+          }
+
+          Future<void> toggleActive(DeliveryResource item) async {
+            final error = showDrivers
+                ? await _mongoService.updateDriver(
+                    item.id,
+                    item.usineId,
+                    item.name,
+                    !item.isActive,
+                  )
+                : await _mongoService.updateVehicle(
+                    item.id,
+                    item.usineId,
+                    item.name,
+                    !item.isActive,
+                  );
+            if (error != null) _snack(error);
+            await reload();
+          }
+
+          Future<void> remove(DeliveryResource item) async {
+            final error = showDrivers
+                ? await _mongoService.deleteDriver(item.id)
+                : await _mongoService.deleteVehicle(item.id);
+            if (error != null) _snack(error);
+            await reload();
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Text(
+              'Chauffeurs & véhicules',
+              style: TextStyle(
+                color: Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: SizedBox(
+              width: 420,
+              height: 440,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Chauffeurs'),
+                          selected: showDrivers,
+                          selectedColor: Colors.orange.withValues(alpha: 0.15),
+                          onSelected: (_) =>
+                              setDialogState(() => showDrivers = true),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Véhicules'),
+                          selected: !showDrivers,
+                          selectedColor: Colors.orange.withValues(alpha: 0.15),
+                          onSelected: (_) =>
+                              setDialogState(() => showDrivers = false),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: nameController,
+                          decoration: InputDecoration(
+                            labelText: showDrivers
+                                ? 'Nom du chauffeur'
+                                : 'Nom / plaque du véhicule',
+                            isDense: true,
+                          ),
+                          onSubmitted: (_) => add(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: isBusy ? null : add,
+                        icon: const Icon(Icons.add),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: items.isEmpty
+                        ? Center(
+                            child: Text(
+                              showDrivers
+                                  ? 'Aucun chauffeur configuré'
+                                  : 'Aucun véhicule configuré',
+                              style: TextStyle(color: Colors.grey.shade500),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: items.length,
+                            separatorBuilder: (_, __) =>
+                                Divider(height: 1, color: Colors.grey.shade200),
+                            itemBuilder: (_, i) {
+                              final item = items[i];
+                              return ListTile(
+                                dense: true,
+                                title: Text(
+                                  item.name,
+                                  style: TextStyle(
+                                    decoration: item.isActive
+                                        ? null
+                                        : TextDecoration.lineThrough,
+                                    color: item.isActive
+                                        ? Colors.black87
+                                        : Colors.grey,
+                                  ),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Switch(
+                                      value: item.isActive,
+                                      activeTrackColor: Colors.orange,
+                                      onChanged: (_) => toggleActive(item),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.red,
+                                        size: 20,
+                                      ),
+                                      onPressed: () => remove(item),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Fermer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showDeliveryDialog() {
     if (_stock.isEmpty || _farms.isEmpty) {
       _snack(
@@ -148,15 +497,14 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
       return;
     }
     Farm? selectedFarm;
-    String? selectedRoom;
     String? currentLotSujets;
     bool lotLoading = false;
     String? selectedFormulaId = _stock
         .firstWhere((s) => s.totalStock > 0, orElse: () => _stock.first)
         .formulaId;
     final quantityController = TextEditingController();
-    final driverController = TextEditingController();
-    final vehicleController = TextEditingController();
+    String? selectedDriverName;
+    String? selectedVehicleName;
     String? error;
     bool isBusy = false;
 
@@ -178,11 +526,10 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
           final remainAfter = (available - qty).clamp(0, double.infinity);
 
           Future<void> fetchLot() async {
-            if (selectedFarm == null || selectedRoom == null) return;
+            if (selectedFarm == null) return;
             setDialogState(() => lotLoading = true);
-            final lot = await _mongoService.getCurrentLotForRoom(
+            final lot = await _mongoService.getCurrentLotForFarm(
               selectedFarm!.name,
-              selectedRoom!,
             );
             setDialogState(() {
               currentLotSujets = lot;
@@ -208,50 +555,32 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    DropdownButtonFormField<Farm>(
-                      isExpanded: true,
-                      value: selectedFarm,
-                      decoration: const InputDecoration(labelText: 'Ferme'),
-                      items: _farms
-                          .map(
-                            (f) => DropdownMenuItem(
-                              value: f,
-                              child: Text(
-                                f.name,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) {
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () async {
+                        final picked = await _pickFarm(context);
+                        if (picked == null) return;
                         setDialogState(() {
-                          selectedFarm = v;
-                          selectedRoom = null;
+                          selectedFarm = picked;
                           currentLotSujets = null;
                         });
+                        fetchLot();
                       },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: selectedRoom,
-                      decoration: const InputDecoration(
-                        labelText: 'Bâtiment destinataire',
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Ferme',
+                          suffixIcon: Icon(Icons.arrow_drop_down),
+                        ),
+                        child: Text(
+                          selectedFarm?.name ?? 'Choisir une ferme',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: selectedFarm == null
+                                ? Colors.grey.shade600
+                                : Colors.black87,
+                          ),
+                        ),
                       ),
-                      items: (selectedFarm?.rooms ?? [])
-                          .map(
-                            (r) => DropdownMenuItem(
-                              value: r,
-                              child: Text(r, overflow: TextOverflow.ellipsis),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: selectedFarm == null
-                          ? null
-                          : (v) {
-                              setDialogState(() => selectedRoom = v);
-                              fetchLot();
-                            },
                     ),
                     const SizedBox(height: 12),
                     Container(
@@ -279,7 +608,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                           else
                             Text(
                               currentLotSujets ??
-                                  (selectedRoom == null
+                                  (selectedFarm == null
                                       ? '—'
                                       : 'Aucun lot actif'),
                               style: TextStyle(
@@ -287,7 +616,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                                 fontSize: 12.5,
                                 color:
                                     currentLotSujets == null &&
-                                        selectedRoom != null
+                                        selectedFarm != null
                                     ? Colors.orange.shade800
                                     : Colors.black87,
                               ),
@@ -342,20 +671,63 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                     TextField(
                       controller: quantityController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Quantité à livrer (kg)',
+                        errorText: qty > available
+                            ? 'Dépasse le stock disponible (${available.toStringAsFixed(0)} kg)'
+                            : null,
                       ),
                       onChanged: (_) => setDialogState(() {}),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: driverController,
-                      decoration: const InputDecoration(labelText: 'Chauffeur'),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: selectedDriverName,
+                      decoration: InputDecoration(
+                        labelText: 'Chauffeur',
+                        helperText: _drivers.where((d) => d.isActive).isEmpty
+                            ? 'Aucun chauffeur configuré'
+                            : null,
+                      ),
+                      items: _drivers
+                          .where((d) => d.isActive)
+                          .map(
+                            (d) => DropdownMenuItem(
+                              value: d.name,
+                              child: Text(
+                                d.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setDialogState(() => selectedDriverName = v),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: vehicleController,
-                      decoration: const InputDecoration(labelText: 'Véhicule'),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: selectedVehicleName,
+                      decoration: InputDecoration(
+                        labelText: 'Véhicule',
+                        helperText: _vehicles.where((v) => v.isActive).isEmpty
+                            ? 'Aucun véhicule configuré'
+                            : null,
+                      ),
+                      items: _vehicles
+                          .where((v) => v.isActive)
+                          .map(
+                            (v) => DropdownMenuItem(
+                              value: v.name,
+                              child: Text(
+                                v.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setDialogState(() => selectedVehicleName = v),
                     ),
                     if (preview.isNotEmpty) ...[
                       const SizedBox(height: 16),
@@ -453,13 +825,12 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                 ),
               ),
               ElevatedButton(
-                onPressed: isBusy
+                onPressed: (isBusy || qty <= 0 || qty > available)
                     ? null
                     : () async {
-                        if (selectedFarm == null || selectedRoom == null) {
+                        if (selectedFarm == null) {
                           setDialogState(
-                            () =>
-                                error = 'Choisissez le bâtiment destinataire.',
+                            () => error = 'Choisissez la ferme destinataire.',
                           );
                           return;
                         }
@@ -488,14 +859,9 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                           usineId: widget.usine.id!,
                           formulaId: selectedFormulaId!,
                           farmName: selectedFarm!.name,
-                          roomName: selectedRoom!,
                           quantity: qty,
-                          driverName: driverController.text.trim().isEmpty
-                              ? null
-                              : driverController.text.trim(),
-                          vehicle: vehicleController.text.trim().isEmpty
-                              ? null
-                              : vehicleController.text.trim(),
+                          driverName: selectedDriverName,
+                          vehicle: selectedVehicleName,
                         );
                         if (result.error != null) {
                           setDialogState(() {
@@ -508,7 +874,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         if (!context.mounted) return;
                         Navigator.pop(context);
                         _snack(
-                          'Livraison confirmée : ${qty.toStringAsFixed(0)} kg vers $selectedRoom.',
+                          'Livraison confirmée : ${qty.toStringAsFixed(0)} kg vers ${selectedFarm!.name}.',
                         );
                       },
                 child: const Text('Confirmer la livraison'),
@@ -557,7 +923,35 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
                 ),
                 subtitle: const Text(
-                  'Bâtiment, lot de sujets et lot d\'aliment automatiques',
+                  'Lot de sujets et lot d\'aliment automatiques',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
+            ),
+          if (_perms.manageDelivery)
+            Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+              ),
+              child: ListTile(
+                onTap: _showManageDriversVehiclesDialog,
+                leading: CircleAvatar(
+                  backgroundColor: Colors.blueGrey.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.badge_outlined,
+                    color: Colors.blueGrey,
+                  ),
+                ),
+                title: const Text(
+                  'Chauffeurs & véhicules',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                ),
+                subtitle: const Text(
+                  'Liste utilisée lors de la saisie des livraisons',
                   style: TextStyle(fontSize: 12),
                 ),
                 trailing: const Icon(Icons.chevron_right, color: Colors.grey),
@@ -675,7 +1069,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          '${d.farmName} — ${d.roomName}',
+          d.destinationLabel,
           style: const TextStyle(
             color: Colors.orange,
             fontWeight: FontWeight.bold,
@@ -856,25 +1250,77 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: DropdownButtonFormField<String?>(
-            isExpanded: true,
-            value: _historyFormulaFilter,
-            decoration: const InputDecoration(
-              labelText: 'Référence',
-              isDense: true,
-            ),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('Toutes les références'),
-              ),
-              ..._formulas
-                  .where((f) => f.id != null)
-                  .map(
-                    (f) => DropdownMenuItem(value: f.id, child: Text(f.name)),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String?>(
+                  isExpanded: true,
+                  value: _historyFormulaFilter,
+                  decoration: const InputDecoration(
+                    labelText: 'Référence',
+                    isDense: true,
                   ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Toutes les références'),
+                    ),
+                    ..._formulas
+                        .where((f) => f.id != null)
+                        .map(
+                          (f) => DropdownMenuItem(
+                            value: f.id,
+                            child: Text(f.name),
+                          ),
+                        ),
+                  ],
+                  onChanged: _applyHistoryFilter,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: '${_historySortBy}_$_historySortOrder',
+                  decoration: const InputDecoration(
+                    labelText: 'Trier par',
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'createdAt_desc',
+                      child: Text('Date (récent → ancien)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'createdAt_asc',
+                      child: Text('Date (ancien → récent)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'farmName_asc',
+                      child: Text('Ferme (A → Z)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'driverName_asc',
+                      child: Text('Chauffeur (A → Z)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'vehicle_asc',
+                      child: Text('Véhicule (A → Z)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'quantity_desc',
+                      child: Text('Quantité (grande → petite)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'quantity_asc',
+                      child: Text('Quantité (petite → grande)'),
+                    ),
+                  ],
+                  onChanged: _applyHistorySort,
+                ),
+              ),
             ],
-            onChanged: _applyHistoryFilter,
           ),
         ),
         Expanded(
@@ -916,7 +1362,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                           ),
                         ),
                         title: Text(
-                          '${DateFormat('dd/MM/yyyy').format(d.createdAt)} · ${d.farmName} — ${d.roomName}',
+                          '${DateFormat('dd/MM/yyyy').format(d.createdAt)} · ${d.destinationLabel}',
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 13,

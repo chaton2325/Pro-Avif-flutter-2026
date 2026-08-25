@@ -24,7 +24,9 @@ class Delivery {
   final String formulaId;
   final String formulaName;
   final String farmName;
-  final String roomName;
+  final String?
+  roomName; // conservé seulement pour les livraisons historiques (avant que
+  // la destination ne devienne la ferme, jamais une salle précise)
   final String? lotNumberSujets;
   final double quantity;
   final String? driverName;
@@ -45,7 +47,7 @@ class Delivery {
     required this.formulaId,
     required this.formulaName,
     required this.farmName,
-    required this.roomName,
+    this.roomName,
     this.lotNumberSujets,
     required this.quantity,
     this.driverName,
@@ -63,6 +65,11 @@ class Delivery {
 
   String get lotsLabel => batchesUsed.map((b) => b.lotNumber).join('+');
   bool get isCancelled => status == 'annulee';
+  // On livre à la ferme, jamais à une salle précise ; roomName ne subsiste que sur les
+  // livraisons créées avant ce changement.
+  String get destinationLabel => (roomName == null || roomName!.isEmpty)
+      ? farmName
+      : '$farmName — $roomName';
 
   factory Delivery.fromMap(Map<String, dynamic> map) {
     return Delivery(
@@ -71,7 +78,7 @@ class Delivery {
       formulaId: map['formulaId'] as String,
       formulaName: map['formulaName'] as String? ?? '',
       farmName: map['farmName'] as String? ?? '',
-      roomName: map['roomName'] as String? ?? '',
+      roomName: map['roomName'] as String?,
       lotNumberSujets: map['lotNumberSujets'] as String?,
       quantity: (map['quantity'] as num?)?.toDouble() ?? 0,
       driverName: map['driverName'] as String?,

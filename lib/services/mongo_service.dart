@@ -22,6 +22,7 @@ import '../models/production_batch.dart';
 import '../models/simulation.dart';
 import '../models/feed_stock.dart';
 import '../models/delivery.dart';
+import '../models/delivery_resource.dart';
 import '../models/usine_stats.dart';
 import './session_storage.dart';
 
@@ -1021,10 +1022,10 @@ class MongoService {
     return [];
   }
 
-  Future<String?> getCurrentLotForRoom(String farmName, String roomName) async {
+  Future<String?> getCurrentLotForFarm(String farmName) async {
     final uri = Uri.parse(
       '$baseUrl/deliveries/current-lot',
-    ).replace(queryParameters: {'farmName': farmName, 'roomName': roomName});
+    ).replace(queryParameters: {'farmName': farmName});
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       return jsonDecode(response.body)['lotNumber'] as String?;
@@ -1036,7 +1037,6 @@ class MongoService {
     required String usineId,
     required String formulaId,
     required String farmName,
-    required String roomName,
     required double quantity,
     String? driverName,
     String? vehicle,
@@ -1048,7 +1048,6 @@ class MongoService {
         'usineId': usineId,
         'formulaId': formulaId,
         'farmName': farmName,
-        'roomName': roomName,
         'quantity': quantity,
         'driverName': driverName,
         'vehicle': vehicle,
@@ -1077,11 +1076,15 @@ class MongoService {
     required String usineId,
     String? formulaId,
     String? farmName,
+    String sortBy = 'createdAt',
+    String sortOrder = 'desc',
     int skip = 0,
     int limit = 30,
   }) async {
     final queryParams = <String, String>{
       'usineId': usineId,
+      'sortBy': sortBy,
+      'sortOrder': sortOrder,
       'skip': '$skip',
       'limit': '$limit',
     };
@@ -1117,6 +1120,102 @@ class MongoService {
     } catch (_) {
       return 'Erreur inconnue';
     }
+  }
+
+  // ---- Usine Aliment : Chauffeurs & véhicules (référentiel de la logistique) ----
+
+  Future<List<DeliveryResource>> getDrivers(String usineId) async {
+    final uri = Uri.parse(
+      '$baseUrl/delivery-resources/drivers',
+    ).replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List)
+          .map((d) => DeliveryResource.fromMap(d))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<String?> createDriver(String usineId, String name) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/delivery-resources/drivers'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'usineId': usineId, 'name': name, 'isActive': true}),
+    );
+    return response.statusCode == 201 ? null : 'Erreur inconnue';
+  }
+
+  Future<String?> updateDriver(
+    String id,
+    String usineId,
+    String name,
+    bool isActive,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/delivery-resources/drivers/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'usineId': usineId,
+        'name': name,
+        'isActive': isActive,
+      }),
+    );
+    return response.statusCode == 200 ? null : 'Erreur inconnue';
+  }
+
+  Future<String?> deleteDriver(String id) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/delivery-resources/drivers/$id'),
+    );
+    return response.statusCode == 200 ? null : 'Erreur inconnue';
+  }
+
+  Future<List<DeliveryResource>> getVehicles(String usineId) async {
+    final uri = Uri.parse(
+      '$baseUrl/delivery-resources/vehicles',
+    ).replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List)
+          .map((d) => DeliveryResource.fromMap(d))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<String?> createVehicle(String usineId, String name) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/delivery-resources/vehicles'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'usineId': usineId, 'name': name, 'isActive': true}),
+    );
+    return response.statusCode == 201 ? null : 'Erreur inconnue';
+  }
+
+  Future<String?> updateVehicle(
+    String id,
+    String usineId,
+    String name,
+    bool isActive,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/delivery-resources/vehicles/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'usineId': usineId,
+        'name': name,
+        'isActive': isActive,
+      }),
+    );
+    return response.statusCode == 200 ? null : 'Erreur inconnue';
+  }
+
+  Future<String?> deleteVehicle(String id) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/delivery-resources/vehicles/$id'),
+    );
+    return response.statusCode == 200 ? null : 'Erreur inconnue';
   }
 
   // ---- Usine Aliment : Statistiques & traçabilité ----
@@ -1221,20 +1320,29 @@ class MongoService {
     return null;
   }
 
+  /// usineId omis (null) = journal global, toutes usines confondues (vue admin) ; sinon
+  /// journal d'une seule usine (vue depuis l'intérieur de cette usine).
   Future<AuditLogPagedResult> getUsineJournal({
-    required String usineId,
+    String? usineId,
     String? performedBy,
     String? type,
+    String? action,
+    DateTime? dateFrom,
+    DateTime? dateTo,
     int skip = 0,
     int limit = 30,
   }) async {
-    final queryParams = <String, String>{
-      'usineId': usineId,
-      'skip': '$skip',
-      'limit': '$limit',
-    };
+    final queryParams = <String, String>{'skip': '$skip', 'limit': '$limit'};
+    if (usineId != null) queryParams['usineId'] = usineId;
     if (performedBy != null) queryParams['performedBy'] = performedBy;
     if (type != null) queryParams['type'] = type;
+    if (action != null) queryParams['action'] = action;
+    if (dateFrom != null) {
+      queryParams['dateFrom'] = dateFrom.toIso8601String().substring(0, 10);
+    }
+    if (dateTo != null) {
+      queryParams['dateTo'] = dateTo.toIso8601String().substring(0, 10);
+    }
     final uri = Uri.parse(
       '$baseUrl/audit-logs/usine',
     ).replace(queryParameters: queryParams);
