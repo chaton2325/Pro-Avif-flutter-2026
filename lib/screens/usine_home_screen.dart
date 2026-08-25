@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/usine.dart';
 import '../models/usine_user.dart';
 import '../models/poste.dart';
@@ -13,7 +15,7 @@ import 'usine_stats_screen.dart';
 /// Accueil d'un utilisateur usine connecté : n'affiche que les sections que ses postes
 /// autorisent sur CETTE usine — c'est ici que le cloisonnement par poste (magasinier vs
 /// comptable vs production...) devient réel, pas juste préparé côté données.
-class UsineHomeScreen extends StatelessWidget {
+class UsineHomeScreen extends StatefulWidget {
   final Usine usine;
   final UsineUser usineUser;
   final PostePermissions permissions;
@@ -25,6 +27,40 @@ class UsineHomeScreen extends StatelessWidget {
     required this.permissions,
   });
 
+  @override
+  State<UsineHomeScreen> createState() => _UsineHomeScreenState();
+}
+
+class _UsineHomeScreenState extends State<UsineHomeScreen> {
+  late Timer _clockTimer;
+  String _currentTime = '';
+  String _currentDateStr = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _updateClock();
+    _clockTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _updateClock(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _clockTimer.cancel();
+    super.dispose();
+  }
+
+  void _updateClock() {
+    final now = DateTime.now();
+    if (!mounted) return;
+    setState(() {
+      _currentTime = DateFormat('HH:mm:ss').format(now);
+      _currentDateStr = DateFormat('dd/MM/yyyy').format(now);
+    });
+  }
+
   void _logout(BuildContext context) {
     MongoService().logoutUsineUser();
     Navigator.pushAndRemoveUntil(
@@ -34,8 +70,95 @@ class UsineHomeScreen extends StatelessWidget {
     );
   }
 
+  /// Carte héros orange — même langage visuel que l'accueil du module Rapport Journalier
+  /// (user_dashboard.dart) et l'onglet Aperçu des Statistiques : nom + heure/date en
+  /// direct, puis l'usine bien en évidence. Sans elle, l'écran n'était que du texte brut.
+  Widget _buildHeroCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade600,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Bonjour,',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  Text(
+                    widget.usineUser.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _currentTime,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  Text(
+                    _currentDateStr,
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          const Text(
+            'CONNECTÉ À',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            widget.usine.name,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final permissions = widget.permissions;
+    final usine = widget.usine;
     final canAppro =
         permissions.manageReception ||
         permissions.setPrice ||
@@ -143,39 +266,36 @@ class UsineHomeScreen extends StatelessWidget {
         ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: ListView(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Bonjour, ${usineUser.name}',
-                style: const TextStyle(
-                  fontSize: 20,
+          children: [
+            _buildHeroCard(),
+            const SizedBox(height: 28),
+            if (cards.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 20),
+                child: Center(
+                  child: Text(
+                    "Aucun accès n'est encore configuré pour votre poste. Contactez l'administrateur.",
+                    style: TextStyle(color: Colors.orange),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              )
+            else ...[
+              const Text(
+                'MODULES',
+                style: TextStyle(
                   fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  color: Colors.grey,
+                  letterSpacing: 1.1,
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Connecté à ${usine.name}',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-              ),
-              const SizedBox(height: 24),
-              if (cards.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 40),
-                  child: Center(
-                    child: Text(
-                      "Aucun accès n'est encore configuré pour votre poste. Contactez l'administrateur.",
-                      style: TextStyle(color: Colors.orange),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              else
-                Expanded(child: ListView(children: cards)),
+              const SizedBox(height: 12),
+              ...cards,
             ],
-          ),
+          ],
         ),
       ),
     );

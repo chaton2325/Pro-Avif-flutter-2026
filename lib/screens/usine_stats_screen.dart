@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -56,17 +57,36 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
   String? _journalType;
   int _journalPageIndex = 0;
 
+  late Timer _clockTimer;
+  String _currentTime = '';
+  String _currentDateStr = '';
+
   @override
   void initState() {
     super.initState();
+    _updateClock();
+    _clockTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _updateClock(),
+    );
     _refreshAll();
   }
 
   @override
   void dispose() {
+    _clockTimer.cancel();
     _tabController.dispose();
     _traceController.dispose();
     super.dispose();
+  }
+
+  void _updateClock() {
+    final now = DateTime.now();
+    if (!mounted) return;
+    setState(() {
+      _currentTime = DateFormat('HH:mm:ss').format(now);
+      _currentDateStr = DateFormat('dd/MM/yyyy').format(now);
+    });
   }
 
   Future<void> _refreshAll() async {
@@ -258,21 +278,114 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
     );
   }
 
-  Widget _statCard(String value, String label) {
+  /// Carte héros orange en tête du tableau de bord — même langage visuel que l'accueil
+  /// principal de l'app (user_dashboard.dart) : nom + heure/date en direct, puis l'usine
+  /// bien en évidence. Sans cette carte, l'écran n'était qu'un empilement de blocs plats.
+  Widget _buildHeroCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade600,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Bienvenue,',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  Text(
+                    _mongoService.currentUsineUser?.name ?? 'Admin',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _currentTime,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  Text(
+                    _currentDateStr,
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          const Text(
+            'USINE ALIMENT',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            widget.usine.name,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statIconCard(IconData icon, String value, String label) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.grey.shade100),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           children: [
+            Icon(icon, color: Colors.orange, size: 26),
+            const SizedBox(height: 10),
             Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
             ),
             const SizedBox(height: 2),
             Text(
@@ -286,98 +399,193 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
     );
   }
 
-  Widget _menuRow(String emoji, String label, int tabIndex) {
-    return ListTile(
-      onTap: () => _tabController.animateTo(tabIndex),
-      leading: Text(emoji, style: const TextStyle(fontSize: 18)),
-      title: Text(
-        label,
-        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-      ),
-      trailing: const Text(
-        'Ouvrir →',
-        style: TextStyle(
-          color: Colors.orange,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+  Widget _quickAccessCard(
+    String emoji,
+    String label,
+    Color color,
+    int tabIndex,
+  ) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _tabController.animateTo(tabIndex),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.grey.shade100),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: color.withValues(alpha: 0.12),
+                child: Text(emoji, style: const TextStyle(fontSize: 18)),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11.5,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  Widget _sectionLabel(String text) => Text(
+    text,
+    style: const TextStyle(
+      fontWeight: FontWeight.w900,
+      fontSize: 13,
+      color: Colors.grey,
+      letterSpacing: 1.1,
+    ),
+  );
+
   Widget _buildOverviewTab() {
     final d = _dashboard;
-    if (d == null)
-      return const Center(
-        child: Text('Aucune donnée.', style: TextStyle(color: Colors.grey)),
+    if (d == null) {
+      return RefreshIndicator(
+        onRefresh: _refreshAll,
+        color: Colors.orange,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          children: [
+            _buildHeroCard(),
+            const SizedBox(height: 60),
+            const Center(
+              child: Text(
+                'Aucune donnée.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
       );
+    }
     final valueFmt = NumberFormat.compact(locale: 'fr_FR');
+
+    // Section "Accès rapide" : autant de cartes que d'onglets accessibles, réparties par
+    // 2 sur chaque ligne plutôt qu'un simple menu de lignes empilées.
+    final quickAccess = <Widget>[
+      _quickAccessCard('📦', 'Consommation\npar bâtiment', Colors.teal, 1),
+      _quickAccessCard('🔎', 'Traçabilité\npar lot', Colors.indigo, 2),
+      _quickAccessCard('🕒', "Journal\nd'activité", Colors.blueGrey, 3),
+      if (_perms.seeCosts)
+        _quickAccessCard('💰', 'Budgets\n& coûts', Colors.green, 4),
+      _quickAccessCard('📈', 'Graphiques\n& tendances', Colors.purple, 5),
+    ];
+    final quickAccessRows = <Widget>[];
+    for (var i = 0; i < quickAccess.length; i += 2) {
+      quickAccessRows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              quickAccess[i],
+              const SizedBox(width: 12),
+              if (i + 1 < quickAccess.length)
+                quickAccess[i + 1]
+              else
+                const Spacer(),
+            ],
+          ),
+        ),
+      );
+    }
+
     return RefreshIndicator(
       onRefresh: _refreshAll,
       color: Colors.orange,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         children: [
+          _buildHeroCard(),
+          const SizedBox(height: 24),
+          _sectionLabel('CE MOIS-CI'),
+          const SizedBox(height: 12),
           Row(
             children: [
-              _statCard(
+              _statIconCard(
+                Icons.trending_up_rounded,
                 '${d.productionThisMonthKg.toStringAsFixed(0)} kg',
-                'Production · mois',
+                'Production',
               ),
-              if (_perms.seeCosts)
-                _statCard(
+              if (_perms.seeCosts) ...[
+                const SizedBox(width: 12),
+                _statIconCard(
+                  Icons.payments_outlined,
                   '${d.avgCostPerKg.toStringAsFixed(0)} F',
                   'Coût moyen /kg',
                 ),
-              if (_perms.seeCosts)
-                _statCard(
+                const SizedBox(width: 12),
+                _statIconCard(
+                  Icons.account_balance_wallet_outlined,
                   valueFmt.format(d.stockValueFcfa),
-                  'Valeur stock FCFA',
+                  'Valeur stock',
                 ),
+              ],
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Production mensuelle (kg)',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 28),
+          _sectionLabel('PRODUCTION MENSUELLE'),
+          const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.grey.shade100),
-            ),
-            child: _buildBarChart(d.monthlyProduction, Colors.orange),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade100),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _menuRow('📦', 'Consommation par bâtiment', 1),
-                const Divider(height: 1),
-                _menuRow('🔎', 'Traçabilité par lot', 2),
-                const Divider(height: 1),
-                _menuRow('🕒', "Journal d'activité", 3),
-                if (_perms.seeCosts) ...[
-                  const Divider(height: 1),
-                  _menuRow('💰', 'Budgets & coûts', 4),
-                ],
-                const Divider(height: 1),
-                _menuRow('📈', 'Graphiques & tendances', 5),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.bar_chart_rounded,
+                      color: Colors.orange.shade700,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'kg produits par mois',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildBarChart(d.monthlyProduction, Colors.orange),
               ],
             ),
           ),
+          const SizedBox(height: 28),
+          _sectionLabel('ACCÈS RAPIDE'),
+          const SizedBox(height: 12),
+          ...quickAccessRows,
         ],
       ),
     );
@@ -730,9 +938,22 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
         children: [
           Row(
             children: [
-              _statCard(valueFmt.format(b.totalBudget), 'Budget matières'),
-              _statCard(valueFmt.format(b.totalRealized), 'Réalisé'),
-              _statCard(
+              _statIconCard(
+                Icons.account_balance_wallet_outlined,
+                valueFmt.format(b.totalBudget),
+                'Budget matières',
+              ),
+              const SizedBox(width: 12),
+              _statIconCard(
+                Icons.payments_outlined,
+                valueFmt.format(b.totalRealized),
+                'Réalisé',
+              ),
+              const SizedBox(width: 12),
+              _statIconCard(
+                b.variancePercent >= 0
+                    ? Icons.trending_up_rounded
+                    : Icons.trending_down_rounded,
                 '${b.variancePercent >= 0 ? "+" : ""}${b.variancePercent.toStringAsFixed(1)}%',
                 'Écart',
               ),
