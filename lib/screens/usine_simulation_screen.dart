@@ -104,18 +104,46 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
     }
   }
 
-  Widget _sectionHeader(String emoji, String title, String subtitle) {
+  /// [step] ("ÉTAPE 1/3"...) reprend le même style d'étiquette majuscule grise que le
+  /// reste de l'app (ex. "MODULES", "CE MOIS-CI") pour renforcer le sens de lecture
+  /// haut-en-bas déjà en place, sans introduire un nouveau code visuel à apprendre.
+  Widget _sectionHeader(
+    String step,
+    String emoji,
+    Color color,
+    String title,
+    String subtitle,
+  ) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 20)),
-          const SizedBox(width: 10),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            alignment: Alignment.center,
+            child: Text(emoji, style: const TextStyle(fontSize: 19)),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(
+                  step,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 10,
+                    color: color,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 1),
                 Text(
                   title,
                   style: const TextStyle(
@@ -123,7 +151,6 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                     fontSize: 15,
                   ),
                 ),
-                const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
@@ -164,7 +191,9 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionHeader(
+            'ÉTAPE 1/3',
             '📦',
+            Colors.teal,
             'Stock des matières premières',
             'Ce que vous avez en ce moment',
           ),
@@ -189,38 +218,55 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                     horizontal: 14,
                     vertical: 10,
                   ),
-                  child: Column(
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              m.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13.5,
+                      CircleAvatar(
+                        radius: 15,
+                        backgroundColor: color.withValues(alpha: 0.12),
+                        child: Icon(
+                          Icons.grass_rounded,
+                          color: color,
+                          size: 15,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    m.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '${m.currentStock.toStringAsFixed(0)} ${m.unit}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                    color: color,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                value: ratio,
+                                minHeight: 6,
+                                backgroundColor: Colors.grey.shade100,
+                                color: color,
                               ),
                             ),
-                          ),
-                          Text(
-                            '${m.currentStock.toStringAsFixed(0)} ${m.unit}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 14,
-                              color: color,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(99),
-                        child: LinearProgressIndicator(
-                          value: ratio,
-                          minHeight: 6,
-                          backgroundColor: Colors.grey.shade100,
-                          color: color,
+                          ],
                         ),
                       ),
                     ],
@@ -244,7 +290,9 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionHeader(
+            'ÉTAPE 1/3',
             '🏭',
+            Colors.deepPurple,
             'Aliments utilisés comme ingrédient',
             'Un aliment déjà fabriqué (ex. SUPER PLUS) qui entre dans un autre',
           ),
@@ -266,38 +314,57 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                     horizontal: 14,
                     vertical: 10,
                   ),
-                  child: Column(
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              s.formulaName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13.5,
+                      CircleAvatar(
+                        radius: 15,
+                        backgroundColor: Colors.deepPurple.withValues(
+                          alpha: 0.12,
+                        ),
+                        child: const Icon(
+                          Icons.factory_rounded,
+                          color: Colors.deepPurple,
+                          size: 15,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    s.formulaName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '${s.totalStock.toStringAsFixed(0)} kg',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                    color: color,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                value: ratio,
+                                minHeight: 6,
+                                backgroundColor: Colors.grey.shade100,
+                                color: color,
                               ),
                             ),
-                          ),
-                          Text(
-                            '${s.totalStock.toStringAsFixed(0)} kg',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 14,
-                              color: color,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(99),
-                        child: LinearProgressIndicator(
-                          value: ratio,
-                          minHeight: 6,
-                          backgroundColor: Colors.grey.shade100,
-                          color: color,
+                          ],
                         ),
                       ),
                     ],
@@ -320,7 +387,9 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionHeader(
-            '🏭',
+            'ÉTAPE 2/3',
+            '🧪',
+            Colors.orange,
             'Ce que vous pouvez fabriquer',
             'Un seul aliment à la fois, avec le stock ci-dessus',
           ),
@@ -343,6 +412,18 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                     padding: const EdgeInsets.all(14),
                     child: Row(
                       children: [
+                        CircleAvatar(
+                          radius: 19,
+                          backgroundColor: _statusColor(
+                            l.status,
+                          ).withValues(alpha: 0.12),
+                          child: Icon(
+                            Icons.science_rounded,
+                            color: _statusColor(l.status),
+                            size: 19,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -418,7 +499,9 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader(
+          'ÉTAPE 3/3',
           '🧮',
+          Colors.indigo,
           'Meilleure répartition',
           'Si vous fabriquez plusieurs aliments en même temps',
         ),
@@ -458,11 +541,20 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        ...opt.plan.map(
-          (l) => Padding(
+        ...opt.plan.map((l) {
+          final isProduced = l.quantityKg > 0.5;
+          return Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
               children: [
+                Icon(
+                  isProduced
+                      ? Icons.check_circle_rounded
+                      : Icons.remove_circle_outline_rounded,
+                  size: 16,
+                  color: isProduced ? Colors.indigo : Colors.grey.shade400,
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     l.formulaName,
@@ -473,19 +565,19 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                   ),
                 ),
                 Text(
-                  l.quantityKg > 0.5
+                  isProduced
                       ? '${l.quantityKg.toStringAsFixed(0)} kg'
                       : '— (rien)',
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 14,
-                    color: l.quantityKg > 0.5 ? Colors.black87 : Colors.grey,
+                    color: isProduced ? Colors.black87 : Colors.grey,
                   ),
                 ),
               ],
             ),
-          ),
-        ),
+          );
+        }),
         const Divider(height: 24),
         const Text(
           'Stock utilisé par matière',
@@ -596,6 +688,58 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
     );
   }
 
+  /// Bande de synthèse ("2 OK · 1 bientôt limité · 0 rupture") avant le détail — un coup
+  /// d'œil avant de lire les 3 sections, sans rien changer à leur contenu ni leur ordre.
+  Widget _buildOverviewStrip() {
+    if (_simulation.isEmpty) return const SizedBox.shrink();
+    final okCount = _simulation.where((l) => l.status == 'ok').length;
+    final limiteCount = _simulation.where((l) => l.status == 'limite').length;
+    final ruptureCount = _simulation.where((l) => l.status == 'rupture').length;
+    Widget chip(String label, int count, Color color) {
+      return Expanded(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            children: [
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  color: color,
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Row(
+        children: [
+          chip('OK', okCount, Colors.green.shade700),
+          chip('LIMITÉ', limiteCount, Colors.orange.shade800),
+          chip('RUPTURE', ruptureCount, Colors.grey.shade600),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_perms.manageProduction) {
@@ -643,19 +787,23 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                 children: [
                   Container(
                     margin: const EdgeInsets.only(bottom: 20),
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.lightbulb_outline,
-                          color: Colors.orange.shade700,
-                          size: 18,
+                        CircleAvatar(
+                          radius: 15,
+                          backgroundColor: Colors.orange.shade100,
+                          child: Icon(
+                            Icons.lightbulb_outline,
+                            color: Colors.orange.shade700,
+                            size: 16,
+                          ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         const Expanded(
                           child: Text(
                             'Ceci est une simulation : rien n\'est réservé et aucune fabrication n\'est lancée ici.',
@@ -665,6 +813,7 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                       ],
                     ),
                   ),
+                  _buildOverviewStrip(),
                   _buildStockSection(),
                   _buildIngredientStockSection(),
                   _buildSoloSection(),
