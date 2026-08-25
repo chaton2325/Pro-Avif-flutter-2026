@@ -528,34 +528,52 @@ class MongoService {
     return [];
   }
 
-  Future<void> addFormula(Formula formula) async {
+  /// Renvoie un message d'erreur (ex. boucle détectée, aliment pas autorisé comme
+  /// ingrédient) si le serveur refuse l'enregistrement, ou null si tout s'est bien passé —
+  /// sans ça, un refus côté serveur se refermait silencieusement comme un succès.
+  Future<String?> addFormula(Formula formula) async {
     final uri = Uri.parse(
       '$baseUrl/formulas',
     ).replace(queryParameters: {'performedBy': _performedBy});
-    await http.post(
+    final response = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(formula.toMap()),
     );
+    if (response.statusCode == 201) return null;
+    return _extractError(response);
   }
 
-  Future<void> updateFormula(Formula formula) async {
-    if (formula.id == null) return;
+  Future<String?> updateFormula(Formula formula) async {
+    if (formula.id == null) return 'Formule sans identifiant';
     final uri = Uri.parse(
       '$baseUrl/formulas/${formula.id}',
     ).replace(queryParameters: {'performedBy': _performedBy});
-    await http.put(
+    final response = await http.put(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(formula.toMap()),
     );
+    if (response.statusCode == 200) return null;
+    return _extractError(response);
   }
 
-  Future<void> deleteFormula(String id) async {
+  Future<String?> deleteFormula(String id) async {
     final uri = Uri.parse(
       '$baseUrl/formulas/$id',
     ).replace(queryParameters: {'performedBy': _performedBy});
-    await http.delete(uri);
+    final response = await http.delete(uri);
+    if (response.statusCode == 200) return null;
+    return _extractError(response);
+  }
+
+  String _extractError(http.Response response) {
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
   }
 
   // ---- Usine Aliment : Réceptions (approvisionnement) ----

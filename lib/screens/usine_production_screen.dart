@@ -85,7 +85,8 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
   /// sous son seuil d'alerte — même logique que le stock bas de l'écran Approvisionnement.
   bool _isFormulaLimited(Formula f) {
     for (final line in f.lines) {
-      final m = _materialById(line.rawMaterialId);
+      if (line.rawMaterialId == null) continue;
+      final m = _materialById(line.rawMaterialId!);
       if (m != null &&
           m.lowStockThreshold > 0 &&
           m.currentStock < m.lowStockThreshold)

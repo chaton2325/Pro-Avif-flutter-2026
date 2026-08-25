@@ -12,6 +12,20 @@ const List<String> _rawMaterialCategories = [
   'Autre',
 ];
 
+/// Brouillon d'une ligne de formule pendant l'édition : la source peut être une matière
+/// première OU un autre aliment déjà produit (ex. SUPER PLUS) — [isAliment] distingue les
+/// deux, ce qu'un simple MapEntry ne pouvait pas porter proprement.
+class _FormulaLineDraft {
+  String? sourceId;
+  bool isAliment;
+  final TextEditingController controller;
+  _FormulaLineDraft({
+    this.sourceId,
+    this.isAliment = false,
+    required this.controller,
+  });
+}
+
 /// Référentiel matières premières + formules d'une usine précise (Partie 1).
 /// Chaque usine a son propre référentiel : deux usines peuvent avoir des matières et
 /// des formules totalement différentes.
@@ -333,6 +347,47 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
     );
   }
 
+  void _confirmDeleteFormula(Formula f) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Supprimer cet aliment ?',
+          style: TextStyle(
+            color: Colors.redAccent,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Cela supprime "${f.name}" du référentiel. Impossible s\'il est encore utilisé comme ingrédient par une autre formule.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () async {
+              Navigator.pop(context);
+              final err = await _mongoService.deleteFormula(f.id!);
+              if (err != null) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(err)));
+                return;
+              }
+              _refreshData();
+            },
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMaterialsTab() {
     if (_materials.isEmpty)
       return const Center(
@@ -428,7 +483,14 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
   // -------------------------------------------------------------- Formules
 
   void _showFormulaDialog({Formula? formula}) {
-    if (_materials.isEmpty) {
+    // Options combinées pour chaque ligne : matières premières achetées + autres aliments
+    // explicitement marqués "utilisable comme ingrédient" (ex. SUPER PLUS) — jamais la
+    // formule en cours d'édition elle-même, et jamais un aliment non coché (RL0 par
+    // exemple, un produit fini) même si techniquement il existe.
+    final ingredientFormulas = _formulas
+        .where((f) => f.id != null && f.id != formula?.id && f.canBeIngredient)
+        .toList();
+    if (_materials.isEmpty && ingredientFormulas.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -443,14 +505,20 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
       text: formula?.lowStockThreshold.toStringAsFixed(0) ?? '0',
     );
     bool isActive = formula?.isActive ?? true;
-    List<MapEntry<String, TextEditingController>> lines = (formula?.lines ?? [])
+    bool canBeIngredient = formula?.canBeIngredient ?? false;
+    String? error;
+    List<_FormulaLineDraft> lines = (formula?.lines ?? [])
         .map(
-          (l) => MapEntry(
-            l.rawMaterialId,
-            TextEditingController(text: l.quantityPerTon.toStringAsFixed(0)),
+          (l) => _FormulaLineDraft(
+            sourceId: l.sourceId,
+            isAliment: l.isIngredientAliment,
+            controller: TextEditingController(
+              text: l.quantityPerTon.toStringAsFixed(0),
+            ),
           ),
         )
         .toList();
+    final totalOptions = _materials.length + ingredientFormulas.length;
 
     showDialog(
       context: context,
@@ -458,7 +526,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
         builder: (context, setDialogState) {
           double total = 0;
           for (final l in lines) {
-            total += double.tryParse(l.value.text) ?? 0;
+            total += double.tryParse(l.controller.text) ?? 0;
           }
           return AlertDialog(
             shape: RoundedRectangleBorder(
@@ -497,48 +565,78 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                     const SizedBox(height: 8),
                     ...List.generate(lines.length, (i) {
                       final entry = lines[i];
-                      final usedIds = lines.map((l) => l.key).toSet();
+                      final usedIds = lines.map((l) => l.sourceId).toSet();
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
                               flex: 3,
                               child: DropdownButtonFormField<String>(
                                 isExpanded: true,
-                                value: _materials.any((m) => m.id == entry.key)
-                                    ? entry.key
+                                value:
+                                    _materials.any(
+                                          (m) => m.id == entry.sourceId,
+                                        ) ||
+                                        ingredientFormulas.any(
+                                          (f) => f.id == entry.sourceId,
+                                        )
+                                    ? entry.sourceId
                                     : null,
                                 decoration: const InputDecoration(
-                                  labelText: 'Matière',
+                                  labelText: 'Matière ou aliment',
                                   isDense: true,
                                 ),
-                                items: _materials
-                                    .where(
-                                      (m) =>
-                                          m.id == entry.key ||
-                                          !usedIds.contains(m.id),
-                                    )
-                                    .map(
-                                      (m) => DropdownMenuItem(
-                                        value: m.id,
-                                        child: Text(
-                                          m.name,
-                                          overflow: TextOverflow.ellipsis,
+                                items: [
+                                  ..._materials
+                                      .where(
+                                        (m) =>
+                                            m.id == entry.sourceId ||
+                                            !usedIds.contains(m.id),
+                                      )
+                                      .map(
+                                        (m) => DropdownMenuItem(
+                                          value: m.id,
+                                          child: Text(
+                                            m.name,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
                                       ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) => setDialogState(
-                                  () => lines[i] = MapEntry(v!, entry.value),
-                                ),
+                                  ...ingredientFormulas
+                                      .where(
+                                        (f) =>
+                                            f.id == entry.sourceId ||
+                                            !usedIds.contains(f.id),
+                                      )
+                                      .map(
+                                        (f) => DropdownMenuItem(
+                                          value: f.id,
+                                          child: Text(
+                                            '🏭 ${f.name} (aliment produit)',
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+                                ],
+                                onChanged: (v) => setDialogState(() {
+                                  final isAliment = ingredientFormulas.any(
+                                    (f) => f.id == v,
+                                  );
+                                  lines[i] = _FormulaLineDraft(
+                                    sourceId: v,
+                                    isAliment: isAliment,
+                                    controller: entry.controller,
+                                  );
+                                }),
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               flex: 2,
                               child: TextField(
-                                controller: entry.value,
+                                controller: entry.controller,
                                 keyboardType: TextInputType.number,
                                 decoration: const InputDecoration(
                                   labelText: 'kg/t',
@@ -561,25 +659,45 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                       );
                     }),
                     TextButton.icon(
-                      onPressed: _materials.length > lines.length
-                          ? () => setDialogState(
-                              () => lines.add(
-                                MapEntry(
-                                  _materials
-                                      .firstWhere(
-                                        (m) => !lines
-                                            .map((l) => l.key)
-                                            .contains(m.id),
-                                      )
-                                      .id!,
-                                  TextEditingController(text: '0'),
-                                ),
-                              ),
-                            )
+                      onPressed: totalOptions > lines.length
+                          ? () => setDialogState(() {
+                              final usedIds = lines
+                                  .map((l) => l.sourceId)
+                                  .toSet();
+                              final availableMaterials = _materials
+                                  .where((m) => !usedIds.contains(m.id))
+                                  .toList();
+                              if (availableMaterials.isNotEmpty) {
+                                lines.add(
+                                  _FormulaLineDraft(
+                                    sourceId: availableMaterials.first.id,
+                                    isAliment: false,
+                                    controller: TextEditingController(
+                                      text: '0',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+                              final availableAliments = ingredientFormulas
+                                  .where((f) => !usedIds.contains(f.id))
+                                  .toList();
+                              if (availableAliments.isNotEmpty) {
+                                lines.add(
+                                  _FormulaLineDraft(
+                                    sourceId: availableAliments.first.id,
+                                    isAliment: true,
+                                    controller: TextEditingController(
+                                      text: '0',
+                                    ),
+                                  ),
+                                );
+                              }
+                            })
                           : null,
                       icon: const Icon(Icons.add, color: Colors.orange),
                       label: const Text(
-                        'Ajouter une matière',
+                        'Ajouter une ligne',
                         style: TextStyle(color: Colors.orange),
                       ),
                     ),
@@ -624,6 +742,29 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                       activeColor: Colors.orange,
                       onChanged: (v) => setDialogState(() => isActive = v),
                     ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Utilisable comme ingrédient'),
+                      subtitle: const Text(
+                        'Apparaîtra dans le choix des matières d\'un autre aliment (ex. SUPER PLUS)',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                      value: canBeIngredient,
+                      activeColor: Colors.orange,
+                      onChanged: (v) =>
+                          setDialogState(() => canBeIngredient = v),
+                    ),
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          error!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -647,19 +788,26 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                     lines: lines
                         .map(
                           (l) => FormulaLine(
-                            rawMaterialId: l.key,
-                            quantityPerTon: double.tryParse(l.value.text) ?? 0,
+                            rawMaterialId: l.isAliment ? null : l.sourceId,
+                            ingredientFormulaId: l.isAliment
+                                ? l.sourceId
+                                : null,
+                            quantityPerTon:
+                                double.tryParse(l.controller.text) ?? 0,
                           ),
                         )
                         .toList(),
                     isActive: isActive,
                     lowStockThreshold:
                         double.tryParse(thresholdController.text) ?? 0,
+                    canBeIngredient: canBeIngredient,
                   );
-                  if (formula == null) {
-                    await _mongoService.addFormula(newFormula);
-                  } else {
-                    await _mongoService.updateFormula(newFormula);
+                  final err = formula == null
+                      ? await _mongoService.addFormula(newFormula)
+                      : await _mongoService.updateFormula(newFormula);
+                  if (err != null) {
+                    setDialogState(() => error = err);
+                    return;
                   }
                   await _refreshData();
                   if (!context.mounted) return;
@@ -709,12 +857,39 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                 color: Colors.deepPurple,
               ),
             ),
-            title: Text(
-              f.name,
-              style: const TextStyle(fontWeight: FontWeight.w900),
+            title: Row(
+              children: [
+                Text(
+                  f.name,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                if (f.canBeIngredient) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'INGRÉDIENT',
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.deepPurple.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
             subtitle: Text(
-              '${f.lines.length} matière(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t',
+              f.lines.any((l) => l.isIngredientAliment)
+                  ? '${f.lines.length} ligne(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t · utilise un aliment produit'
+                  : '${f.lines.length} matière(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
             trailing: Row(
@@ -734,10 +909,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                     color: Colors.redAccent,
                     size: 20,
                   ),
-                  onPressed: () async {
-                    await _mongoService.deleteFormula(f.id!);
-                    _refreshData();
-                  },
+                  onPressed: () => _confirmDeleteFormula(f),
                 ),
               ],
             ),

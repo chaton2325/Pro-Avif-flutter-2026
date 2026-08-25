@@ -3,6 +3,7 @@ import '../models/usine.dart';
 import '../models/raw_material.dart';
 import '../models/simulation.dart';
 import '../models/poste.dart';
+import '../models/feed_stock.dart';
 import '../services/mongo_service.dart';
 
 /// Parcours 03 — Simulation & optimisation (maquette écrans 20-21), repensé en UNE seule
@@ -29,6 +30,7 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
   PostePermissions get _perms => widget.permissions ?? fullAccessPermissions;
 
   List<RawMaterial> _materials = [];
+  List<FeedStockSummary> _ingredientStocks = [];
   List<SimulationLine> _simulation = [];
   OptimizationResult? _optimization;
   String? _optimizationError;
@@ -43,11 +45,25 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
   Future<void> _refresh() async {
     setState(() => _isLoading = true);
     final materials = await _mongoService.getRawMaterials(widget.usine.id!);
+    final formulas = await _mongoService.getFormulas(widget.usine.id!);
+    final feedStock = await _mongoService.getFeedStock(widget.usine.id!);
     final sim = await _mongoService.simulateProduction(widget.usine.id!);
     final opt = await _mongoService.optimizeProduction(widget.usine.id!);
     if (!mounted) return;
+    // Un aliment (ex. SUPER PLUS) n'apparaît ici que s'il sert vraiment d'ingrédient à une
+    // formule active — inutile d'afficher le stock de tous les aliments produits, juste
+    // ceux qui pèsent réellement sur ce qu'on peut fabriquer.
+    final ingredientIds = formulas
+        .where((f) => f.isActive)
+        .expand((f) => f.lines)
+        .where((l) => l.isIngredientAliment)
+        .map((l) => l.ingredientFormulaId)
+        .toSet();
     setState(() {
       _materials = materials.where((m) => m.isActive).toList();
+      _ingredientStocks = feedStock
+          .where((s) => ingredientIds.contains(s.formulaId))
+          .toList();
       _simulation = sim;
       _optimization = opt.result;
       _optimizationError = opt.error;
@@ -189,6 +205,83 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                           ),
                           Text(
                             '${m.currentStock.toStringAsFixed(0)} ${m.unit}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                              color: color,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(
+                          value: ratio,
+                          minHeight: 6,
+                          backgroundColor: Colors.grey.shade100,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ------------------------------------- Section 1bis : aliments utilisés en ingrédient
+
+  Widget _buildIngredientStockSection() {
+    if (_ingredientStocks.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            '🏭',
+            'Aliments utilisés comme ingrédient',
+            'Un aliment déjà fabriqué (ex. SUPER PLUS) qui entre dans un autre',
+          ),
+          _card(
+            child: Column(
+              children: _ingredientStocks.map((s) {
+                final hasThreshold = s.lowStockThreshold > 0;
+                final isLow =
+                    hasThreshold && s.totalStock < s.lowStockThreshold;
+                final isEmpty = s.totalStock <= 0;
+                final color = isEmpty
+                    ? Colors.grey.shade500
+                    : (isLow ? Colors.orange.shade800 : Colors.green.shade700);
+                final ratio = hasThreshold
+                    ? (s.totalStock / (s.lowStockThreshold * 3)).clamp(0.0, 1.0)
+                    : (s.totalStock > 0 ? 1.0 : 0.0);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              s.formulaName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${s.totalStock.toStringAsFixed(0)} kg',
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 14,
@@ -573,6 +666,7 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                     ),
                   ),
                   _buildStockSection(),
+                  _buildIngredientStockSection(),
                   _buildSoloSection(),
                   _buildComboSection(),
                 ],

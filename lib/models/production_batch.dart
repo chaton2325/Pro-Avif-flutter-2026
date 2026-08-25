@@ -1,5 +1,6 @@
 class ProductionCheckLine {
-  final String rawMaterialId;
+  final String? rawMaterialId;
+  final String? ingredientFormulaId;
   final String materialName;
   final String unit;
   final double needed;
@@ -9,7 +10,8 @@ class ProductionCheckLine {
   final List<Map<String, dynamic>> batchPreview;
 
   ProductionCheckLine({
-    required this.rawMaterialId,
+    this.rawMaterialId,
+    this.ingredientFormulaId,
     required this.materialName,
     required this.unit,
     required this.needed,
@@ -19,9 +21,12 @@ class ProductionCheckLine {
     this.batchPreview = const [],
   });
 
+  bool get isIngredientAliment => ingredientFormulaId != null;
+
   factory ProductionCheckLine.fromMap(Map<String, dynamic> map) {
     return ProductionCheckLine(
-      rawMaterialId: map['rawMaterialId'] as String,
+      rawMaterialId: map['rawMaterialId'] as String?,
+      ingredientFormulaId: map['ingredientFormulaId'] as String?,
       materialName: map['materialName'] as String,
       unit: map['unit'] as String? ?? 'kg',
       needed: (map['needed'] as num).toDouble(),
@@ -54,7 +59,8 @@ class ProductionCheckResult {
 }
 
 class ProductionConsumptionLine {
-  final String rawMaterialId;
+  final String? rawMaterialId;
+  final String? ingredientFormulaId;
   final String materialName;
   final double quantityConsumed;
   final double unitCost;
@@ -62,7 +68,8 @@ class ProductionConsumptionLine {
   final List<Map<String, dynamic>> batchesUsed;
 
   ProductionConsumptionLine({
-    required this.rawMaterialId,
+    this.rawMaterialId,
+    this.ingredientFormulaId,
     required this.materialName,
     required this.quantityConsumed,
     required this.unitCost,
@@ -70,9 +77,12 @@ class ProductionConsumptionLine {
     this.batchesUsed = const [],
   });
 
+  bool get isIngredientAliment => ingredientFormulaId != null;
+
   factory ProductionConsumptionLine.fromMap(Map<String, dynamic> map) {
     return ProductionConsumptionLine(
-      rawMaterialId: map['rawMaterialId'] as String,
+      rawMaterialId: map['rawMaterialId'] as String?,
+      ingredientFormulaId: map['ingredientFormulaId'] as String?,
       materialName: map['materialName'] as String,
       quantityConsumed: (map['quantityConsumed'] as num).toDouble(),
       unitCost: (map['unitCost'] as num).toDouble(),
