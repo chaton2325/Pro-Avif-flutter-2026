@@ -27,6 +27,14 @@ import '../models/usine_stats.dart';
 import '../models/daily_report.dart';
 import './session_storage.dart';
 
+/// Une ligne de comptage d'inventaire : [batchId] null = comptage global d'une matière,
+/// renseigné = comptage d'un lot précis (matière « par lot »).
+typedef InventoryCountEntry = ({
+  String rawMaterialId,
+  double countedQuantity,
+  String? batchId,
+});
+
 class LicenseBlockedException implements Exception {
   final String reason;
   LicenseBlockedException(this.reason);
@@ -782,16 +790,25 @@ class MongoService {
   }
 
   // ---- Usine Aliment : Inventaire ----
-  /// [counts] : {rawMaterialId: quantité comptée}. Renvoie la liste des écarts appliqués.
+  /// Chaque entrée compte soit une matière « globale » ([batchId] null, écart imputé au
+  /// CUMP global), soit un lot précis d'une matière « par lot » ([batchId] renseigné,
+  /// écart imputé à CE lot) — une matière « par lot » avec plusieurs lots actifs peut donc
+  /// avoir plusieurs entrées, une par lot. Renvoie la liste des écarts appliqués.
   Future<List<Map<String, dynamic>>> applyInventory(
     String usineId,
-    Map<String, double> counts, {
+    List<InventoryCountEntry> counts, {
     String? comment,
   }) async {
     final body = {
       'usineId': usineId,
-      'counts': counts.entries
-          .map((e) => {'rawMaterialId': e.key, 'countedQuantity': e.value})
+      'counts': counts
+          .map(
+            (c) => {
+              'rawMaterialId': c.rawMaterialId,
+              'countedQuantity': c.countedQuantity,
+              if (c.batchId != null) 'batchId': c.batchId,
+            },
+          )
           .toList(),
       'comment': comment,
       'performedBy': _performedBy,

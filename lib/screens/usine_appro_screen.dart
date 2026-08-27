@@ -1148,14 +1148,64 @@ class _UsineApproScreenState extends State<UsineApproScreen>
 
   // ---------------------------------------------------------------- Inventaire
 
+  Widget _inventoryCountRow({
+    required String label,
+    required double systemQty,
+    required TextEditingController controller,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          Text(
+            'Sys: ${systemQty.toStringAsFixed(0)}',
+            style: const TextStyle(color: Colors.grey, fontSize: 11),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 90,
+            child: TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+              ],
+              textAlign: TextAlign.right,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showInventoryDialog() {
-    final controllers = {
+    // Une matière « globale » compte en un seul champ (son stock agrégé). Une matière
+    // « par lot » avec des lots actifs compte lot par lot (plusieurs réceptions
+    // coexistent souvent avec des quantités restantes différentes) — un seul champ
+    // agrégé imputerait sinon systématiquement tout l'écart au lot le plus ancien.
+    final materialControllers = {
       for (final m in _materials)
-        m.id!: TextEditingController(text: m.currentStock.toStringAsFixed(0)),
+        if (!m.isParLot || _batchesFor(m.id!).isEmpty)
+          m.id!: TextEditingController(text: m.currentStock.toStringAsFixed(0)),
+    };
+    final batchControllers = {
+      for (final m in _materials.where((m) => m.isParLot))
+        for (final b in _batchesFor(m.id!))
+          b.id!: TextEditingController(
+            text: b.remainingQuantity.toStringAsFixed(0),
+          ),
     };
     final commentController = TextEditingController();
     int step = 0; // 0 = saisie, 1 = écarts
-    List<MapEntry<RawMaterial, double>> variances = [];
+    List<({RawMaterial material, RawMaterialBatch? batch, double variance})>
+    variances = [];
 
     showDialog(
       context: context,
@@ -1177,67 +1227,71 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: step == 0
-                    ? _materials.map((m) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Row(
-                            children: [
-                              Expanded(child: Text(m.name)),
-                              Text(
-                                'Sys: ${m.currentStock.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 11,
-                                ),
+                    ? _materials.expand((m) {
+                        final batches = m.isParLot
+                            ? _batchesFor(m.id!)
+                            : const <RawMaterialBatch>[];
+                        if (batches.isEmpty) {
+                          return [
+                            _inventoryCountRow(
+                              label: m.name,
+                              systemQty: m.currentStock,
+                              controller: materialControllers[m.id]!,
+                            ),
+                          ];
+                        }
+                        return [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              m.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
                               ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                width: 90,
-                                child: TextField(
-                                  controller: controllers[m.id],
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.allow(
-                                      RegExp(r'^\d*\.?\d*$'),
-                                    ),
-                                  ],
-                                  textAlign: TextAlign.right,
-                                  decoration: const InputDecoration(
-                                    isDense: true,
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        );
+                          ...batches.map(
+                            (b) => Padding(
+                              padding: const EdgeInsets.only(left: 12),
+                              child: _inventoryCountRow(
+                                label: 'Lot ${b.lotNumber}',
+                                systemQty: b.remainingQuantity,
+                                controller: batchControllers[b.id]!,
+                              ),
+                            ),
+                          ),
+                        ];
                       }).toList()
                     : [
                         ...variances.map((entry) {
-                          final m = entry.key;
-                          final v = entry.value;
+                          final m = entry.material;
+                          final b = entry.batch;
+                          final systemQty =
+                              b?.remainingQuantity ?? m.currentStock;
+                          final v = entry.variance;
+                          // Arrondi à l'unité affichée : évite qu'un résidu de calcul
+                          // flottant (ex. 0.0000001) ou l'arrondi du champ pré-rempli
+                          // affiche "-0"/"+0" alors que c'est en réalité OK.
+                          final rounded = v.round();
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(
-                              m.name,
+                              b != null ? '${m.name} — Lot ${b.lotNumber}' : m.name,
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                             subtitle: Text(
-                              '${m.currentStock.toStringAsFixed(0)} → ${(m.currentStock - v).toStringAsFixed(0)} ${m.unit}',
+                              '${systemQty.toStringAsFixed(0)} → ${(systemQty - v).toStringAsFixed(0)} ${m.unit}',
                             ),
                             trailing: Text(
-                              v == 0
+                              rounded == 0
                                   ? 'OK'
-                                  : (v > 0
-                                        ? '− ${v.toStringAsFixed(0)}'
-                                        : '+ ${(-v).toStringAsFixed(0)}'),
+                                  : (rounded > 0
+                                        ? '− $rounded'
+                                        : '+ ${-rounded}'),
                               style: TextStyle(
-                                color: v == 0
+                                color: rounded == 0
                                     ? Colors.green
                                     : Colors.orange.shade800,
                                 fontWeight: FontWeight.bold,
@@ -1245,7 +1299,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                             ),
                           );
                         }),
-                        if (variances.every((e) => e.value == 0))
+                        if (variances.every((e) => e.variance.round() == 0))
                           const Text(
                             'Aucun écart.',
                             style: TextStyle(color: Colors.grey),
@@ -1273,12 +1327,45 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   ),
                   ElevatedButton(
                     onPressed: () {
-                      variances = _materials.map((m) {
-                        final counted =
-                            double.tryParse(controllers[m.id]!.text) ??
-                            m.currentStock;
-                        return MapEntry(m, m.currentStock - counted);
-                      }).toList();
+                      final list =
+                          <
+                            ({
+                              RawMaterial material,
+                              RawMaterialBatch? batch,
+                              double variance,
+                            })
+                          >[];
+                      for (final m in _materials) {
+                        final batches = m.isParLot
+                            ? _batchesFor(m.id!)
+                            : const <RawMaterialBatch>[];
+                        if (batches.isEmpty) {
+                          final counted =
+                              double.tryParse(
+                                materialControllers[m.id]!.text,
+                              ) ??
+                              m.currentStock;
+                          list.add((
+                            material: m,
+                            batch: null,
+                            variance: m.currentStock - counted,
+                          ));
+                        } else {
+                          for (final b in batches) {
+                            final counted =
+                                double.tryParse(
+                                  batchControllers[b.id]!.text,
+                                ) ??
+                                b.remainingQuantity;
+                            list.add((
+                              material: m,
+                              batch: b,
+                              variance: b.remainingQuantity - counted,
+                            ));
+                          }
+                        }
+                      }
+                      variances = list;
                       setDialogState(() => step = 1);
                     },
                     child: const Text('Voir les écarts'),
@@ -1294,12 +1381,17 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   ),
                   ElevatedButton(
                     onPressed: () async {
-                      final counts = {
-                        for (final m in _materials)
-                          m.id!:
-                              double.tryParse(controllers[m.id]!.text) ??
-                              m.currentStock,
-                      };
+                      final counts = <InventoryCountEntry>[
+                        for (final entry in variances)
+                          (
+                            rawMaterialId: entry.material.id!,
+                            countedQuantity:
+                                (entry.batch?.remainingQuantity ??
+                                    entry.material.currentStock) -
+                                entry.variance,
+                            batchId: entry.batch?.id,
+                          ),
+                      ];
                       await runBlocking(context, () async {
                         await _mongoService.applyInventory(
                           widget.usine.id!,
@@ -1550,15 +1642,22 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 ],
               ),
               child: ListTile(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UsineLotsHistoryScreen(
-                      usine: widget.usine,
-                      permissions: widget.permissions,
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UsineLotsHistoryScreen(
+                        usine: widget.usine,
+                        permissions: widget.permissions,
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                  // Un lot a pu être clôturé sur cet écran (stock/lots actifs changés) —
+                  // sans ce rafraîchissement, l'inventaire réaffichait le lot fermé
+                  // jusqu'à ce qu'on quitte/revienne sur l'écran manuellement.
+                  if (!mounted) return;
+                  _refreshData();
+                },
                 leading: CircleAvatar(
                   backgroundColor: Colors.indigo.withValues(alpha: 0.1),
                   child: const Icon(
