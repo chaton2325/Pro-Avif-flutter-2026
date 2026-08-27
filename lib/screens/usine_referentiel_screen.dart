@@ -405,17 +405,23 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           style: TextStyle(color: Colors.grey),
         ),
       );
-    return ListView.builder(
+    return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        mainAxisExtent: 148,
+      ),
       itemCount: _materials.length,
       itemBuilder: (context, index) {
         final m = _materials[index];
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Colors.orange.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.grey.shade100),
+            border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
@@ -424,65 +430,103 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
               ),
             ],
           ),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: (m.isActive ? Colors.green : Colors.grey)
-                  .withValues(alpha: 0.1),
-              child: Icon(
-                Icons.grass_rounded,
-                color: m.isActive ? Colors.green : Colors.grey,
-              ),
-            ),
-            title: Text(
-              m.name,
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-            subtitle: Text(
-              '${m.category ?? "Sans catégorie"} · ${m.isParLot ? "Par lot" : "Global"} · seuil ${m.lowStockThreshold.toStringAsFixed(0)} ${m.unit}',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: (m.isActive ? Colors.green : Colors.grey.shade400)
-                        .withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    m.isActive ? 'ACTIF' : 'INACTIF',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: m.isActive
-                          ? Colors.green.shade800
-                          : Colors.grey.shade600,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 15,
+                    backgroundColor: (m.isActive ? Colors.green : Colors.grey)
+                        .withValues(alpha: 0.1),
+                    child: Icon(
+                      Icons.grass_rounded,
+                      size: 16,
+                      color: m.isActive ? Colors.green : Colors.grey,
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.edit_rounded,
-                    color: Colors.blue,
-                    size: 20,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        m.name,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
                   ),
-                  onPressed: () => _showMaterialDialog(material: m),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline_rounded,
-                    color: Colors.redAccent,
-                    size: 20,
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                m.category ?? 'Sans catégorie',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+              ),
+              Text(
+                '${m.isParLot ? "Par lot" : "Global"} · seuil ${m.lowStockThreshold.toStringAsFixed(0)} ${m.unit}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: (m.isActive ? Colors.green : Colors.grey.shade400)
+                          .withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      m.isActive ? 'ACTIF' : 'INACTIF',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: m.isActive
+                            ? Colors.green.shade800
+                            : Colors.grey.shade600,
+                      ),
+                    ),
                   ),
-                  onPressed: () => _confirmDeleteMaterial(m),
-                ),
-              ],
-            ),
+                  const Spacer(),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _showMaterialDialog(material: m),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.edit_rounded,
+                        color: Colors.blue,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _confirmDeleteMaterial(m),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.delete_outline_rounded,
+                        color: Colors.redAccent,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         );
       },
@@ -842,17 +886,25 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           style: TextStyle(color: Colors.grey),
         ),
       );
-    return ListView.builder(
+    return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        mainAxisExtent: 160,
+      ),
       itemCount: _formulas.length,
       itemBuilder: (context, index) {
         final f = _formulas[index];
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Colors.deepPurple.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.grey.shade100),
+            border: Border.all(
+              color: Colors.deepPurple.withValues(alpha: 0.2),
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
@@ -861,70 +913,97 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
               ),
             ],
           ),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.deepPurple.withValues(alpha: 0.1),
-              child: const Icon(
-                Icons.science_rounded,
-                color: Colors.deepPurple,
-              ),
-            ),
-            title: Row(
-              children: [
-                Text(
-                  f.name,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                if (f.canBeIngredient) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 1,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 15,
+                    backgroundColor: Colors.deepPurple.withValues(alpha: 0.1),
+                    child: const Icon(
+                      Icons.science_rounded,
+                      size: 16,
+                      color: Colors.deepPurple,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      'INGRÉDIENT',
-                      style: TextStyle(
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.deepPurple.shade700,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        f.name,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
                   ),
                 ],
-              ],
-            ),
-            subtitle: Text(
-              f.lines.any((l) => l.isIngredientAliment)
-                  ? '${f.lines.length} ligne(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t · utilise un aliment produit'
-                  : '${f.lines.length} matière(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.edit_rounded,
-                    color: Colors.blue,
-                    size: 20,
+              ),
+              const SizedBox(height: 6),
+              if (f.canBeIngredient)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
                   ),
-                  onPressed: () => _showFormulaDialog(formula: f),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline_rounded,
-                    color: Colors.redAccent,
-                    size: 20,
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                  onPressed: () => _confirmDeleteFormula(f),
+                  child: Text(
+                    'INGRÉDIENT',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.deepPurple.shade700,
+                    ),
+                  ),
                 ),
-              ],
-            ),
+              Text(
+                f.lines.any((l) => l.isIngredientAliment)
+                    ? '${f.lines.length} ligne(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t · utilise un aliment produit'
+                    : '${f.lines.length} matière(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  const Spacer(),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _showFormulaDialog(formula: f),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.edit_rounded,
+                        color: Colors.blue,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _confirmDeleteFormula(f),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.delete_outline_rounded,
+                        color: Colors.redAccent,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         );
       },
