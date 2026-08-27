@@ -5,6 +5,7 @@ import '../models/formula.dart';
 import '../models/production_batch.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import '../widgets/blocking_loader.dart';
 import 'usine_simulation_screen.dart';
 
 /// Parcours 02 — Production & coût de revient (maquette écrans 14-19), condensé en un
@@ -290,10 +291,13 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                           isBusy = true;
                           error = null;
                         });
-                        final result = await _mongoService.checkProduction(
-                          widget.usine.id!,
-                          formula.id!,
-                          qty,
+                        final result = await runBlocking(
+                          context,
+                          () => _mongoService.checkProduction(
+                            widget.usine.id!,
+                            formula.id!,
+                            qty,
+                          ),
                         );
                         setDialogState(() {
                           checkResult = result;
@@ -325,11 +329,14 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         // La quantité produite est provisoirement = la cible : la pesée de
                         // sortie réelle, souvent connue plus tard, se corrige à la clôture
                         // (écran 17) — le stock, lui, est bien consommé maintenant.
-                        final result = await _mongoService.launchProduction(
-                          usineId: widget.usine.id!,
-                          formulaId: formula.id!,
-                          quantityTarget: qty,
-                          actualQuantityProduced: qty,
+                        final result = await runBlocking(
+                          context,
+                          () => _mongoService.launchProduction(
+                            usineId: widget.usine.id!,
+                            formulaId: formula.id!,
+                            quantityTarget: qty,
+                            actualQuantityProduced: qty,
+                          ),
                         );
                         if (result.error != null) {
                           setDialogState(() {
@@ -470,10 +477,13 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         isBusy = true;
                         error = null;
                       });
-                      final err = await _mongoService.closeProduction(
-                        batch.id!,
-                        actualQuantityProduced: actual,
-                        sendToAccountant: false,
+                      final err = await runBlocking(
+                        context,
+                        () => _mongoService.closeProduction(
+                          batch.id!,
+                          actualQuantityProduced: actual,
+                          sendToAccountant: false,
+                        ),
                       );
                       if (err != null) {
                         setDialogState(() {
@@ -507,10 +517,13 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         isBusy = true;
                         error = null;
                       });
-                      final err = await _mongoService.closeProduction(
-                        batch.id!,
-                        actualQuantityProduced: actual,
-                        sendToAccountant: true,
+                      final err = await runBlocking(
+                        context,
+                        () => _mongoService.closeProduction(
+                          batch.id!,
+                          actualQuantityProduced: actual,
+                          sendToAccountant: true,
+                        ),
                       );
                       if (err != null) {
                         setDialogState(() {
@@ -780,9 +793,12 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                   setDialogState(() => error = 'Motif requis');
                   return;
                 }
-                final err = await _mongoService.rejectProduction(
-                  batch.id!,
-                  reasonController.text.trim(),
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.rejectProduction(
+                    batch.id!,
+                    reasonController.text.trim(),
+                  ),
                 );
                 if (err != null) {
                   setDialogState(() => error = err);
@@ -921,12 +937,15 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                     );
                     return;
                   }
-                  final err = await _mongoService.validateProduction(
-                    batch.id!,
-                    adjustment: adjustment,
-                    adjustmentReason: reasonController.text.trim().isEmpty
-                        ? null
-                        : reasonController.text.trim(),
+                  final err = await runBlocking(
+                    context,
+                    () => _mongoService.validateProduction(
+                      batch.id!,
+                      adjustment: adjustment,
+                      adjustmentReason: reasonController.text.trim().isEmpty
+                          ? null
+                          : reasonController.text.trim(),
+                    ),
                   );
                   if (err != null) {
                     setDialogState(() => error = err);

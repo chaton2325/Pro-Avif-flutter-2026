@@ -3,6 +3,7 @@ import '../models/usine.dart';
 import '../models/raw_material.dart';
 import '../models/formula.dart';
 import '../services/mongo_service.dart';
+import '../widgets/blocking_loader.dart';
 
 const List<String> _rawMaterialCategories = [
   'Énergie',
@@ -296,12 +297,14 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                   usualSuppliers: suppliers,
                   isActive: isActive,
                 );
-                if (material == null) {
-                  await _mongoService.addRawMaterial(newMaterial);
-                } else {
-                  await _mongoService.updateRawMaterial(newMaterial);
-                }
-                await _refreshData();
+                await runBlocking(context, () async {
+                  if (material == null) {
+                    await _mongoService.addRawMaterial(newMaterial);
+                  } else {
+                    await _mongoService.updateRawMaterial(newMaterial);
+                  }
+                  await _refreshData();
+                });
                 if (!context.mounted) return;
                 Navigator.pop(context);
               },
@@ -336,9 +339,12 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
+              await runBlocking(context, () async {
+                await _mongoService.deleteRawMaterial(m.id!);
+                await _refreshData();
+              });
+              if (!context.mounted) return;
               Navigator.pop(context);
-              await _mongoService.deleteRawMaterial(m.id!);
-              _refreshData();
             },
             child: const Text('Supprimer'),
           ),
@@ -371,7 +377,10 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
               Navigator.pop(context);
-              final err = await _mongoService.deleteFormula(f.id!);
+              final err = await runBlocking(
+                context,
+                () => _mongoService.deleteFormula(f.id!),
+              );
               if (err != null) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(
@@ -379,7 +388,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                 ).showSnackBar(SnackBar(content: Text(err)));
                 return;
               }
-              _refreshData();
+              await _refreshData();
             },
             child: const Text('Supprimer'),
           ),
@@ -802,9 +811,12 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                         double.tryParse(thresholdController.text) ?? 0,
                     canBeIngredient: canBeIngredient,
                   );
-                  final err = formula == null
-                      ? await _mongoService.addFormula(newFormula)
-                      : await _mongoService.updateFormula(newFormula);
+                  final err = await runBlocking(
+                    context,
+                    () => formula == null
+                        ? _mongoService.addFormula(newFormula)
+                        : _mongoService.updateFormula(newFormula),
+                  );
                   if (err != null) {
                     setDialogState(() => error = err);
                     return;

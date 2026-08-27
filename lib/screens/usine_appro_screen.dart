@@ -7,6 +7,7 @@ import '../models/raw_material_batch.dart';
 import '../models/stock_loss.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import '../widgets/blocking_loader.dart';
 import 'usine_lots_history_screen.dart';
 
 /// Une ligne du fil d'historique (réception valorisée, perte ou ajustement CUMP fondus
@@ -362,20 +363,22 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 final qty = double.tryParse(quantityController.text);
                 if (selectedMaterialId == null || qty == null || qty <= 0)
                   return;
-                await _mongoService.addReception(
-                  Reception(
-                    usineId: widget.usine.id!,
-                    rawMaterialId: selectedMaterialId!,
-                    supplier: supplierController.text.trim().isEmpty
-                        ? null
-                        : supplierController.text.trim(),
-                    quantity: qty,
-                    note: noteController.text.trim().isEmpty
-                        ? null
-                        : noteController.text.trim(),
-                  ),
-                );
-                await _refreshData();
+                await runBlocking(context, () async {
+                  await _mongoService.addReception(
+                    Reception(
+                      usineId: widget.usine.id!,
+                      rawMaterialId: selectedMaterialId!,
+                      supplier: supplierController.text.trim().isEmpty
+                          ? null
+                          : supplierController.text.trim(),
+                      quantity: qty,
+                      note: noteController.text.trim().isEmpty
+                          ? null
+                          : noteController.text.trim(),
+                    ),
+                  );
+                  await _refreshData();
+                });
                 if (!context.mounted) return;
                 Navigator.pop(context);
               },
@@ -515,9 +518,9 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                     setDialogState(() => errorText = 'Prix invalide');
                     return;
                   }
-                  final err = await _mongoService.valorizeReception(
-                    reception.id!,
-                    p,
+                  final err = await runBlocking(
+                    context,
+                    () => _mongoService.valorizeReception(reception.id!, p),
                   );
                   if (err != null) {
                     setDialogState(() => errorText = err);
@@ -846,10 +849,13 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                     setDialogState(() => errorText = 'Quantité invalide');
                     return;
                   }
-                  final err = await _mongoService.closeRawMaterialBatch(
-                    batch.id!,
-                    c,
-                    reason,
+                  final err = await runBlocking(
+                    context,
+                    () => _mongoService.closeRawMaterialBatch(
+                      batch.id!,
+                      c,
+                      reason,
+                    ),
                   );
                   if (err != null) {
                     setDialogState(() => errorText = err);
@@ -941,15 +947,18 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   setDialogState(() => errorText = 'Quantité invalide');
                   return;
                 }
-                final err = await _mongoService.declareStockLoss(
-                  StockLoss(
-                    usineId: widget.usine.id!,
-                    rawMaterialId: material.id!,
-                    quantity: qty,
-                    reason: reason,
-                    note: noteController.text.trim().isEmpty
-                        ? null
-                        : noteController.text.trim(),
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.declareStockLoss(
+                    StockLoss(
+                      usineId: widget.usine.id!,
+                      rawMaterialId: material.id!,
+                      quantity: qty,
+                      reason: reason,
+                      note: noteController.text.trim().isEmpty
+                          ? null
+                          : noteController.text.trim(),
+                    ),
                   ),
                 );
                 if (err != null) {
@@ -1087,10 +1096,13 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   setDialogState(() => errorText = 'Motif requis');
                   return;
                 }
-                final err = await _mongoService.adjustRawMaterialCost(
-                  material.id!,
-                  cost,
-                  reasonController.text.trim(),
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.adjustRawMaterialCost(
+                    material.id!,
+                    cost,
+                    reasonController.text.trim(),
+                  ),
                 );
                 if (err != null) {
                   setDialogState(() => errorText = err);
@@ -1254,14 +1266,16 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                               double.tryParse(controllers[m.id]!.text) ??
                               m.currentStock,
                       };
-                      await _mongoService.applyInventory(
-                        widget.usine.id!,
-                        counts,
-                        comment: commentController.text.trim().isEmpty
-                            ? null
-                            : commentController.text.trim(),
-                      );
-                      await _refreshData();
+                      await runBlocking(context, () async {
+                        await _mongoService.applyInventory(
+                          widget.usine.id!,
+                          counts,
+                          comment: commentController.text.trim().isEmpty
+                              ? null
+                              : commentController.text.trim(),
+                        );
+                        await _refreshData();
+                      });
                       if (!context.mounted) return;
                       Navigator.pop(context);
                     },

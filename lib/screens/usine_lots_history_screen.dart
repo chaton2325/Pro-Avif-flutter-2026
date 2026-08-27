@@ -5,6 +5,7 @@ import '../models/raw_material.dart';
 import '../models/raw_material_batch.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import '../widgets/blocking_loader.dart';
 
 const List<String> _lotCloseReasons = [
   'Avarie (humidité)',
@@ -181,10 +182,13 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
                     setDialogState(() => errorText = 'Quantité invalide');
                     return;
                   }
-                  final err = await _mongoService.closeRawMaterialBatch(
-                    batch.id!,
-                    c,
-                    reason,
+                  final err = await runBlocking(
+                    context,
+                    () => _mongoService.closeRawMaterialBatch(
+                      batch.id!,
+                      c,
+                      reason,
+                    ),
                   );
                   if (err != null) {
                     setDialogState(() => errorText = err);

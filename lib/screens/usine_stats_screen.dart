@@ -8,6 +8,7 @@ import '../models/formula.dart';
 import '../models/poste.dart';
 import '../models/usine_stats.dart';
 import '../services/mongo_service.dart';
+import '../widgets/blocking_loader.dart';
 
 const Map<String, String> _journalTypeLabels = {
   'referentiel': 'Référentiel',
@@ -325,16 +326,16 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
           ElevatedButton(
             onPressed: () async {
               final amount = double.tryParse(controller.text) ?? 0;
-              await _mongoService.setBudget(
-                usineId: widget.usine.id!,
-                category: category,
-                month: now.month,
-                year: now.year,
-                amountFcfa: amount,
-              );
-              final refreshed = await _mongoService.getBudgets(
-                widget.usine.id!,
-              );
+              final refreshed = await runBlocking(context, () async {
+                await _mongoService.setBudget(
+                  usineId: widget.usine.id!,
+                  category: category,
+                  month: now.month,
+                  year: now.year,
+                  amountFcfa: amount,
+                );
+                return _mongoService.getBudgets(widget.usine.id!);
+              });
               if (!mounted) return;
               setState(() => _budgets = refreshed);
               if (!context.mounted) return;

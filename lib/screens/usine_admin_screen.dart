@@ -7,6 +7,7 @@ import '../models/poste.dart';
 import '../models/poste_assignment.dart';
 import '../models/usine_stats.dart';
 import '../services/mongo_service.dart';
+import '../widgets/blocking_loader.dart';
 import 'usine_referentiel_screen.dart';
 import 'usine_appro_screen.dart';
 import 'usine_daily_report_screen.dart';
@@ -1446,12 +1447,14 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                   permissions: perms,
                   isActive: isActive,
                 );
-                if (poste == null) {
-                  await _mongoService.addPoste(newPoste);
-                } else {
-                  await _mongoService.updatePoste(newPoste);
-                }
-                await _refreshData();
+                await runBlocking(context, () async {
+                  if (poste == null) {
+                    await _mongoService.addPoste(newPoste);
+                  } else {
+                    await _mongoService.updatePoste(newPoste);
+                  }
+                  await _refreshData();
+                });
                 if (!context.mounted) return;
                 Navigator.pop(context);
               },
@@ -1524,8 +1527,10 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                     size: 20,
                   ),
                   onPressed: () async {
-                    await _mongoService.deletePoste(poste.id!);
-                    _refreshData();
+                    await runBlocking(context, () async {
+                      await _mongoService.deletePoste(poste.id!);
+                      await _refreshData();
+                    });
                   },
                 ),
               ],
@@ -1654,13 +1659,18 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                               color: Colors.redAccent,
                             ),
                             onPressed: () async {
-                              await _mongoService.deletePosteAssignment(a.id!);
-                              final updated = await _mongoService
-                                  .getPosteAssignments(userId: usineUser.id);
+                              final updated = await runBlocking(context, () async {
+                                await _mongoService.deletePosteAssignment(
+                                  a.id!,
+                                );
+                                return _mongoService.getPosteAssignments(
+                                  userId: usineUser.id,
+                                );
+                              });
                               setDialogState(
                                 () => currentAssignments = updated,
                               );
-                              _refreshData();
+                              await _refreshData();
                             },
                           ),
                         );
@@ -1735,19 +1745,22 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                               if (selectedPosteId == null ||
                                   selectedUsineId == null)
                                 return;
-                              await _mongoService.addPosteAssignment(
-                                PosteAssignment(
-                                  userId: usineUser.id!,
-                                  posteId: selectedPosteId!,
-                                  usineId: selectedUsineId!,
-                                ),
-                              );
-                              final updated = await _mongoService
-                                  .getPosteAssignments(userId: usineUser.id);
+                              final updated = await runBlocking(context, () async {
+                                await _mongoService.addPosteAssignment(
+                                  PosteAssignment(
+                                    userId: usineUser.id!,
+                                    posteId: selectedPosteId!,
+                                    usineId: selectedUsineId!,
+                                  ),
+                                );
+                                return _mongoService.getPosteAssignments(
+                                  userId: usineUser.id,
+                                );
+                              });
                               setDialogState(
                                 () => currentAssignments = updated,
                               );
-                              _refreshData();
+                              await _refreshData();
                             },
                           ),
                         ],
@@ -1787,23 +1800,25 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                       : passwordController.text,
                   isActive: isActive,
                 );
-                if (usineUser == null) {
-                  final created = await _mongoService.addUsineUser(newUser);
-                  if (created?.id != null &&
-                      selectedPosteId != null &&
-                      selectedUsineId != null) {
-                    await _mongoService.addPosteAssignment(
-                      PosteAssignment(
-                        userId: created!.id!,
-                        posteId: selectedPosteId!,
-                        usineId: selectedUsineId!,
-                      ),
-                    );
+                await runBlocking(context, () async {
+                  if (usineUser == null) {
+                    final created = await _mongoService.addUsineUser(newUser);
+                    if (created?.id != null &&
+                        selectedPosteId != null &&
+                        selectedUsineId != null) {
+                      await _mongoService.addPosteAssignment(
+                        PosteAssignment(
+                          userId: created!.id!,
+                          posteId: selectedPosteId!,
+                          usineId: selectedUsineId!,
+                        ),
+                      );
+                    }
+                  } else {
+                    await _mongoService.updateUsineUser(newUser);
                   }
-                } else {
-                  await _mongoService.updateUsineUser(newUser);
-                }
-                await _refreshData();
+                  await _refreshData();
+                });
                 if (!context.mounted) return;
                 Navigator.pop(context);
               },
@@ -1884,8 +1899,10 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                         size: 20,
                       ),
                       onPressed: () async {
-                        await _mongoService.deleteUsineUser(u.id!);
-                        _refreshData();
+                        await runBlocking(context, () async {
+                          await _mongoService.deleteUsineUser(u.id!);
+                          await _refreshData();
+                        });
                       },
                     ),
                   ],
@@ -1935,8 +1952,12 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                               style: const TextStyle(fontSize: 11),
                             ),
                             onDeleted: () async {
-                              await _mongoService.deletePosteAssignment(a.id!);
-                              _refreshData();
+                              await runBlocking(context, () async {
+                                await _mongoService.deletePosteAssignment(
+                                  a.id!,
+                                );
+                                await _refreshData();
+                              });
                             },
                           );
                         }).toList(),
@@ -2041,14 +2062,16 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                     selectedPosteId == null ||
                     selectedUsineId == null)
                   return;
-                await _mongoService.addPosteAssignment(
-                  PosteAssignment(
-                    userId: selectedUserId!,
-                    posteId: selectedPosteId!,
-                    usineId: selectedUsineId!,
-                  ),
-                );
-                await _refreshData();
+                await runBlocking(context, () async {
+                  await _mongoService.addPosteAssignment(
+                    PosteAssignment(
+                      userId: selectedUserId!,
+                      posteId: selectedPosteId!,
+                      usineId: selectedUsineId!,
+                    ),
+                  );
+                  await _refreshData();
+                });
                 if (!context.mounted) return;
                 Navigator.pop(context);
               },
@@ -2128,8 +2151,10 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                 size: 20,
               ),
               onPressed: () async {
-                await _mongoService.deletePosteAssignment(a.id!);
-                _refreshData();
+                await runBlocking(context, () async {
+                  await _mongoService.deletePosteAssignment(a.id!);
+                  await _refreshData();
+                });
               },
             ),
           ),

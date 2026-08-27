@@ -8,6 +8,7 @@ import '../models/delivery.dart';
 import '../models/delivery_resource.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import '../widgets/blocking_loader.dart';
 
 /// Parcours 04 — Stock & livraison (maquette écrans 22-24), en un écran à 2 onglets :
 /// stock d'aliment produit décomposé par lot (RLx-xxxx) et historique des livraisons.
@@ -318,12 +319,16 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
           }
 
           Future<void> add() async {
+            if (isBusy) return;
             final name = nameController.text.trim();
             if (name.isEmpty) return;
             setDialogState(() => isBusy = true);
-            final error = showDrivers
-                ? await _mongoService.createDriver(widget.usine.id!, name)
-                : await _mongoService.createVehicle(widget.usine.id!, name);
+            final error = await runBlocking(
+              context,
+              () => showDrivers
+                  ? _mongoService.createDriver(widget.usine.id!, name)
+                  : _mongoService.createVehicle(widget.usine.id!, name),
+            );
             nameController.clear();
             if (error != null) _snack(error);
             await reload();
@@ -331,29 +336,41 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
           }
 
           Future<void> toggleActive(DeliveryResource item) async {
-            final error = showDrivers
-                ? await _mongoService.updateDriver(
-                    item.id,
-                    item.usineId,
-                    item.name,
-                    !item.isActive,
-                  )
-                : await _mongoService.updateVehicle(
-                    item.id,
-                    item.usineId,
-                    item.name,
-                    !item.isActive,
-                  );
+            if (isBusy) return;
+            setDialogState(() => isBusy = true);
+            final error = await runBlocking(
+              context,
+              () => showDrivers
+                  ? _mongoService.updateDriver(
+                      item.id,
+                      item.usineId,
+                      item.name,
+                      !item.isActive,
+                    )
+                  : _mongoService.updateVehicle(
+                      item.id,
+                      item.usineId,
+                      item.name,
+                      !item.isActive,
+                    ),
+            );
             if (error != null) _snack(error);
             await reload();
+            setDialogState(() => isBusy = false);
           }
 
           Future<void> remove(DeliveryResource item) async {
-            final error = showDrivers
-                ? await _mongoService.deleteDriver(item.id)
-                : await _mongoService.deleteVehicle(item.id);
+            if (isBusy) return;
+            setDialogState(() => isBusy = true);
+            final error = await runBlocking(
+              context,
+              () => showDrivers
+                  ? _mongoService.deleteDriver(item.id)
+                  : _mongoService.deleteVehicle(item.id),
+            );
             if (error != null) _snack(error);
             await reload();
+            setDialogState(() => isBusy = false);
           }
 
           return AlertDialog(
@@ -855,13 +872,16 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                           isBusy = true;
                           error = null;
                         });
-                        final result = await _mongoService.createDelivery(
-                          usineId: widget.usine.id!,
-                          formulaId: selectedFormulaId!,
-                          farmName: selectedFarm!.name,
-                          quantity: qty,
-                          driverName: selectedDriverName,
-                          vehicle: selectedVehicleName,
+                        final result = await runBlocking(
+                          context,
+                          () => _mongoService.createDelivery(
+                            usineId: widget.usine.id!,
+                            formulaId: selectedFormulaId!,
+                            farmName: selectedFarm!.name,
+                            quantity: qty,
+                            driverName: selectedDriverName,
+                            vehicle: selectedVehicleName,
+                          ),
                         );
                         if (result.error != null) {
                           setDialogState(() {
@@ -1220,9 +1240,12 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                   setDialogState(() => error = 'Motif requis');
                   return;
                 }
-                final err = await _mongoService.cancelDelivery(
-                  d.id,
-                  reasonController.text.trim(),
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.cancelDelivery(
+                    d.id,
+                    reasonController.text.trim(),
+                  ),
                 );
                 if (err != null) {
                   setDialogState(() => error = err);
