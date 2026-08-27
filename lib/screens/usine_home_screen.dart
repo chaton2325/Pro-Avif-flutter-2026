@@ -7,6 +7,7 @@ import '../models/poste.dart';
 import '../services/mongo_service.dart';
 import 'login_screen.dart';
 import 'usine_appro_screen.dart';
+import 'usine_daily_report_screen.dart';
 import 'usine_production_screen.dart';
 import 'usine_referentiel_screen.dart';
 import 'usine_stock_livraison_screen.dart';
@@ -239,6 +240,22 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
             MaterialPageRoute(
               builder: (_) =>
                   UsineStatsScreen(usine: usine, permissions: permissions),
+            ),
+          ),
+        ),
+      if (canProduction || canStats)
+        _SectionCard(
+          icon: Icons.summarize_outlined,
+          color: Colors.brown,
+          title: 'Rapport de production',
+          subtitle: 'Matière, production, livraison — format WhatsApp',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UsineDailyReportScreen(
+                usine: usine,
+                permissions: permissions,
+              ),
             ),
           ),
         ),

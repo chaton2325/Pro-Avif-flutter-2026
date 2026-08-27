@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'services/mongo_service.dart';
 import 'services/sync_service.dart';
 import 'screens/splash_gate_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+  await initializeDateFormatting('fr_FR', null);
+
   final mongoService = MongoService();
   final syncService = SyncService();
-  
+
   syncService.startObserving();
-  
+
   try {
     await mongoService.connect();
     print("Connexion à l'API réussie");

@@ -24,6 +24,7 @@ import '../models/feed_stock.dart';
 import '../models/delivery.dart';
 import '../models/delivery_resource.dart';
 import '../models/usine_stats.dart';
+import '../models/daily_report.dart';
 import './session_storage.dart';
 
 class LicenseBlockedException implements Exception {
@@ -36,8 +37,8 @@ class LicenseBlockedException implements Exception {
 class MongoService {
   static final MongoService _instance = MongoService._internal();
   // TEMPORAIRE (test Partie 0 Usine Aliment) : backend local, remettre l'URL de
-  // production ("https://backendproavifeletana.mirhosty.com") avant tout build/déploiement.
-  final String baseUrl = "http://192.168.1.187:8010";
+  // production ("https://proavif.mirhosty.com") avant tout build/déploiement.
+  final String baseUrl = "https://proavif.mirhosty.com";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -1316,6 +1317,21 @@ class MongoService {
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       return TrendsStats.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<DailyReport?> getDailyReport(String usineId, DateTime date) async {
+    final dateStr =
+        '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    final uri = Uri.parse(
+      '$baseUrl/stats/daily-report',
+    ).replace(queryParameters: {'usineId': usineId, 'date': dateStr});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return DailyReport.fromMap(jsonDecode(response.body));
     }
     return null;
   }

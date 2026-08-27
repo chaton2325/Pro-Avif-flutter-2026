@@ -9,6 +9,7 @@ import '../models/usine_stats.dart';
 import '../services/mongo_service.dart';
 import 'usine_referentiel_screen.dart';
 import 'usine_appro_screen.dart';
+import 'usine_daily_report_screen.dart';
 import 'usine_production_screen.dart';
 import 'usine_simulation_screen.dart';
 import 'usine_stock_livraison_screen.dart';
@@ -1274,6 +1275,26 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                   context,
                   MaterialPageRoute(
                     builder: (_) => UsineStatsScreen(usine: usine),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.summarize_outlined,
+                color: Colors.brown,
+              ),
+              title: const Text('Rapport de production'),
+              subtitle: const Text(
+                'Matière, production, livraison — format WhatsApp',
+                style: TextStyle(fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UsineDailyReportScreen(usine: usine),
                   ),
                 );
               },
