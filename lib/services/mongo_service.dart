@@ -568,15 +568,6 @@ class MongoService {
     return _extractError(response);
   }
 
-  Future<String?> deleteFormula(String id) async {
-    final uri = Uri.parse(
-      '$baseUrl/formulas/$id',
-    ).replace(queryParameters: {'performedBy': _performedBy});
-    final response = await http.delete(uri);
-    if (response.statusCode == 200) return null;
-    return _extractError(response);
-  }
-
   String _extractError(http.Response response) {
     try {
       return jsonDecode(response.body)['detail']?.toString() ??
@@ -827,16 +818,71 @@ class MongoService {
 
   /// Historique des inventaires réalisés — y compris ceux sans le moindre écart, pour
   /// que "un inventaire a été fait le XX/XX" reste toujours traçable.
+  /// [scope] : "matieres" | "aliments" | null (tous, mélange rarement utile côté écran).
   Future<List<Map<String, dynamic>>> getInventorySessions(
-    String usineId,
-  ) async {
+    String usineId, {
+    String? scope,
+  }) async {
+    final queryParams = {'usineId': usineId};
+    if (scope != null) queryParams['scope'] = scope;
     final uri = Uri.parse(
       '$baseUrl/inventory/sessions',
-    ).replace(queryParameters: {'usineId': usineId});
+    ).replace(queryParameters: queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Inventaire du stock d'aliment produit (toujours par lot). [counts] : une entrée
+  /// par lot compté (formulaId, batchId, quantité comptée).
+  Future<List<Map<String, dynamic>>> applyFeedInventory(
+    String usineId,
+    List<({String formulaId, String batchId, double countedQuantity})> counts, {
+    String? comment,
+  }) async {
+    final body = {
+      'usineId': usineId,
+      'counts': counts
+          .map(
+            (c) => {
+              'formulaId': c.formulaId,
+              'batchId': c.batchId,
+              'countedQuantity': c.countedQuantity,
+            },
+          )
+          .toList(),
+      'comment': comment,
+      'performedBy': _performedBy,
+    };
+    final response = await http.post(
+      Uri.parse('$baseUrl/inventory/apply-feed'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  Future<List<FeedStockLoss>> getFeedStockLosses({
+    String? usineId,
+    String? formulaId,
+  }) async {
+    final queryParams = <String, String>{};
+    if (usineId != null) queryParams['usineId'] = usineId;
+    if (formulaId != null) queryParams['formulaId'] = formulaId;
+    final uri = Uri.parse(
+      '$baseUrl/feed-stock/losses',
+    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((l) => FeedStockLoss.fromMap(l)).toList();
     }
     return [];
   }

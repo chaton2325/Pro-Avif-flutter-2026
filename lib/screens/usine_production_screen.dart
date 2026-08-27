@@ -6,6 +6,7 @@ import '../models/formula.dart';
 import '../models/production_batch.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
 import 'usine_simulation_screen.dart';
 
@@ -168,7 +169,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                             ),
                           ),
                           Text(
-                            '${l.needed.toStringAsFixed(0)} / ${l.available.toStringAsFixed(0)} ${l.unit}',
+                            '${formatQty(l.needed)} / ${formatQty(l.available)} ${l.unit}',
                             style: TextStyle(
                               color: color,
                               fontWeight: FontWeight.bold,
@@ -181,7 +182,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
-                            'Chevauchement de lots : ${l.batchPreview.map((b) => '${b['lotNumber']} (${(b['quantity'] as num).toStringAsFixed(0)})').join(' + ')}',
+                            'Chevauchement de lots : ${l.batchPreview.map((b) => '${b['lotNumber']} (${formatQty(b['quantity'] as num)})').join(' + ')}',
                             style: const TextStyle(
                               fontSize: 11,
                               color: Colors.orange,
@@ -386,7 +387,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
   /// — cet écran reste celui de la production (annotation B).
   void _showCloseDialog(ProductionBatch batch, {bool justLaunched = false}) {
     final actualController = TextEditingController(
-      text: batch.actualQuantityProduced.toStringAsFixed(0),
+      text: formatQty(batch.actualQuantityProduced),
     );
     String? error;
     bool isBusy = false;
@@ -456,7 +457,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         children: [
                           Expanded(child: Text(c.materialName)),
                           Text(
-                            '${c.quantityConsumed.toStringAsFixed(0)} kg',
+                            '${formatQty(c.quantityConsumed)} kg',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -629,7 +630,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                       child: Text(
                         b.isRejected
                             ? '${b.lotNumber} — renvoyé : ${b.rejectionReason}'
-                            : '${b.lotNumber} — ${b.actualQuantityProduced.toStringAsFixed(0)} kg (à confirmer)',
+                            : '${b.lotNumber} — ${formatQty(b.actualQuantityProduced)} kg (à confirmer)',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: b.isRejected
@@ -867,7 +868,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                           children: [
                             Expanded(
                               child: Text(
-                                '${c.materialName} · ${c.quantityConsumed.toStringAsFixed(0)} kg × ${c.unitCost.toStringAsFixed(2)} F',
+                                '${c.materialName} · ${formatQty(c.quantityConsumed)} kg × ${c.unitCost.toStringAsFixed(2)} F',
                               ),
                             ),
                             Text(
@@ -1003,7 +1004,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Formule ${batch.formulaName} · cible ${batch.quantityTarget.toStringAsFixed(0)} kg · produit ${batch.actualQuantityProduced.toStringAsFixed(0)} kg',
+                  'Formule ${batch.formulaName} · cible ${formatQty(batch.quantityTarget)} kg · produit ${formatQty(batch.actualQuantityProduced)} kg',
                   style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
                 if (batch.createdAt != null)
@@ -1019,7 +1020,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                       children: [
                         Expanded(
                           child: Text(
-                            '${c.materialName} · ${c.quantityConsumed.toStringAsFixed(0)} kg × ${c.unitCost.toStringAsFixed(2)} F',
+                            '${c.materialName} · ${formatQty(c.quantityConsumed)} kg × ${c.unitCost.toStringAsFixed(2)} F',
                           ),
                         ),
                         Text(
@@ -1169,7 +1170,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         subtitle: Text(
                           b.isRejected && !b.isValidated
                               ? 'Renvoyé : ${b.rejectionReason}'
-                              : '${b.actualQuantityProduced.toStringAsFixed(0)} kg · ${b.costPerUnit.toStringAsFixed(2)} F/kg',
+                              : '${formatQty(b.actualQuantityProduced)} kg · ${b.costPerUnit.toStringAsFixed(2)} F/kg',
                           style: TextStyle(
                             color: b.isRejected && !b.isValidated
                                 ? Colors.redAccent

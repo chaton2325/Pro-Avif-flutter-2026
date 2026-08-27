@@ -5,6 +5,7 @@ import '../models/simulation.dart';
 import '../models/poste.dart';
 import '../models/feed_stock.dart';
 import '../services/mongo_service.dart';
+import '../utils/quantity_format.dart';
 
 /// Parcours 03 — Simulation & optimisation (maquette écrans 20-21), repensé en UNE seule
 /// page qui se lit de haut en bas (l'ancienne version à 2 onglets séparés perdait
@@ -247,7 +248,7 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '${m.currentStock.toStringAsFixed(0)} ${m.unit}',
+                                  '${formatQty(m.currentStock)} ${m.unit}',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
                                     fontSize: 14,
@@ -345,7 +346,7 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '${s.totalStock.toStringAsFixed(0)} kg',
+                                  '${formatQty(s.totalStock)} kg',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
                                     fontSize: 14,
@@ -453,7 +454,7 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              '≈ ${l.maxProducibleKg.toStringAsFixed(0)} kg',
+                              '≈ ${formatQty(l.maxProducibleKg)} kg',
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 17,
@@ -566,7 +567,7 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                 ),
                 Text(
                   isProduced
-                      ? '${l.quantityKg.toStringAsFixed(0)} kg'
+                      ? '${formatQty(l.quantityKg)} kg'
                       : '— (rien)',
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
@@ -674,7 +675,7 @@ class _UsineSimulationScreenState extends State<UsineSimulationScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Cette répartition utilise ${opt.wasteAvoidedKg.toStringAsFixed(0)} kg de stock en plus que si vous partagiez le stock à parts égales entre tous les aliments.',
+                    'Cette répartition utilise ${formatQty(opt.wasteAvoidedKg)} kg de stock en plus que si vous partagiez le stock à parts égales entre tous les aliments.',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.green.shade900,

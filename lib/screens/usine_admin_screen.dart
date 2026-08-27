@@ -7,6 +7,7 @@ import '../models/poste.dart';
 import '../models/poste_assignment.dart';
 import '../models/usine_stats.dart';
 import '../services/mongo_service.dart';
+import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
 import 'usine_referentiel_screen.dart';
 import 'usine_appro_screen.dart';
@@ -602,7 +603,7 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                           children: [
                             _statMini(
                               Icons.trending_up_rounded,
-                              '${d.productionThisMonthKg.toStringAsFixed(0)} kg',
+                              '${formatQty(d.productionThisMonthKg)} kg',
                               'Production',
                             ),
                             const SizedBox(width: 8),

@@ -8,6 +8,7 @@ import '../models/raw_material_batch.dart';
 import '../models/stock_loss.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
 import 'usine_lots_history_screen.dart';
 
@@ -127,6 +128,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
       );
       final inventorySessions = await _mongoService.getInventorySessions(
         widget.usine.id!,
+        scope: 'matieres',
       );
       if (!mounted) return;
 
@@ -154,7 +156,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             color: Colors.amber.shade800,
             title: 'Réception en attente — ${materialName(r.rawMaterialId)}',
             subtitle:
-                '${r.lotNumber} · ${r.quantity.toStringAsFixed(0)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
+                '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
             isPending: true,
             type: 'attente',
             performedBy: r.createdBy,
@@ -167,8 +169,8 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             color: Colors.green,
             title: 'Réception valorisée — ${materialName(r.rawMaterialId)}',
             subtitle: showCosts
-                ? '${r.lotNumber} · ${r.quantity.toStringAsFixed(0)} ${materialUnit(r.rawMaterialId)} @ ${r.unitPrice?.toStringAsFixed(2) ?? "—"} F${r.supplier != null ? " · ${r.supplier}" : ""}'
-                : '${r.lotNumber} · ${r.quantity.toStringAsFixed(0)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
+                ? '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)} @ ${r.unitPrice?.toStringAsFixed(2) ?? "—"} F${r.supplier != null ? " · ${r.supplier}" : ""}'
+                : '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
             type: 'reception',
             performedBy: r.valorizedBy ?? r.createdBy,
           ),
@@ -188,7 +190,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             color: isGain ? Colors.green : Colors.orange,
             title: '$sourceLabel — ${materialName(l.rawMaterialId)}',
             subtitle:
-                '${isGain ? "+" : "-"}${l.quantity.abs().toStringAsFixed(0)} ${materialUnit(l.rawMaterialId)} · ${l.reason}',
+                '${isGain ? "+" : "-"}${formatQty(l.quantity.abs())} ${materialUnit(l.rawMaterialId)} · ${l.reason}',
             type: 'perte',
             performedBy: l.performedBy,
           );
@@ -285,6 +287,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     final supplierController = TextEditingController();
     final quantityController = TextEditingController();
     final noteController = TextEditingController();
+    DateTime receivedAt = DateTime.now();
 
     showDialog(
       context: context,
@@ -346,10 +349,40 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   maxLines: 2,
                 ),
                 const SizedBox(height: 8),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Date de réception',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  subtitle: Text(DateFormat('dd/MM/yyyy').format(receivedAt)),
+                  trailing: const Icon(Icons.edit_calendar_outlined),
+                  onTap: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: receivedAt,
+                      firstDate: DateTime(now.year - 5),
+                      lastDate: now,
+                      builder: (context, child) => Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: const ColorScheme.light(
+                            primary: Colors.orange,
+                          ),
+                        ),
+                        child: child!,
+                      ),
+                    );
+                    if (picked != null) {
+                      setDialogState(() => receivedAt = picked);
+                    }
+                  },
+                ),
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Sans prix : la comptabilité valorisera cette réception avant qu\'elle ne compte en stock.',
+                    'Sans prix : la comptabilité valorisera cette réception avant qu\'elle ne compte en stock. '
+                    'Ne changez la date que pour un lot déjà en stock avant l\'usage de l\'application.',
                     style: TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                 ),
@@ -381,6 +414,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                       note: noteController.text.trim().isEmpty
                           ? null
                           : noteController.text.trim(),
+                      createdAt: receivedAt,
                     ),
                   );
                   await _refreshData();
@@ -426,7 +460,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         subtitle: Text(
-                          '${r.lotNumber} · ${r.supplier ?? "?"} · ${r.quantity.toStringAsFixed(0)} ${material?.unit ?? ""}',
+                          '${r.lotNumber} · ${r.supplier ?? "?"} · ${formatQty(r.quantity)} ${material?.unit ?? ""}',
                         ),
                         trailing: _perms.setPrice
                             ? TextButton(
@@ -482,7 +516,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${material?.name ?? ""} · ${reception.supplier ?? "?"} · ${reception.quantity.toStringAsFixed(0)} ${material?.unit ?? ""}',
+                  '${material?.name ?? ""} · ${reception.supplier ?? "?"} · ${formatQty(reception.quantity)} ${material?.unit ?? ""}',
                   style: const TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
@@ -595,7 +629,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           subtitle: Text(
-                            '${b.receivedAt != null ? DateFormat('dd/MM/yyyy').format(b.receivedAt!) : ""} · ${b.remainingQuantity.toStringAsFixed(0)}/${b.receivedQuantity.toStringAsFixed(0)} ${material.unit}'
+                            '${b.receivedAt != null ? DateFormat('dd/MM/yyyy').format(b.receivedAt!) : ""} · ${formatQty(b.remainingQuantity)}/${formatQty(b.receivedQuantity)} ${material.unit}'
                             '${_perms.seeCosts ? " · ${b.unitCost.toStringAsFixed(1)} F/${material.unit}" : ""}',
                           ),
                           trailing: b.isActive
@@ -662,7 +696,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 Row(
                   children: [
                     _ficheStat(
-                      fiche.currentStock.toStringAsFixed(0),
+                      formatQty(fiche.currentStock),
                       'Stock ${fiche.unit}',
                     ),
                     _ficheStat(
@@ -777,7 +811,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
 
   void _showCloseLotDialog(RawMaterialBatch batch, RawMaterial material) {
     final countedController = TextEditingController(
-      text: batch.remainingQuantity.toStringAsFixed(0),
+      text: formatQty(batch.remainingQuantity),
     );
     String reason = _lossReasons.first;
     String? errorText;
@@ -790,6 +824,9 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               double.tryParse(countedController.text) ??
               batch.remainingQuantity;
           final variance = batch.remainingQuantity - counted;
+          // Arrondi à l'unité affichée : évite qu'un résidu de calcul flottant affiche
+          // une perte/un gain de quelques grammes alors que c'est en réalité conforme.
+          final roundedVariance = variance.round();
           return AlertDialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
@@ -805,7 +842,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Restant théorique : ${batch.remainingQuantity.toStringAsFixed(0)} ${material.unit}',
+                  'Restant théorique : ${formatQty(batch.remainingQuantity)} ${material.unit}',
                   style: const TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
@@ -825,15 +862,17 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  variance == 0
+                  roundedVariance == 0
                       ? 'Aucun écart'
                       : (variance > 0
-                            ? 'Perte constatée : ${variance.toStringAsFixed(0)} ${material.unit}'
-                            : 'Gain constaté : ${(-variance).toStringAsFixed(0)} ${material.unit}'),
+                            ? 'Perte constatée : ${formatQty(variance)} ${material.unit}'
+                            : 'Gain constaté : ${formatQty(-variance)} ${material.unit}'),
                   style: TextStyle(
-                    color: variance > 0
+                    color: roundedVariance > 0
                         ? Colors.orange.shade800
-                        : (variance < 0 ? Colors.green.shade700 : Colors.grey),
+                        : (roundedVariance < 0
+                              ? Colors.green.shade700
+                              : Colors.grey),
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -916,7 +955,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Stock actuel : ${material.currentStock.toStringAsFixed(0)} ${material.unit}',
+                'Stock actuel : ${formatQty(material.currentStock)} ${material.unit}',
                 style: const TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 16),
@@ -1159,7 +1198,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
         children: [
           Expanded(child: Text(label)),
           Text(
-            'Sys: ${systemQty.toStringAsFixed(0)}',
+            'Sys: ${formatQty(systemQty)}',
             style: const TextStyle(color: Colors.grey, fontSize: 11),
           ),
           const SizedBox(width: 8),
@@ -1193,14 +1232,12 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     final materialControllers = {
       for (final m in _materials)
         if (!m.isParLot || _batchesFor(m.id!).isEmpty)
-          m.id!: TextEditingController(text: m.currentStock.toStringAsFixed(0)),
+          m.id!: TextEditingController(text: formatQty(m.currentStock)),
     };
     final batchControllers = {
       for (final m in _materials.where((m) => m.isParLot))
         for (final b in _batchesFor(m.id!))
-          b.id!: TextEditingController(
-            text: b.remainingQuantity.toStringAsFixed(0),
-          ),
+          b.id!: TextEditingController(text: formatQty(b.remainingQuantity)),
     };
     final commentController = TextEditingController();
     int step = 0; // 0 = saisie, 1 = écarts
@@ -1282,7 +1319,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                               ),
                             ),
                             subtitle: Text(
-                              '${systemQty.toStringAsFixed(0)} → ${(systemQty - v).toStringAsFixed(0)} ${m.unit}',
+                              '${formatQty(systemQty)} → ${formatQty(systemQty - v)} ${m.unit}',
                             ),
                             trailing: Text(
                               rounded == 0
@@ -1729,10 +1766,10 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 ),
                 subtitle: Text(
                   m.isParLot
-                      ? '${m.currentStock.toStringAsFixed(0)} ${m.unit} · $batchCount lot(s) actif(s)'
+                      ? '${formatQty(m.currentStock)} ${m.unit} · $batchCount lot(s) actif(s)'
                       : _perms.seeCosts
-                      ? '${m.currentStock.toStringAsFixed(0)} ${m.unit} · CUMP ${m.weightedCost?.toStringAsFixed(2) ?? "—"} F/${m.unit}'
-                      : '${m.currentStock.toStringAsFixed(0)} ${m.unit}',
+                      ? '${formatQty(m.currentStock)} ${m.unit} · CUMP ${m.weightedCost?.toStringAsFixed(2) ?? "—"} F/${m.unit}'
+                      : '${formatQty(m.currentStock)} ${m.unit}',
                   style: TextStyle(
                     color: isLow
                         ? Colors.orange.shade800

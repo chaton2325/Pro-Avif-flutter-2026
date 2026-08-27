@@ -9,7 +9,25 @@ import '../models/delivery.dart';
 import '../models/delivery_resource.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
+
+class _FeedHistoryEntry {
+  final DateTime date;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final String? performedBy;
+  _FeedHistoryEntry({
+    required this.date,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    this.performedBy,
+  });
+}
 
 /// Parcours 04 — Stock & livraison (maquette écrans 22-24), en un écran à 2 onglets :
 /// stock d'aliment produit décomposé par lot (RLx-xxxx) et historique des livraisons.
@@ -35,7 +53,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
   final MongoService _mongoService = MongoService();
   PostePermissions get _perms => widget.permissions ?? fullAccessPermissions;
   late final TabController _tabController = TabController(
-    length: 2,
+    length: 3,
     vsync: this,
   );
   static const int _pageSize = 20;
@@ -46,6 +64,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
   List<DeliveryResource> _drivers = [];
   List<DeliveryResource> _vehicles = [];
   DeliveryPagedResult? _deliveryPage;
+  List<_FeedHistoryEntry> _feedInventoryHistory = [];
   bool _isLoading = true;
   bool _isLoadingHistory = true;
   String? _historyFormulaFilter; // null = toutes les références
@@ -73,8 +92,45 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
       _mongoService.getFarms(),
       _mongoService.getDrivers(widget.usine.id!),
       _mongoService.getVehicles(widget.usine.id!),
+      _mongoService.getInventorySessions(widget.usine.id!, scope: 'aliments'),
+      _mongoService.getFeedStockLosses(usineId: widget.usine.id!),
     ]);
     if (!mounted) return;
+    final sessions = results[5] as List<Map<String, dynamic>>;
+    final losses = results[6] as List<FeedStockLoss>;
+    final feedHistory = <_FeedHistoryEntry>[
+      ...sessions.map((s) {
+        final refsCount = s['materialsCount'] as int? ?? 0;
+        final varianceCount = s['varianceCount'] as int? ?? 0;
+        final createdAt =
+            DateTime.tryParse(s['createdAt']?.toString() ?? '') ??
+            DateTime.now();
+        final comment = s['comment'] as String?;
+        return _FeedHistoryEntry(
+          date: createdAt,
+          icon: Icons.fact_check_outlined,
+          color: varianceCount == 0 ? Colors.green : Colors.orange,
+          title: varianceCount == 0
+              ? 'Inventaire — aucun écart'
+              : 'Inventaire — $varianceCount écart(s)',
+          subtitle:
+              '$refsCount référence(s) contrôlée(s)${comment != null && comment.isNotEmpty ? " · $comment" : ""}',
+          performedBy: s['performedBy'] as String?,
+        );
+      }),
+      ...losses.map((l) {
+        final isGain = l.quantity < 0;
+        return _FeedHistoryEntry(
+          date: l.createdAt ?? DateTime.now(),
+          icon: isGain ? Icons.add_circle_outline : Icons.warning_amber_rounded,
+          color: isGain ? Colors.green : Colors.orange,
+          title: 'Écart d\'inventaire — ${l.lotNumber ?? "?"}',
+          subtitle:
+              '${isGain ? "+" : "-"}${formatQty(l.quantity.abs())} kg · ${l.reason}',
+          performedBy: l.performedBy,
+        );
+      }),
+    ]..sort((a, b) => b.date.compareTo(a.date));
     setState(() {
       _stock = results[0] as List<FeedStockSummary>;
       _formulas = results[1] as List<Formula>;
@@ -82,6 +138,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _drivers = results[3] as List<DeliveryResource>;
       _vehicles = results[4] as List<DeliveryResource>;
+      _feedInventoryHistory = feedHistory;
       _isLoading = false;
     });
     await _loadHistoryPage();
@@ -652,7 +709,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                             (s) => DropdownMenuItem(
                               value: s.formulaId,
                               child: Text(
-                                '${s.formulaName} · ${s.totalStock.toStringAsFixed(0)} kg dispo',
+                                '${s.formulaName} · ${formatQty(s.totalStock)} kg dispo',
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -676,7 +733,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                           ),
                           const Spacer(),
                           Text(
-                            '${available.toStringAsFixed(0)} kg',
+                            '${formatQty(available)} kg',
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 12.5,
@@ -697,7 +754,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                       decoration: InputDecoration(
                         labelText: 'Quantité à livrer (kg)',
                         errorText: qty > available
-                            ? 'Dépasse le stock disponible (${available.toStringAsFixed(0)} kg)'
+                            ? 'Dépasse le stock disponible (${formatQty(available)} kg)'
                             : null,
                       ),
                       onChanged: (_) => setDialogState(() {}),
@@ -780,7 +837,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                                     (p) => Chip(
                                       visualDensity: VisualDensity.compact,
                                       label: Text(
-                                        '${p.key} · ${p.value.toStringAsFixed(0)} kg',
+                                        '${p.key} · ${formatQty(p.value)} kg',
                                         style: const TextStyle(fontSize: 11),
                                       ),
                                     ),
@@ -806,7 +863,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                           ),
                           const Spacer(),
                           Text(
-                            '${remainAfter.toStringAsFixed(0)} kg',
+                            '${formatQty(remainAfter)} kg',
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 12.5,
@@ -900,7 +957,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         if (!context.mounted) return;
                         Navigator.pop(context);
                         _snack(
-                          'Livraison confirmée : ${qty.toStringAsFixed(0)} kg vers ${selectedFarm!.name}.',
+                          'Livraison confirmée : ${formatQty(qty)} kg vers ${selectedFarm!.name}.',
                         );
                       },
                 child: const Text('Confirmer la livraison'),
@@ -1039,7 +1096,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         ),
                       const Spacer(),
                       Text(
-                        '${s.totalStock.toStringAsFixed(0)} kg',
+                        '${formatQty(s.totalStock)} kg',
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ],
@@ -1069,7 +1126,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                             (b) => Chip(
                               visualDensity: VisualDensity.compact,
                               label: Text(
-                                '${b.lotNumber} · ${b.remainingQuantity.toStringAsFixed(0)} kg',
+                                '${b.lotNumber} · ${formatQty(b.remainingQuantity)} kg',
                                 style: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -1131,7 +1188,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                 ),
                 _detailRow(
                   'Aliment',
-                  '${d.formulaName} · ${d.quantity.toStringAsFixed(0)} kg',
+                  '${d.formulaName} · ${formatQty(d.quantity)} kg',
                 ),
                 _detailRow('Lot(s) d\'aliment', d.lotsLabel),
                 if (d.lotNumberSujets != null)
@@ -1217,7 +1274,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${d.quantity.toStringAsFixed(0)} kg de ${d.formulaName} reviendront en stock (lots ${d.lotsLabel}).',
+                '${formatQty(d.quantity)} kg de ${d.formulaName} reviendront en stock (lots ${d.lotsLabel}).',
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 16),
@@ -1420,7 +1477,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              '${d.quantity.toStringAsFixed(0)} kg',
+                              '${formatQty(d.quantity)} kg',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 color: d.isCancelled
@@ -1490,6 +1547,335 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     );
   }
 
+  // ------------------------------------------------- Inventaire des aliments
+
+  Widget _inventoryCountRow({
+    required String label,
+    required double systemQty,
+    required TextEditingController controller,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          Text(
+            'Sys: ${formatQty(systemQty)}',
+            style: const TextStyle(color: Colors.grey, fontSize: 11),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 90,
+            child: TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+              ],
+              textAlign: TextAlign.right,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Le stock d'aliment produit est toujours géré par lot (un lot par fabrication
+  /// validée), donc contrairement aux matières premières il n'y a jamais de mode
+  /// "global" à distinguer : chaque référence avec du stock actif compte lot par lot.
+  void _showFeedInventoryDialog() {
+    final activeStock = _stock.where((s) => s.batches.isNotEmpty).toList();
+    if (activeStock.isEmpty) {
+      _snack('Aucun stock d\'aliment actif à inventorier.');
+      return;
+    }
+    final batchControllers = {
+      for (final s in activeStock)
+        for (final b in s.batches)
+          b.id: TextEditingController(text: formatQty(b.remainingQuantity)),
+    };
+    final commentController = TextEditingController();
+    int step = 0;
+    List<({FeedStockSummary summary, FeedStockBatch batch, double variance})>
+    variances = [];
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            step == 0
+                ? 'Inventaire aliments — Comptage'
+                : 'Inventaire aliments — Écarts',
+            style: const TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: step == 0
+                    ? activeStock.expand((s) {
+                        return [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              s.formulaName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          ...s.batches.map(
+                            (b) => Padding(
+                              padding: const EdgeInsets.only(left: 12),
+                              child: _inventoryCountRow(
+                                label: 'Lot ${b.lotNumber}',
+                                systemQty: b.remainingQuantity,
+                                controller: batchControllers[b.id]!,
+                              ),
+                            ),
+                          ),
+                        ];
+                      }).toList()
+                    : [
+                        ...variances.map((entry) {
+                          final b = entry.batch;
+                          final v = entry.variance;
+                          final rounded = v.round();
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              '${entry.summary.formulaName} — Lot ${b.lotNumber}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${formatQty(b.remainingQuantity)} → ${formatQty(b.remainingQuantity - v)} kg',
+                            ),
+                            trailing: Text(
+                              rounded == 0
+                                  ? 'OK'
+                                  : (rounded > 0
+                                        ? '− $rounded'
+                                        : '+ ${-rounded}'),
+                              style: TextStyle(
+                                color: rounded == 0
+                                    ? Colors.green
+                                    : Colors.orange.shade800,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        }),
+                        if (variances.every((e) => e.variance.round() == 0))
+                          const Text(
+                            'Aucun écart.',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: commentController,
+                          decoration: const InputDecoration(
+                            labelText: 'Commentaire général (optionnel)',
+                          ),
+                          maxLines: 2,
+                        ),
+                      ],
+              ),
+            ),
+          ),
+          actions: step == 0
+              ? [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'Annuler',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      final list =
+                          <
+                            ({
+                              FeedStockSummary summary,
+                              FeedStockBatch batch,
+                              double variance,
+                            })
+                          >[];
+                      for (final s in activeStock) {
+                        for (final b in s.batches) {
+                          final counted =
+                              double.tryParse(batchControllers[b.id]!.text) ??
+                              b.remainingQuantity;
+                          list.add((
+                            summary: s,
+                            batch: b,
+                            variance: b.remainingQuantity - counted,
+                          ));
+                        }
+                      }
+                      variances = list;
+                      setDialogState(() => step = 1);
+                    },
+                    child: const Text('Voir les écarts'),
+                  ),
+                ]
+              : [
+                  TextButton(
+                    onPressed: () => setDialogState(() => step = 0),
+                    child: const Text(
+                      'Retour',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final counts =
+                          <
+                            ({
+                              String formulaId,
+                              String batchId,
+                              double countedQuantity,
+                            })
+                          >[
+                            for (final entry in variances)
+                              (
+                                formulaId: entry.summary.formulaId,
+                                batchId: entry.batch.id,
+                                countedQuantity:
+                                    entry.batch.remainingQuantity -
+                                    entry.variance,
+                              ),
+                          ];
+                      await runBlocking(context, () async {
+                        await _mongoService.applyFeedInventory(
+                          widget.usine.id!,
+                          counts,
+                          comment: commentController.text.trim().isEmpty
+                              ? null
+                              : commentController.text.trim(),
+                        );
+                        await _refreshAll();
+                      });
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Valider l\'inventaire'),
+                  ),
+                ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeedInventoryTab() {
+    return RefreshIndicator(
+      onRefresh: _refreshAll,
+      color: Colors.orange,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        children: [
+          if (_perms.manageDelivery)
+            Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ListTile(
+                onTap: _showFeedInventoryDialog,
+                leading: CircleAvatar(
+                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.fact_check_outlined,
+                    color: Colors.orange,
+                  ),
+                ),
+                title: const Text(
+                  'Lancer un inventaire des aliments',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                subtitle: const Text(
+                  'Comptage physique lot par lot et recalage du stock',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
+            ),
+          if (_feedInventoryHistory.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 24),
+              child: Center(
+                child: Text(
+                  'Aucun inventaire réalisé pour le moment.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            )
+          else
+            ..._feedInventoryHistory.map(
+              (h) => Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade100),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: h.color.withValues(alpha: 0.12),
+                    child: Icon(h.icon, color: h.color, size: 20),
+                  ),
+                  title: Text(
+                    h.title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${h.subtitle}\n${DateFormat('dd/MM/yyyy HH:mm').format(h.date)}${h.performedBy != null ? " · ${h.performedBy}" : ""}',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+                  isThreeLine: true,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1519,6 +1905,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
           tabs: const [
             Tab(text: 'Stock'),
             Tab(text: 'Livraisons'),
+            Tab(text: 'Inventaire'),
           ],
         ),
       ),
@@ -1526,7 +1913,11 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
           ? const Center(child: CircularProgressIndicator(color: Colors.orange))
           : TabBarView(
               controller: _tabController,
-              children: [_buildStockTab(), _buildHistoryTab()],
+              children: [
+                _buildStockTab(),
+                _buildHistoryTab(),
+                _buildFeedInventoryTab(),
+              ],
             ),
     );
   }

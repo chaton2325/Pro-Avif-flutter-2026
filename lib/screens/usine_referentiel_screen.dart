@@ -4,6 +4,7 @@ import '../models/usine.dart';
 import '../models/raw_material.dart';
 import '../models/formula.dart';
 import '../services/mongo_service.dart';
+import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
 
 const List<String> _rawMaterialCategories = [
@@ -91,7 +92,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
     final nameController = TextEditingController(text: material?.name ?? '');
     final unitController = TextEditingController(text: material?.unit ?? 'kg');
     final thresholdController = TextEditingController(
-      text: (material?.lowStockThreshold ?? 0).toStringAsFixed(0),
+      text: formatQty(material?.lowStockThreshold ?? 0),
     );
     final supplierController = TextEditingController();
     String? category = material?.category ?? _rawMaterialCategories.first;
@@ -193,7 +194,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         managementMode == 'par_lot'
-                            ? 'Le stock actuel (${material.currentStock.toStringAsFixed(0)} ${material.unit}) sera migré vers un lot unique à l\'enregistrement.'
+                            ? 'Le stock actuel (${formatQty(material.currentStock)} ${material.unit}) sera migré vers un lot unique à l\'enregistrement.'
                             : 'Les lots actifs seront clôturés et fusionnés en un stock global avec un CUMP recalculé à l\'enregistrement.',
                         style: TextStyle(
                           fontSize: 11,
@@ -359,20 +360,52 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
     );
   }
 
-  void _confirmDeleteFormula(Formula f) {
+  /// Un aliment supprimé casserait les références historiques (production, stock,
+  /// livraisons) qui pointent vers lui — désactiver le retire des usages futurs
+  /// (production, livraison) tout en gardant l'historique consultable.
+  Future<void> _setFormulaActive(Formula f, bool isActive) async {
+    final err = await runBlocking(
+      context,
+      () => _mongoService.updateFormula(
+        Formula(
+          id: f.id,
+          usineId: f.usineId,
+          name: f.name,
+          lines: f.lines,
+          isActive: isActive,
+          lowStockThreshold: f.lowStockThreshold,
+          canBeIngredient: f.canBeIngredient,
+        ),
+      ),
+    );
+    if (err != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(err)));
+      return;
+    }
+    await _refreshData();
+  }
+
+  void _toggleFormulaActive(Formula f) {
+    if (!f.isActive) {
+      _setFormulaActive(f, true);
+      return;
+    }
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
-          'Supprimer cet aliment ?',
+          'Désactiver cet aliment ?',
           style: TextStyle(
             color: Colors.redAccent,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
-          'Cela supprime "${f.name}" du référentiel. Impossible s\'il est encore utilisé comme ingrédient par une autre formule.',
+          '"${f.name}" ne sera plus utilisable en production ni en livraison, mais reste consultable dans l\'historique. Réactivable à tout moment.',
         ),
         actions: [
           TextButton(
@@ -381,22 +414,11 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(context);
-              final err = await runBlocking(
-                context,
-                () => _mongoService.deleteFormula(f.id!),
-              );
-              if (err != null) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(err)));
-                return;
-              }
-              await _refreshData();
+              _setFormulaActive(f, false);
             },
-            child: const Text('Supprimer'),
+            child: const Text('Désactiver'),
           ),
         ],
       ),
@@ -476,7 +498,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
               ),
               Text(
-                '${m.isParLot ? "Par lot" : "Global"} · seuil ${m.lowStockThreshold.toStringAsFixed(0)} ${m.unit}',
+                '${m.isParLot ? "Par lot" : "Global"} · seuil ${formatQty(m.lowStockThreshold)} ${m.unit}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
@@ -561,7 +583,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
     }
     final nameController = TextEditingController(text: formula?.name ?? '');
     final thresholdController = TextEditingController(
-      text: formula?.lowStockThreshold.toStringAsFixed(0) ?? '0',
+      text: formatQty(formula?.lowStockThreshold ?? 0),
     );
     bool isActive = formula?.isActive ?? true;
     bool canBeIngredient = formula?.canBeIngredient ?? false;
@@ -571,9 +593,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           (l) => _FormulaLineDraft(
             sourceId: l.sourceId,
             isAliment: l.isIngredientAliment,
-            controller: TextEditingController(
-              text: l.quantityPerTon.toStringAsFixed(0),
-            ),
+            controller: TextEditingController(text: formatQty(l.quantityPerTon)),
           ),
         )
         .toList();
@@ -776,7 +796,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                         Text(
-                          '${total.toStringAsFixed(0)} kg',
+                          '${formatQty(total)} kg',
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                             color: (total - 1000).abs() > 50
@@ -985,8 +1005,8 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                 ),
               Text(
                 f.lines.any((l) => l.isIngredientAliment)
-                    ? '${f.lines.length} ligne(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t · utilise un aliment produit'
-                    : '${f.lines.length} matière(s) · ${f.totalPerTon.toStringAsFixed(0)} kg/t',
+                    ? '${f.lines.length} ligne(s) · ${formatQty(f.totalPerTon)} kg/t · utilise un aliment produit'
+                    : '${f.lines.length} matière(s) · ${formatQty(f.totalPerTon)} kg/t',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
@@ -994,6 +1014,27 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
               const Spacer(),
               Row(
                 children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: (f.isActive ? Colors.green : Colors.grey.shade400)
+                          .withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      f.isActive ? 'ACTIF' : 'INACTIF',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: f.isActive
+                            ? Colors.green.shade800
+                            : Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
                   const Spacer(),
                   InkWell(
                     borderRadius: BorderRadius.circular(20),
@@ -1009,12 +1050,14 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                   ),
                   InkWell(
                     borderRadius: BorderRadius.circular(20),
-                    onTap: () => _confirmDeleteFormula(f),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
+                    onTap: () => _toggleFormulaActive(f),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
                       child: Icon(
-                        Icons.delete_outline_rounded,
-                        color: Colors.redAccent,
+                        f.isActive
+                            ? Icons.block_rounded
+                            : Icons.check_circle_outline_rounded,
+                        color: f.isActive ? Colors.redAccent : Colors.green,
                         size: 18,
                       ),
                     ),

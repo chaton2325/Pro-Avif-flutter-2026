@@ -9,6 +9,7 @@ import '../models/formula.dart';
 import '../models/poste.dart';
 import '../models/usine_stats.dart';
 import '../services/mongo_service.dart';
+import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
 
 const Map<String, String> _journalTypeLabels = {
@@ -661,7 +662,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
             children: [
               _statIconCard(
                 Icons.trending_up_rounded,
-                '${d.productionThisMonthKg.toStringAsFixed(0)} kg',
+                '${formatQty(d.productionThisMonthKg)} kg',
                 'Production',
               ),
               if (_perms.seeCosts) ...[
@@ -773,7 +774,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                     ),
                   ),
                   trailing: Text(
-                    '${r.totalKg.toStringAsFixed(0)} kg',
+                    '${formatQty(r.totalKg)} kg',
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   children: r.details
@@ -795,7 +796,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                             ),
                           ),
                           trailing: Text(
-                            '${det.quantityKg.toStringAsFixed(0)} kg',
+                            '${formatQty(det.quantityKg)} kg',
                             style: const TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
@@ -868,7 +869,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                   (m) => Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
-                      '${m.lotNumber} (${m.quantity.toStringAsFixed(0)} kg) · ${m.materialName}',
+                      '${m.lotNumber} (${formatQty(m.quantity)} kg) · ${m.materialName}',
                       style: const TextStyle(fontSize: 12.5),
                     ),
                   ),
@@ -885,7 +886,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
               ),
               const SizedBox(height: 6),
               Text(
-                'Lot ${fab.lotNumber} · ${fab.formulaName} · ${fab.quantity.toStringAsFixed(0)} kg'
+                'Lot ${fab.lotNumber} · ${fab.formulaName} · ${formatQty(fab.quantity)} kg'
                 '${fab.validatedAt != null ? " · validé ${DateFormat('dd/MM').format(fab.validatedAt!)}" : ""}',
                 style: const TextStyle(fontSize: 12.5),
               ),
@@ -906,7 +907,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
                     '${DateFormat('dd/MM').format(d.date)} · ${d.farmName} — ${d.roomName}'
-                    '${d.lotNumberSujets != null ? " · Lot ${d.lotNumberSujets} (sujets)" : ""} · ${d.quantity.toStringAsFixed(0)} kg',
+                    '${d.lotNumberSujets != null ? " · Lot ${d.lotNumberSujets} (sujets)" : ""} · ${formatQty(d.quantity)} kg',
                     style: const TextStyle(fontSize: 12.5),
                   ),
                 ),

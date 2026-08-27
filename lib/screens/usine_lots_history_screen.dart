@@ -6,6 +6,7 @@ import '../models/raw_material.dart';
 import '../models/raw_material_batch.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
+import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
 
 const List<String> _lotCloseReasons = [
@@ -100,7 +101,7 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
 
   void _showCloseLotDialog(RawMaterialBatch batch) {
     final countedController = TextEditingController(
-      text: batch.remainingQuantity.toStringAsFixed(0),
+      text: formatQty(batch.remainingQuantity),
     );
     String reason = _lotCloseReasons.first;
     String? errorText;
@@ -113,6 +114,7 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
               double.tryParse(countedController.text) ??
               batch.remainingQuantity;
           final variance = batch.remainingQuantity - counted;
+          final roundedVariance = variance.round();
           return AlertDialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
@@ -128,7 +130,7 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Restant théorique : ${batch.remainingQuantity.toStringAsFixed(0)}',
+                  'Restant théorique : ${formatQty(batch.remainingQuantity)}',
                   style: const TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
@@ -148,15 +150,17 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  variance == 0
+                  roundedVariance == 0
                       ? 'Aucun écart'
                       : (variance > 0
-                            ? 'Perte constatée : ${variance.toStringAsFixed(0)}'
-                            : 'Gain constaté : ${(-variance).toStringAsFixed(0)}'),
+                            ? 'Perte constatée : ${formatQty(variance)}'
+                            : 'Gain constaté : ${formatQty(-variance)}'),
                   style: TextStyle(
-                    color: variance > 0
+                    color: roundedVariance > 0
                         ? Colors.orange.shade800
-                        : (variance < 0 ? Colors.green.shade700 : Colors.grey),
+                        : (roundedVariance < 0
+                              ? Colors.green.shade700
+                              : Colors.grey),
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -359,7 +363,7 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
                             ),
                           ),
                           subtitle: Text(
-                            '${b.materialName ?? "?"} · ${b.receivedAt != null ? DateFormat('dd/MM/yyyy').format(b.receivedAt!) : ""} · ${b.remainingQuantity.toStringAsFixed(0)}/${b.receivedQuantity.toStringAsFixed(0)}'
+                            '${b.materialName ?? "?"} · ${b.receivedAt != null ? DateFormat('dd/MM/yyyy').format(b.receivedAt!) : ""} · ${formatQty(b.remainingQuantity)}/${formatQty(b.receivedQuantity)}'
                             '${_perms.seeCosts ? " · ${b.unitCost.toStringAsFixed(1)} F" : ""}',
                             style: TextStyle(
                               color: Colors.grey.shade600,

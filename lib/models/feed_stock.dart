@@ -39,6 +39,52 @@ class FeedStockBatch {
   }
 }
 
+class FeedStockLoss {
+  final String? id;
+  final String usineId;
+  final String formulaId;
+  final String? batchId;
+  final String? lotNumber;
+  final double quantity; // positif = perte, négatif = gain (écart d'inventaire)
+  final String reason;
+  final String? note;
+  final String source;
+  final DateTime? createdAt;
+  final String? performedBy;
+
+  FeedStockLoss({
+    this.id,
+    required this.usineId,
+    required this.formulaId,
+    this.batchId,
+    this.lotNumber,
+    required this.quantity,
+    required this.reason,
+    this.note,
+    this.source = 'inventaire',
+    this.createdAt,
+    this.performedBy,
+  });
+
+  factory FeedStockLoss.fromMap(Map<String, dynamic> map) {
+    return FeedStockLoss(
+      id: map['_id'] as String?,
+      usineId: map['usineId'] as String,
+      formulaId: map['formulaId'] as String,
+      batchId: map['batchId'] as String?,
+      lotNumber: map['lotNumber'] as String?,
+      quantity: (map['quantity'] as num).toDouble(),
+      reason: map['reason'] as String? ?? '',
+      note: map['note'] as String?,
+      source: map['source'] as String? ?? 'inventaire',
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt'].toString())
+          : null,
+      performedBy: map['performedBy'] as String?,
+    );
+  }
+}
+
 class FeedStockSummary {
   final String formulaId;
   final String formulaName;

@@ -41,6 +41,10 @@ class Reception {
       'quantity': quantity,
       'note': note,
       'performedBy': performedBy,
+      // Permet de dater une réception rétroactivement (stock déjà en place avant
+      // l'usage de l'application) — le comptable valorise toujours le prix ensuite,
+      // seule la date d'arrivée physique est modifiable ici.
+      if (createdAt != null) 'receivedAt': createdAt!.toIso8601String(),
     };
   }
 
