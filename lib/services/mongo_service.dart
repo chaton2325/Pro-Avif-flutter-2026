@@ -25,6 +25,7 @@ import '../models/delivery.dart';
 import '../models/delivery_resource.dart';
 import '../models/usine_stats.dart';
 import '../models/daily_report.dart';
+import '../models/inventory_session.dart';
 import './session_storage.dart';
 
 /// Une ligne de comptage d'inventaire : [batchId] null = comptage global d'une matière,
@@ -816,31 +817,37 @@ class MongoService {
     return [];
   }
 
-  /// Historique des inventaires réalisés — y compris ceux sans le moindre écart, pour
-  /// que "un inventaire a été fait le XX/XX" reste toujours traçable.
-  /// [scope] : "matieres" | "aliments" | null (tous, mélange rarement utile côté écran).
-  Future<List<Map<String, dynamic>>> getInventorySessions(
+  /// Historique paginé (par défaut 50) des inventaires réalisés — y compris ceux sans
+  /// le moindre écart, pour que "un inventaire a été fait le XX/XX" reste toujours
+  /// traçable. [scope] : "matieres" | "aliments" | null (tous, rarement utile côté écran).
+  Future<InventorySessionPage> getInventorySessions(
     String usineId, {
     String? scope,
+    int limit = 50,
+    int skip = 0,
   }) async {
-    final queryParams = {'usineId': usineId};
+    final queryParams = {
+      'usineId': usineId,
+      'limit': '$limit',
+      'skip': '$skip',
+    };
     if (scope != null) queryParams['scope'] = scope;
     final uri = Uri.parse(
       '$baseUrl/inventory/sessions',
     ).replace(queryParameters: queryParams);
     final response = await http.get(uri);
     if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data.cast<Map<String, dynamic>>();
+      return InventorySessionPage.fromMap(jsonDecode(response.body));
     }
-    return [];
+    return InventorySessionPage(totalCount: 0, items: [], limit: limit, skip: skip);
   }
 
-  /// Inventaire du stock d'aliment produit (toujours par lot). [counts] : une entrée
-  /// par lot compté (formulaId, batchId, quantité comptée).
+  /// Inventaire du stock d'aliment produit : comptage global par référence (les lots de
+  /// production ne sont pas physiquement séparables une fois stockés). L'écart est
+  /// réparti automatiquement (FIFO) sur les lots actifs côté serveur.
   Future<List<Map<String, dynamic>>> applyFeedInventory(
     String usineId,
-    List<({String formulaId, String batchId, double countedQuantity})> counts, {
+    List<({String formulaId, double countedQuantity})> counts, {
     String? comment,
   }) async {
     final body = {
@@ -849,7 +856,6 @@ class MongoService {
           .map(
             (c) => {
               'formulaId': c.formulaId,
-              'batchId': c.batchId,
               'countedQuantity': c.countedQuantity,
             },
           )
@@ -865,24 +871,6 @@ class MongoService {
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.cast<Map<String, dynamic>>();
-    }
-    return [];
-  }
-
-  Future<List<FeedStockLoss>> getFeedStockLosses({
-    String? usineId,
-    String? formulaId,
-  }) async {
-    final queryParams = <String, String>{};
-    if (usineId != null) queryParams['usineId'] = usineId;
-    if (formulaId != null) queryParams['formulaId'] = formulaId;
-    final uri = Uri.parse(
-      '$baseUrl/feed-stock/losses',
-    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
-    final response = await http.get(uri);
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data.map((l) => FeedStockLoss.fromMap(l)).toList();
     }
     return [];
   }

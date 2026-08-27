@@ -114,7 +114,7 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
               double.tryParse(countedController.text) ??
               batch.remainingQuantity;
           final variance = batch.remainingQuantity - counted;
-          final roundedVariance = variance.round();
+          final varianceOk = isNegligibleVariance(variance);
           return AlertDialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
@@ -150,17 +150,17 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  roundedVariance == 0
+                  varianceOk
                       ? 'Aucun écart'
                       : (variance > 0
                             ? 'Perte constatée : ${formatQty(variance)}'
                             : 'Gain constaté : ${formatQty(-variance)}'),
                   style: TextStyle(
-                    color: roundedVariance > 0
-                        ? Colors.orange.shade800
-                        : (roundedVariance < 0
-                              ? Colors.green.shade700
-                              : Colors.grey),
+                    color: varianceOk
+                        ? Colors.grey
+                        : (variance > 0
+                              ? Colors.orange.shade800
+                              : Colors.green.shade700),
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),

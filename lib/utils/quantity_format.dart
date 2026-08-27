@@ -14,3 +14,12 @@ String formatQty(num value, {int maxDecimals = 2}) {
   }
   return s;
 }
+
+/// Un écart (ex. entre un stock système et une quantité comptée) est négligeable
+/// exactement quand [formatQty] l'afficherait comme "0" — c'est-à-dire un résidu de
+/// calcul flottant (ex. 0.0000001), jamais un écart réel saisi par l'utilisateur (ex.
+/// 0.9). Sert à décider "OK" vs "écart" de façon toujours cohérente avec ce qui est
+/// affiché : jamais de décision basée sur un arrondi différent de l'affichage.
+bool isNegligibleVariance(num value, {int maxDecimals = 2}) {
+  return formatQty(value.abs(), maxDecimals: maxDecimals) == '0';
+}

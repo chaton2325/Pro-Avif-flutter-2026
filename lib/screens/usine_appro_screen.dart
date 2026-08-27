@@ -10,6 +10,7 @@ import '../models/poste.dart';
 import '../services/mongo_service.dart';
 import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
+import 'usine_inventory_screen.dart';
 import 'usine_lots_history_screen.dart';
 
 /// Une ligne du fil d'historique (réception valorisée, perte ou ajustement CUMP fondus
@@ -22,8 +23,7 @@ class _HistoryEntry {
   final String title;
   final String subtitle;
   final bool isPending;
-  final String
-  type; // 'attente' | 'reception' | 'perte' | 'ajustement' | 'inventaire'
+  final String type; // 'attente' | 'reception' | 'perte' | 'ajustement'
   final String? performedBy;
   _HistoryEntry({
     required this.date,
@@ -42,7 +42,6 @@ const Map<String, String> _historyTypeLabels = {
   'reception': 'Réceptions',
   'perte': 'Pertes / écarts',
   'ajustement': 'Ajustements CUMP',
-  'inventaire': 'Inventaires',
 };
 
 const List<String> _lossReasons = [
@@ -126,10 +125,6 @@ class _UsineApproScreenState extends State<UsineApproScreen>
       final adjustments = await _mongoService.getCostAdjustments(
         usineId: widget.usine.id,
       );
-      final inventorySessions = await _mongoService.getInventorySessions(
-        widget.usine.id!,
-        scope: 'matieres',
-      );
       if (!mounted) return;
 
       String materialName(String id) =>
@@ -175,12 +170,13 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             performedBy: r.valorizedBy ?? r.createdBy,
           ),
         ),
-        ...losses.map((l) {
-          final sourceLabel = l.source == 'inventaire'
-              ? 'Écart d\'inventaire'
-              : (l.source == 'cloture_lot'
-                    ? 'Clôture de lot'
-                    : 'Perte déclarée');
+        // Les écarts sourcés d'un inventaire vivent désormais uniquement dans l'onglet
+        // Inventaire (détail complet par matière dans la session) — les montrer aussi
+        // ici ferait doublon avec un résumé moins complet.
+        ...losses.where((l) => l.source != 'inventaire').map((l) {
+          final sourceLabel = l.source == 'cloture_lot'
+              ? 'Clôture de lot'
+              : 'Perte déclarée';
           final isGain = l.quantity < 0;
           return _HistoryEntry(
             date: l.createdAt ?? DateTime.now(),
@@ -208,26 +204,6 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               performedBy: a.performedBy,
             ),
           ),
-        ...inventorySessions.map((s) {
-          final materialsCount = s['materialsCount'] as int? ?? 0;
-          final varianceCount = s['varianceCount'] as int? ?? 0;
-          final createdAt =
-              DateTime.tryParse(s['createdAt']?.toString() ?? '') ??
-              DateTime.now();
-          final comment = s['comment'] as String?;
-          return _HistoryEntry(
-            date: createdAt,
-            icon: Icons.fact_check_outlined,
-            color: varianceCount == 0 ? Colors.green : Colors.orange,
-            title: varianceCount == 0
-                ? 'Inventaire — aucun écart'
-                : 'Inventaire — $varianceCount écart(s)',
-            subtitle:
-                '$materialsCount matière(s) contrôlée(s)${comment != null && comment.isNotEmpty ? " · $comment" : ""}',
-            type: 'inventaire',
-            performedBy: s['performedBy'] as String?,
-          );
-        }),
       ]..sort((a, b) => b.date.compareTo(a.date));
 
       setState(() {
@@ -824,9 +800,10 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               double.tryParse(countedController.text) ??
               batch.remainingQuantity;
           final variance = batch.remainingQuantity - counted;
-          // Arrondi à l'unité affichée : évite qu'un résidu de calcul flottant affiche
-          // une perte/un gain de quelques grammes alors que c'est en réalité conforme.
-          final roundedVariance = variance.round();
+          // "Aucun écart" seulement si c'est un résidu de calcul flottant invisible à
+          // l'affichage — jamais un écart réellement saisi, même petit (0.9 reste 0.9,
+          // pas arrondi à 1).
+          final varianceOk = isNegligibleVariance(variance);
           return AlertDialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
@@ -862,17 +839,17 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  roundedVariance == 0
+                  varianceOk
                       ? 'Aucun écart'
                       : (variance > 0
                             ? 'Perte constatée : ${formatQty(variance)} ${material.unit}'
                             : 'Gain constaté : ${formatQty(-variance)} ${material.unit}'),
                   style: TextStyle(
-                    color: roundedVariance > 0
-                        ? Colors.orange.shade800
-                        : (roundedVariance < 0
-                              ? Colors.green.shade700
-                              : Colors.grey),
+                    color: varianceOk
+                        ? Colors.grey
+                        : (variance > 0
+                              ? Colors.orange.shade800
+                              : Colors.green.shade700),
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -1185,271 +1162,6 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     );
   }
 
-  // ---------------------------------------------------------------- Inventaire
-
-  Widget _inventoryCountRow({
-    required String label,
-    required double systemQty,
-    required TextEditingController controller,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Expanded(child: Text(label)),
-          Text(
-            'Sys: ${formatQty(systemQty)}',
-            style: const TextStyle(color: Colors.grey, fontSize: 11),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 90,
-            child: TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
-              ],
-              textAlign: TextAlign.right,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showInventoryDialog() {
-    // Une matière « globale » compte en un seul champ (son stock agrégé). Une matière
-    // « par lot » avec des lots actifs compte lot par lot (plusieurs réceptions
-    // coexistent souvent avec des quantités restantes différentes) — un seul champ
-    // agrégé imputerait sinon systématiquement tout l'écart au lot le plus ancien.
-    final materialControllers = {
-      for (final m in _materials)
-        if (!m.isParLot || _batchesFor(m.id!).isEmpty)
-          m.id!: TextEditingController(text: formatQty(m.currentStock)),
-    };
-    final batchControllers = {
-      for (final m in _materials.where((m) => m.isParLot))
-        for (final b in _batchesFor(m.id!))
-          b.id!: TextEditingController(text: formatQty(b.remainingQuantity)),
-    };
-    final commentController = TextEditingController();
-    int step = 0; // 0 = saisie, 1 = écarts
-    List<({RawMaterial material, RawMaterialBatch? batch, double variance})>
-    variances = [];
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Text(
-            step == 0 ? 'Inventaire — Comptage' : 'Inventaire — Écarts',
-            style: const TextStyle(
-              color: Colors.orange,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: SizedBox(
-            width: 420,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: step == 0
-                    ? _materials.expand((m) {
-                        final batches = m.isParLot
-                            ? _batchesFor(m.id!)
-                            : const <RawMaterialBatch>[];
-                        if (batches.isEmpty) {
-                          return [
-                            _inventoryCountRow(
-                              label: m.name,
-                              systemQty: m.currentStock,
-                              controller: materialControllers[m.id]!,
-                            ),
-                          ];
-                        }
-                        return [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Text(
-                              m.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                          ...batches.map(
-                            (b) => Padding(
-                              padding: const EdgeInsets.only(left: 12),
-                              child: _inventoryCountRow(
-                                label: 'Lot ${b.lotNumber}',
-                                systemQty: b.remainingQuantity,
-                                controller: batchControllers[b.id]!,
-                              ),
-                            ),
-                          ),
-                        ];
-                      }).toList()
-                    : [
-                        ...variances.map((entry) {
-                          final m = entry.material;
-                          final b = entry.batch;
-                          final systemQty =
-                              b?.remainingQuantity ?? m.currentStock;
-                          final v = entry.variance;
-                          // Arrondi à l'unité affichée : évite qu'un résidu de calcul
-                          // flottant (ex. 0.0000001) ou l'arrondi du champ pré-rempli
-                          // affiche "-0"/"+0" alors que c'est en réalité OK.
-                          final rounded = v.round();
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              b != null ? '${m.name} — Lot ${b.lotNumber}' : m.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${formatQty(systemQty)} → ${formatQty(systemQty - v)} ${m.unit}',
-                            ),
-                            trailing: Text(
-                              rounded == 0
-                                  ? 'OK'
-                                  : (rounded > 0
-                                        ? '− $rounded'
-                                        : '+ ${-rounded}'),
-                              style: TextStyle(
-                                color: rounded == 0
-                                    ? Colors.green
-                                    : Colors.orange.shade800,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          );
-                        }),
-                        if (variances.every((e) => e.variance.round() == 0))
-                          const Text(
-                            'Aucun écart.',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: commentController,
-                          decoration: const InputDecoration(
-                            labelText: 'Commentaire général (optionnel)',
-                          ),
-                          maxLines: 2,
-                        ),
-                      ],
-              ),
-            ),
-          ),
-          actions: step == 0
-              ? [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      'Annuler',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      final list =
-                          <
-                            ({
-                              RawMaterial material,
-                              RawMaterialBatch? batch,
-                              double variance,
-                            })
-                          >[];
-                      for (final m in _materials) {
-                        final batches = m.isParLot
-                            ? _batchesFor(m.id!)
-                            : const <RawMaterialBatch>[];
-                        if (batches.isEmpty) {
-                          final counted =
-                              double.tryParse(
-                                materialControllers[m.id]!.text,
-                              ) ??
-                              m.currentStock;
-                          list.add((
-                            material: m,
-                            batch: null,
-                            variance: m.currentStock - counted,
-                          ));
-                        } else {
-                          for (final b in batches) {
-                            final counted =
-                                double.tryParse(
-                                  batchControllers[b.id]!.text,
-                                ) ??
-                                b.remainingQuantity;
-                            list.add((
-                              material: m,
-                              batch: b,
-                              variance: b.remainingQuantity - counted,
-                            ));
-                          }
-                        }
-                      }
-                      variances = list;
-                      setDialogState(() => step = 1);
-                    },
-                    child: const Text('Voir les écarts'),
-                  ),
-                ]
-              : [
-                  TextButton(
-                    onPressed: () => setDialogState(() => step = 0),
-                    child: const Text(
-                      'Retour',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final counts = <InventoryCountEntry>[
-                        for (final entry in variances)
-                          (
-                            rawMaterialId: entry.material.id!,
-                            countedQuantity:
-                                (entry.batch?.remainingQuantity ??
-                                    entry.material.currentStock) -
-                                entry.variance,
-                            batchId: entry.batch?.id,
-                          ),
-                      ];
-                      await runBlocking(context, () async {
-                        await _mongoService.applyInventory(
-                          widget.usine.id!,
-                          counts,
-                          comment: commentController.text.trim().isEmpty
-                              ? null
-                              : commentController.text.trim(),
-                        );
-                        await _refreshData();
-                      });
-                      if (!context.mounted) return;
-                      Navigator.pop(context);
-                    },
-                    child: const Text('Valider l\'inventaire'),
-                  ),
-                ],
-        ),
-      ),
-    );
-  }
-
   // -------------------------------------------------------------------- UI
 
   @override
@@ -1627,41 +1339,6 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 ),
               ),
             ),
-          if (_perms.manageReception && _materials.isNotEmpty)
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.grey.shade100),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                onTap: _showInventoryDialog,
-                leading: CircleAvatar(
-                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                  child: const Icon(
-                    Icons.fact_check_outlined,
-                    color: Colors.orange,
-                  ),
-                ),
-                title: const Text(
-                  'Lancer un inventaire',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                ),
-                subtitle: const Text(
-                  'Comptage physique et recalage du stock',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-              ),
-            ),
           if ((_perms.manageReception || _perms.seeCosts) &&
               _materials.isNotEmpty)
             Container(
@@ -1708,6 +1385,53 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 ),
                 subtitle: const Text(
                   'Tous les lots, paginé',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
+            ),
+          if (_perms.manageReception && _materials.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ListTile(
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UsineInventoryScreen(
+                        usine: widget.usine,
+                        permissions: widget.permissions,
+                      ),
+                    ),
+                  );
+                  if (!mounted) return;
+                  _refreshData();
+                },
+                leading: CircleAvatar(
+                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.fact_check_outlined,
+                    color: Colors.orange,
+                  ),
+                ),
+                title: const Text(
+                  'Inventaire',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                subtitle: const Text(
+                  'Comptage physique et historique, paginé',
                   style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
                 trailing: const Icon(Icons.chevron_right, color: Colors.grey),
