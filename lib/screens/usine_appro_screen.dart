@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/usine.dart';
 import '../models/raw_material.dart';
@@ -326,7 +327,12 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 const SizedBox(height: 16),
                 TextField(
                   controller: quantityController,
-                  keyboardType: TextInputType.number,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                  ],
                   decoration: const InputDecoration(
                     labelText: 'Quantité reçue',
                   ),
@@ -482,7 +488,12 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 const SizedBox(height: 16),
                 TextField(
                   controller: priceController,
-                  keyboardType: TextInputType.number,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                  ],
                   decoration: InputDecoration(
                     labelText:
                         'Prix d\'achat (par ${material?.unit ?? "unité"})',
@@ -800,7 +811,12 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 const SizedBox(height: 16),
                 TextField(
                   controller: countedController,
-                  keyboardType: TextInputType.number,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                  ],
                   decoration: InputDecoration(
                     labelText: 'Quantité comptée (pesée finale)',
                     errorText: errorText,
@@ -906,7 +922,12 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               const SizedBox(height: 16),
               TextField(
                 controller: quantityController,
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                ],
                 decoration: InputDecoration(
                   labelText: 'Quantité perdue',
                   errorText: errorText,
@@ -1061,7 +1082,12 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               const SizedBox(height: 16),
               TextField(
                 controller: costController,
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                ],
                 decoration: InputDecoration(
                   labelText: 'Nouveau coût (F/${material.unit})',
                   errorText: errorText,
@@ -1169,7 +1195,15 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                                 width: 90,
                                 child: TextField(
                                   controller: controllers[m.id],
-                                  keyboardType: TextInputType.number,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'^\d*\.?\d*$'),
+                                    ),
+                                  ],
                                   textAlign: TextAlign.right,
                                   decoration: const InputDecoration(
                                     isDense: true,

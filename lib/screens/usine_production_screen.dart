@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/usine.dart';
 import '../models/raw_material.dart';
 import '../models/formula.dart';
@@ -116,7 +117,12 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
             stepChildren = [
               TextField(
                 controller: quantityController,
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                ],
                 decoration: const InputDecoration(
                   labelText: 'Quantité à produire (kg)',
                 ),
@@ -421,7 +427,12 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                     ),
                   TextField(
                     controller: actualController,
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                    ],
                     decoration: InputDecoration(
                       labelText: 'Quantité produite (pesée de sortie, kg)',
                       errorText: error,
@@ -874,7 +885,13 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                       controller: adjustmentController,
                       keyboardType: const TextInputType.numberWithOptions(
                         signed: true,
+                        decimal: true,
                       ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^-?\d*\.?\d*$'),
+                        ),
+                      ],
                       decoration: InputDecoration(
                         labelText: 'Ajustement (charges indirectes, FCFA)',
                         errorText: error,

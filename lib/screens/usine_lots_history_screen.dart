@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/usine.dart';
 import '../models/raw_material.dart';
@@ -133,7 +134,12 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: countedController,
-                  keyboardType: TextInputType.number,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                  ],
                   decoration: InputDecoration(
                     labelText: 'Quantité comptée (pesée finale)',
                     errorText: errorText,

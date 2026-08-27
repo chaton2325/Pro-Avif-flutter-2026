@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/usine.dart';
 import '../models/formula.dart';
@@ -687,7 +688,12 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                     const SizedBox(height: 12),
                     TextField(
                       controller: quantityController,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                      ],
                       decoration: InputDecoration(
                         labelText: 'Quantité à livrer (kg)',
                         errorText: qty > available

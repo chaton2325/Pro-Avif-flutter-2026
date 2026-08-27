@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/usine.dart';
 import '../models/raw_material.dart';
 import '../models/formula.dart';
@@ -204,7 +205,12 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                   const SizedBox(height: 16),
                   TextField(
                     controller: thresholdController,
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                    ],
                     decoration: const InputDecoration(
                       labelText: "Seuil d'alerte stock bas",
                     ),
@@ -690,7 +696,14 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                               flex: 2,
                               child: TextField(
                                 controller: entry.controller,
-                                keyboardType: TextInputType.number,
+                                keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d*\.?\d*$'),
+                                  ),
+                                ],
                                 decoration: const InputDecoration(
                                   labelText: 'kg/t',
                                   isDense: true,
@@ -781,7 +794,12 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                     const SizedBox(height: 8),
                     TextField(
                       controller: thresholdController,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                      ],
                       decoration: const InputDecoration(
                         labelText: 'Seuil de stock bas (kg d\'aliment produit)',
                         prefixIcon: Icon(Icons.warning_amber_rounded),
