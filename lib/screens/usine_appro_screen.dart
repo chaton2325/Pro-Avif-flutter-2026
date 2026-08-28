@@ -242,7 +242,6 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     final supplierController = TextEditingController();
     final quantityController = TextEditingController();
     final noteController = TextEditingController();
-    DateTime receivedAt = DateTime.now();
 
     showDialog(
       context: context,
@@ -292,7 +291,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                     FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
                   ],
                   decoration: const InputDecoration(
-                    labelText: 'Quantité reçue',
+                    labelText: 'Quantité reçue (kg)',
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -304,40 +303,11 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   maxLines: 2,
                 ),
                 const SizedBox(height: 8),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'Date de réception',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  subtitle: Text(DateFormat('dd/MM/yyyy').format(receivedAt)),
-                  trailing: const Icon(Icons.edit_calendar_outlined),
-                  onTap: () async {
-                    final now = DateTime.now();
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: receivedAt,
-                      firstDate: DateTime(now.year - 5),
-                      lastDate: now,
-                      builder: (context, child) => Theme(
-                        data: Theme.of(context).copyWith(
-                          colorScheme: const ColorScheme.light(
-                            primary: Colors.orange,
-                          ),
-                        ),
-                        child: child!,
-                      ),
-                    );
-                    if (picked != null) {
-                      setDialogState(() => receivedAt = picked);
-                    }
-                  },
-                ),
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     'Sans prix : la comptabilité valorisera cette réception avant qu\'elle ne compte en stock. '
-                    'Ne changez la date que pour un lot déjà en stock avant l\'usage de l\'application.',
+                    'Date et heure de réception enregistrées automatiquement.',
                     style: TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                 ),
@@ -369,7 +339,6 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                       note: noteController.text.trim().isEmpty
                           ? null
                           : noteController.text.trim(),
-                      createdAt: receivedAt,
                     ),
                   );
                   await _refreshData();
