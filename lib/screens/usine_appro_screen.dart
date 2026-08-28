@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../models/usine.dart';
 import '../models/raw_material.dart';
 import '../models/reception.dart';
+import '../models/stock_loss.dart';
+import '../models/cost_adjustment.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
 import '../utils/quantity_format.dart';
@@ -22,6 +24,11 @@ class _HistoryEntry {
   final bool isPending;
   final String type; // 'attente' | 'reception' | 'perte' | 'ajustement'
   final String? performedBy;
+  // Objet source, pour le détail complet en modal au clic — un seul des trois est renseigné,
+  // selon [type].
+  final Reception? reception;
+  final StockLoss? loss;
+  final CostAdjustment? adjustment;
   _HistoryEntry({
     required this.date,
     required this.icon,
@@ -31,6 +38,9 @@ class _HistoryEntry {
     required this.type,
     this.isPending = false,
     this.performedBy,
+    this.reception,
+    this.loss,
+    this.adjustment,
   });
 }
 
@@ -140,6 +150,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             isPending: true,
             type: 'attente',
             performedBy: r.createdBy,
+            reception: r,
           ),
         ),
         ...valorized.map(
@@ -153,6 +164,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 : '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
             type: 'reception',
             performedBy: r.valorizedBy ?? r.createdBy,
+            reception: r,
           ),
         ),
         // Les écarts sourcés d'un inventaire vivent désormais uniquement dans l'onglet
@@ -174,6 +186,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 '${isGain ? "+" : "-"}${formatQty(l.quantity.abs())} ${materialUnit(l.rawMaterialId)} · ${l.reason}',
             type: 'perte',
             performedBy: l.performedBy,
+            loss: l,
           );
         }),
         if (showCosts)
@@ -187,6 +200,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   '${a.previousCost.toStringAsFixed(2)} → ${a.newCost.toStringAsFixed(2)} F/${materialUnit(a.rawMaterialId)} · ${a.reason}',
               type: 'ajustement',
               performedBy: a.performedBy,
+              adjustment: a,
             ),
           ),
       ]..sort((a, b) => b.date.compareTo(a.date));
@@ -713,6 +727,159 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     );
   }
 
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Détail d'une ligne d'historique au clic — la carte inline ne montre qu'un résumé
+  /// (le comptage global s'est agrandi avec la fusion réception/perte/ajustement dans une
+  /// seule chronologie), certains champs comme la remarque ou le détail complet de la
+  /// valorisation n'y trouvaient plus leur place.
+  void _showHistoryDetailDialog(_HistoryEntry h) {
+    final rows = <Widget>[];
+    if (h.reception != null) {
+      final r = h.reception!;
+      final material = _materialById(r.rawMaterialId);
+      rows.addAll([
+        _detailRow('Matière', material?.name ?? '?'),
+        _detailRow('Lot', r.lotNumber),
+        _detailRow(
+          'Quantité',
+          '${formatQty(r.quantity)} ${material?.unit ?? "kg"}',
+        ),
+        _detailRow('Fournisseur', r.supplier ?? '—'),
+        if (r.createdAt != null)
+          _detailRow(
+            'Reçue le',
+            DateFormat('dd/MM/yyyy · HH:mm').format(r.createdAt!),
+          ),
+        _detailRow('Enregistrée par', r.createdBy ?? '—'),
+        if (r.isPending)
+          _detailRow('Statut', 'En attente de valorisation')
+        else ...[
+          if (_perms.seeCosts) ...[
+            _detailRow(
+              'Prix unitaire',
+              '${r.unitPrice?.toStringAsFixed(2) ?? "—"} F',
+            ),
+            _detailRow(
+              'Montant total',
+              '${(r.totalAmount ?? ((r.unitPrice ?? 0) * r.quantity)).toStringAsFixed(0)} F',
+            ),
+          ],
+          if (r.valorizedAt != null)
+            _detailRow(
+              'Valorisée le',
+              DateFormat('dd/MM/yyyy · HH:mm').format(r.valorizedAt!),
+            ),
+          _detailRow('Valorisée par', r.valorizedBy ?? '—'),
+        ],
+        if (r.note != null && r.note!.trim().isNotEmpty)
+          _detailRow('Remarque', r.note!),
+      ]);
+    } else if (h.loss != null) {
+      final l = h.loss!;
+      final material = _materialById(l.rawMaterialId);
+      final isGain = l.quantity < 0;
+      final sourceLabel = switch (l.source) {
+        'cloture_lot' => 'Clôture de lot',
+        'inventaire' => 'Écart d\'inventaire',
+        _ => 'Perte déclarée',
+      };
+      rows.addAll([
+        _detailRow('Matière', material?.name ?? '?'),
+        _detailRow('Type', sourceLabel),
+        _detailRow(
+          isGain ? 'Gain' : 'Perte',
+          '${formatQty(l.quantity.abs())} ${material?.unit ?? "kg"}',
+        ),
+        _detailRow('Motif', l.reason),
+        if (l.createdAt != null)
+          _detailRow(
+            'Date',
+            DateFormat('dd/MM/yyyy · HH:mm').format(l.createdAt!),
+          ),
+        _detailRow('Enregistrée par', l.performedBy ?? '—'),
+        if (l.note != null && l.note!.trim().isNotEmpty)
+          _detailRow('Remarque', l.note!),
+      ]);
+    } else if (h.adjustment != null) {
+      final a = h.adjustment!;
+      final material = _materialById(a.rawMaterialId);
+      rows.addAll([
+        _detailRow('Matière', material?.name ?? '?'),
+        _detailRow(
+          'Ancien coût',
+          '${a.previousCost.toStringAsFixed(2)} F/${material?.unit ?? "kg"}',
+        ),
+        _detailRow(
+          'Nouveau coût',
+          '${a.newCost.toStringAsFixed(2)} F/${material?.unit ?? "kg"}',
+        ),
+        _detailRow('Motif', a.reason),
+        if (a.createdAt != null)
+          _detailRow(
+            'Date',
+            DateFormat('dd/MM/yyyy · HH:mm').format(a.createdAt!),
+          ),
+        _detailRow('Enregistrée par', a.performedBy ?? '—'),
+      ]);
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          h.title,
+          style: const TextStyle(
+            color: Colors.orange,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rows,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<_HistoryEntry> get _filteredSortedHistory {
     final list = _history.where((h) {
       if (_historyTypeFilter != 'tous' && h.type != _historyTypeFilter)
@@ -870,6 +1037,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                           ],
                         ),
                         child: ListTile(
+                          onTap: () => _showHistoryDetailDialog(h),
                           leading: CircleAvatar(
                             backgroundColor: h.color.withValues(alpha: 0.12),
                             child: Icon(h.icon, color: h.color, size: 20),
