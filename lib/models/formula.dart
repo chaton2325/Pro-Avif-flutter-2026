@@ -44,6 +44,11 @@ class Formula {
   // ingrédient d'un autre par défaut — seul un aliment explicitement marqué (ex. SUPER
   // PLUS) peut apparaître dans la composition d'une autre formule.
   final bool canBeIngredient;
+  // False par défaut : la composition se définit en kg par TONNE produite (1000 kg), comme
+  // pour un aliment classique. True pour un aliment simple géré directement en kg (ex.
+  // coquille écrasée obtenue à partir de coquille, 1 kg donne 1 kg) — quantityPerTon
+  // représente alors directement des kg par KG produit, jamais par tonne.
+  final bool isManagedInKg;
 
   Formula({
     this.id,
@@ -53,6 +58,7 @@ class Formula {
     this.isActive = true,
     this.lowStockThreshold = 0,
     this.canBeIngredient = false,
+    this.isManagedInKg = false,
   });
 
   double get totalPerTon => lines.fold(0, (sum, l) => sum + l.quantityPerTon);
@@ -65,6 +71,7 @@ class Formula {
       'isActive': isActive,
       'lowStockThreshold': lowStockThreshold,
       'canBeIngredient': canBeIngredient,
+      'isManagedInKg': isManagedInKg,
     };
   }
 
@@ -79,6 +86,7 @@ class Formula {
       isActive: map['isActive'] as bool? ?? true,
       lowStockThreshold: (map['lowStockThreshold'] as num?)?.toDouble() ?? 0,
       canBeIngredient: map['canBeIngredient'] as bool? ?? false,
+      isManagedInKg: map['isManagedInKg'] as bool? ?? false,
     );
   }
 }

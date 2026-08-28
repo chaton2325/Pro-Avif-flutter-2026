@@ -375,14 +375,13 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           isActive: isActive,
           lowStockThreshold: f.lowStockThreshold,
           canBeIngredient: f.canBeIngredient,
+          isManagedInKg: f.isManagedInKg,
         ),
       ),
     );
     if (err != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(err)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
       return;
     }
     await _refreshData();
@@ -587,13 +586,16 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
     );
     bool isActive = formula?.isActive ?? true;
     bool canBeIngredient = formula?.canBeIngredient ?? false;
+    bool isManagedInKg = formula?.isManagedInKg ?? false;
     String? error;
     List<_FormulaLineDraft> lines = (formula?.lines ?? [])
         .map(
           (l) => _FormulaLineDraft(
             sourceId: l.sourceId,
             isAliment: l.isIngredientAliment,
-            controller: TextEditingController(text: formatQty(l.quantityPerTon)),
+            controller: TextEditingController(
+              text: formatQty(l.quantityPerTon),
+            ),
           ),
         )
         .toList();
@@ -632,10 +634,24 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                         prefixIcon: Icon(Icons.science_outlined),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Composition (kg par tonne produite)',
-                      style: TextStyle(
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Gérer en kilogrammes (pas en tonnes)'),
+                      subtitle: const Text(
+                        'Pour un aliment simple, ex. coquille écrasée obtenue à partir de coquille (1 kg → 1 kg). Sinon, la composition se définit en kg par tonne produite.',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                      value: isManagedInKg,
+                      activeColor: Colors.orange,
+                      onChanged: (v) => setDialogState(() => isManagedInKg = v),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isManagedInKg
+                          ? 'Composition (kg par kg produit)'
+                          : 'Composition (kg par tonne produite)',
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.grey,
                         fontSize: 12,
@@ -716,16 +732,17 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                               flex: 2,
                               child: TextField(
                                 controller: entry.controller,
-                                keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 inputFormatters: [
                                   FilteringTextInputFormatter.allow(
                                     RegExp(r'^\d*\.?\d*$'),
                                   ),
                                 ],
-                                decoration: const InputDecoration(
-                                  labelText: 'kg/t',
+                                decoration: InputDecoration(
+                                  labelText: isManagedInKg ? 'kg/kg' : 'kg/t',
                                   isDense: true,
                                 ),
                                 onChanged: (_) => setDialogState(() {}),
@@ -788,29 +805,50 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                       ),
                     ),
                     const Divider(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Total / tonne',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '${formatQty(total)} kg',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: (total - 1000).abs() > 50
-                                ? Colors.orange.shade800
-                                : Colors.green.shade700,
-                          ),
-                        ),
-                      ],
+                    Builder(
+                      builder: (context) {
+                        final reference = isManagedInKg ? 1.0 : 1000.0;
+                        final tolerance = reference * 0.05;
+                        final isOff = (total - reference).abs() > tolerance;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  isManagedInKg
+                                      ? 'Total / kg produit'
+                                      : 'Total / tonne',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '${formatQty(total)} kg',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    color: isOff
+                                        ? Colors.orange.shade800
+                                        : Colors.green.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (isOff)
+                              Text(
+                                isManagedInKg
+                                    ? 'Le total s\'écarte de 1 kg/kg : vérifiez qu\'il ne manque pas de composant.'
+                                    : 'Le total s\'écarte de 1000 kg/t : vérifiez qu\'il ne manque pas de composant.',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
-                    if ((total - 1000).abs() > 50)
-                      const Text(
-                        'Le total s\'écarte de 1000 kg/t : vérifiez qu\'il ne manque pas de composant.',
-                        style: TextStyle(fontSize: 11, color: Colors.orange),
-                      ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: thresholdController,
@@ -818,7 +856,9 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                         decimal: true,
                       ),
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d*\.?\d*$'),
+                        ),
                       ],
                       decoration: const InputDecoration(
                         labelText: 'Seuil de stock bas (kg d\'aliment produit)',
@@ -892,6 +932,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                     lowStockThreshold:
                         double.tryParse(thresholdController.text) ?? 0,
                     canBeIngredient: canBeIngredient,
+                    isManagedInKg: isManagedInKg,
                   );
                   final err = await runBlocking(
                     context,
@@ -940,9 +981,7 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           decoration: BoxDecoration(
             color: Colors.deepPurple.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.deepPurple.withValues(alpha: 0.2),
-            ),
+            border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
@@ -983,30 +1022,56 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                 ],
               ),
               const SizedBox(height: 6),
-              if (f.canBeIngredient)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 4),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.deepPurple.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'INGRÉDIENT',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.deepPurple.shade700,
-                    ),
-                  ),
+              if (f.canBeIngredient || f.isManagedInKg)
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    if (f.canBeIngredient)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.deepPurple.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'INGRÉDIENT',
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.deepPurple.shade700,
+                          ),
+                        ),
+                      ),
+                    if (f.isManagedInKg)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'GÉRÉ EN KG',
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+              const SizedBox(height: 4),
               Text(
                 f.lines.any((l) => l.isIngredientAliment)
-                    ? '${f.lines.length} ligne(s) · ${formatQty(f.totalPerTon)} kg/t · utilise un aliment produit'
-                    : '${f.lines.length} matière(s) · ${formatQty(f.totalPerTon)} kg/t',
+                    ? '${f.lines.length} ligne(s) · ${formatQty(f.totalPerTon)} ${f.isManagedInKg ? "kg/kg" : "kg/t"} · utilise un aliment produit'
+                    : '${f.lines.length} matière(s) · ${formatQty(f.totalPerTon)} ${f.isManagedInKg ? "kg/kg" : "kg/t"}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
