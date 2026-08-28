@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class Reception {
   final String? id;
   final String usineId;
@@ -60,12 +62,8 @@ class Reception {
       status: map['status'] as String? ?? 'en_attente',
       unitPrice: (map['unitPrice'] as num?)?.toDouble(),
       totalAmount: (map['totalAmount'] as num?)?.toDouble(),
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt'].toString())
-          : null,
-      valorizedAt: map['valorizedAt'] != null
-          ? DateTime.tryParse(map['valorizedAt'].toString())
-          : null,
+      createdAt: parseCameroonTime(map['createdAt']?.toString()),
+      valorizedAt: parseCameroonTime(map['valorizedAt']?.toString()),
       createdBy: map['createdBy'] as String?,
       valorizedBy: map['valorizedBy'] as String?,
     );

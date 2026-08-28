@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class CostAdjustment {
   final String? id;
   final String usineId;
@@ -27,9 +29,7 @@ class CostAdjustment {
       previousCost: (map['previousCost'] as num).toDouble(),
       newCost: (map['newCost'] as num).toDouble(),
       reason: map['reason'] as String? ?? '',
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt'].toString())
-          : null,
+      createdAt: parseCameroonTime(map['createdAt']?.toString()),
       performedBy: map['performedBy'] as String?,
     );
   }

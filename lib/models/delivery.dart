@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class DeliveryBatchUsed {
   final String batchId;
   final String lotNumber;
@@ -95,16 +97,12 @@ class Delivery {
           .toList(),
       unitCost: (map['unitCost'] as num?)?.toDouble() ?? 0,
       totalCost: (map['totalCost'] as num?)?.toDouble() ?? 0,
-      createdAt: DateTime.parse(map['createdAt'] as String),
+      createdAt: toCameroonTime(DateTime.parse(map['createdAt'] as String)),
       performedBy: map['performedBy'] as String?,
       status: map['status'] as String? ?? 'en_attente',
-      validatedAt: map['validatedAt'] != null
-          ? DateTime.tryParse(map['validatedAt'].toString())
-          : null,
+      validatedAt: parseCameroonTime(map['validatedAt']?.toString()),
       validatedBy: map['validatedBy'] as String?,
-      cancelledAt: map['cancelledAt'] != null
-          ? DateTime.tryParse(map['cancelledAt'].toString())
-          : null,
+      cancelledAt: parseCameroonTime(map['cancelledAt']?.toString()),
       cancelledBy: map['cancelledBy'] as String?,
       cancelReason: map['cancelReason'] as String?,
     );

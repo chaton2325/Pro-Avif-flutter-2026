@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class MonthlyPoint {
   final String label;
   final int year;
@@ -138,9 +140,7 @@ class TraceFabrication {
       lotNumber: map['lotNumber'] as String? ?? '',
       formulaName: map['formulaName'] as String? ?? '',
       quantity: (map['quantity'] as num?)?.toDouble() ?? 0,
-      validatedAt: map['validatedAt'] != null
-          ? DateTime.tryParse(map['validatedAt'].toString())
-          : null,
+      validatedAt: parseCameroonTime(map['validatedAt']?.toString()),
       materials: (map['materials'] as List<dynamic>? ?? [])
           .map((m) => TraceMaterialOrigin.fromMap(m as Map<String, dynamic>))
           .toList(),
@@ -167,7 +167,7 @@ class TraceDelivery {
 
   factory TraceDelivery.fromMap(Map<String, dynamic> map) {
     return TraceDelivery(
-      date: DateTime.parse(map['date'] as String),
+      date: toCameroonTime(DateTime.parse(map['date'] as String)),
       farmName: map['farmName'] as String? ?? '',
       roomName: map['roomName'] as String? ?? '',
       lotNumberSujets: map['lotNumberSujets'] as String?,
@@ -344,7 +344,7 @@ class AuditLogEntry {
       action: map['action'] as String? ?? '',
       collection: map['collection'] as String? ?? '',
       details: map['details'] as String? ?? '',
-      timestamp: DateTime.parse(map['timestamp'] as String),
+      timestamp: toCameroonTime(DateTime.parse(map['timestamp'] as String)),
       usineId: map['usineId'] as String?,
     );
   }

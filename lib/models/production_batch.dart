@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class ProductionCheckLine {
   final String? rawMaterialId;
   final String? ingredientFormulaId;
@@ -164,18 +166,12 @@ class ProductionBatch {
       adjustmentReason: map['adjustmentReason'] as String?,
       costPerUnit: (map['costPerUnit'] as num?)?.toDouble() ?? 0,
       status: map['status'] as String? ?? 'a_valider',
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt'].toString())
-          : null,
-      validatedAt: map['validatedAt'] != null
-          ? DateTime.tryParse(map['validatedAt'].toString())
-          : null,
+      createdAt: parseCameroonTime(map['createdAt']?.toString()),
+      validatedAt: parseCameroonTime(map['validatedAt']?.toString()),
       launchedBy: map['launchedBy'] as String?,
       validatedBy: map['validatedBy'] as String?,
       rejectionReason: map['rejectionReason'] as String?,
-      rejectedAt: map['rejectedAt'] != null
-          ? DateTime.tryParse(map['rejectedAt'].toString())
-          : null,
+      rejectedAt: parseCameroonTime(map['rejectedAt']?.toString()),
       rejectedBy: map['rejectedBy'] as String?,
     );
   }

@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class StockLoss {
   final String? id;
   final String usineId;
@@ -44,9 +46,7 @@ class StockLoss {
       note: map['note'] as String?,
       source: map['source'] as String? ?? 'perte',
       batchId: map['batchId'] as String?,
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt'].toString())
-          : null,
+      createdAt: parseCameroonTime(map['createdAt']?.toString()),
       performedBy: map['performedBy'] as String?,
     );
   }

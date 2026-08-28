@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class RawMaterial {
   final String? id;
   final String usineId;
@@ -77,7 +79,7 @@ class MaterialFicheHistoryItem {
 
   factory MaterialFicheHistoryItem.fromMap(Map<String, dynamic> map) {
     return MaterialFicheHistoryItem(
-      date: DateTime.parse(map['date'] as String),
+      date: toCameroonTime(DateTime.parse(map['date'] as String)),
       type: map['type'] as String? ?? '',
       label: map['label'] as String? ?? '',
       detail: map['detail'] as String? ?? '',

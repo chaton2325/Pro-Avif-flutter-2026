@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 /// Une ligne comptée pendant une session d'inventaire. [name] est le nom de la
 /// matière/de l'aliment tel qu'il était au moment de l'inventaire (dénormalisé côté
 /// serveur), pour que l'historique reste exact même après un renommage.
@@ -69,15 +71,11 @@ class InventorySession {
       materialsCount: map['materialsCount'] as int? ?? 0,
       varianceCount: map['varianceCount'] as int? ?? 0,
       comment: map['comment'] as String?,
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt'].toString())
-          : null,
+      createdAt: parseCameroonTime(map['createdAt']?.toString()),
       performedBy: map['performedBy'] as String?,
       scope: map['scope'] as String?,
       details: (map['details'] as List<dynamic>? ?? [])
-          .map(
-            (d) => InventorySessionDetail.fromMap(d as Map<String, dynamic>),
-          )
+          .map((d) => InventorySessionDetail.fromMap(d as Map<String, dynamic>))
           .toList(),
     );
   }

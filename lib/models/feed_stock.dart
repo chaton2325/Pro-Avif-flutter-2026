@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class FeedStockBatch {
   final String id;
   final String usineId;
@@ -33,7 +35,7 @@ class FeedStockBatch {
       producedQuantity: (map['producedQuantity'] as num?)?.toDouble() ?? 0,
       remainingQuantity: (map['remainingQuantity'] as num?)?.toDouble() ?? 0,
       unitCost: (map['unitCost'] as num?)?.toDouble() ?? 0,
-      validatedAt: DateTime.parse(map['validatedAt'] as String),
+      validatedAt: toCameroonTime(DateTime.parse(map['validatedAt'] as String)),
       status: map['status'] as String? ?? 'actif',
     );
   }

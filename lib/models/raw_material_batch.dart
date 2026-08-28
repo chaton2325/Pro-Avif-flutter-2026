@@ -1,3 +1,5 @@
+import '../utils/cameroon_time.dart';
+
 class RawMaterialBatch {
   final String? id;
   final String usineId;
@@ -36,9 +38,7 @@ class RawMaterialBatch {
       receivedQuantity: (map['receivedQuantity'] as num).toDouble(),
       remainingQuantity: (map['remainingQuantity'] as num).toDouble(),
       unitCost: (map['unitCost'] as num).toDouble(),
-      receivedAt: map['receivedAt'] != null
-          ? DateTime.tryParse(map['receivedAt'].toString())
-          : null,
+      receivedAt: parseCameroonTime(map['receivedAt']?.toString()),
       status: map['status'] as String? ?? 'actif',
       receptionId: map['receptionId'] as String?,
       materialName: map['materialName'] as String?,
