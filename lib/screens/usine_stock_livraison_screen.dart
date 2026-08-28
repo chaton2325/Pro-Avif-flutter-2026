@@ -11,13 +11,11 @@ import '../models/poste.dart';
 import '../services/mongo_service.dart';
 import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
-import 'usine_feed_inventory_screen.dart';
 
-/// Parcours 04 — Stock & livraison (maquette écrans 22-24), en un écran à 2 onglets :
-/// stock d'aliment produit décomposé par lot (RLx-xxxx) et historique des livraisons.
-/// La « nouvelle livraison » (écran 23) est une action en contexte (pas d'écran dédié),
-/// avec attribution automatique du lot d'aliment (FIFO) et rappel automatique du lot de
-/// sujets du bâtiment — jamais de choix manuel de lot.
+/// Parcours 04 — Livraisons (le stock d'aliment produit se consulte désormais depuis
+/// « Stock & Inventaire ») : création d'une livraison (attribution automatique du lot
+/// d'aliment par FIFO et rappel automatique du lot de sujets du bâtiment — jamais de choix
+/// manuel de lot) puis validation/annulation, le tout dans une seule vue sans onglets.
 class UsineStockLivraisonScreen extends StatefulWidget {
   final Usine usine;
   final PostePermissions? permissions;
@@ -32,14 +30,9 @@ class UsineStockLivraisonScreen extends StatefulWidget {
       _UsineStockLivraisonScreenState();
 }
 
-class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
-    with SingleTickerProviderStateMixin {
+class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
   final MongoService _mongoService = MongoService();
   PostePermissions get _perms => widget.permissions ?? fullAccessPermissions;
-  late final TabController _tabController = TabController(
-    length: 2,
-    vsync: this,
-  );
   static const int _pageSize = 20;
 
   List<FeedStockSummary> _stock = [];
@@ -59,12 +52,6 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
   void initState() {
     super.initState();
     _refreshAll();
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   Future<void> _refreshAll() async {
@@ -146,17 +133,6 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'rupture':
-        return Colors.grey.shade600;
-      case 'bas':
-        return Colors.orange.shade800;
-      default:
-        return Colors.green.shade700;
-    }
   }
 
   List<MapEntry<String, double>> _previewFifo(
@@ -694,7 +670,9 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         decimal: true,
                       ),
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d*\.?\d*$'),
+                        ),
                       ],
                       decoration: InputDecoration(
                         labelText: 'Quantité à livrer (kg)',
@@ -917,220 +895,6 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
             ],
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildStockTab() {
-    if (_stock.isEmpty) {
-      return const Center(
-        child: Text(
-          'Aucune référence produite pour cette usine.',
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: _refreshAll,
-      color: Colors.orange,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-        children: [
-          if (_perms.manageDelivery)
-            Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.grey.shade100),
-              ),
-              child: ListTile(
-                onTap: _showDeliveryDialog,
-                leading: CircleAvatar(
-                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
-                  child: const Icon(
-                    Icons.local_shipping_outlined,
-                    color: Colors.teal,
-                  ),
-                ),
-                title: const Text(
-                  'Nouvelle livraison',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
-                ),
-                subtitle: const Text(
-                  'Lot de sujets et lot d\'aliment automatiques',
-                  style: TextStyle(fontSize: 12),
-                ),
-                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-              ),
-            ),
-          if (_perms.manageDelivery)
-            Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.grey.shade100),
-              ),
-              child: ListTile(
-                onTap: _showManageDriversVehiclesDialog,
-                leading: CircleAvatar(
-                  backgroundColor: Colors.blueGrey.withValues(alpha: 0.1),
-                  child: const Icon(
-                    Icons.badge_outlined,
-                    color: Colors.blueGrey,
-                  ),
-                ),
-                title: const Text(
-                  'Chauffeurs & véhicules',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
-                ),
-                subtitle: const Text(
-                  'Liste utilisée lors de la saisie des livraisons',
-                  style: TextStyle(fontSize: 12),
-                ),
-                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-              ),
-            ),
-          if (_perms.manageDelivery || _perms.manageInventory)
-            Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.grey.shade100),
-              ),
-              child: ListTile(
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => UsineFeedInventoryScreen(
-                        usine: widget.usine,
-                        permissions: widget.permissions,
-                      ),
-                    ),
-                  );
-                  if (!mounted) return;
-                  _refreshAll();
-                },
-                leading: CircleAvatar(
-                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                  child: const Icon(
-                    Icons.fact_check_outlined,
-                    color: Colors.orange,
-                  ),
-                ),
-                title: const Text(
-                  'Inventaire des aliments',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
-                ),
-                subtitle: const Text(
-                  'Comptage global par référence et historique, paginé',
-                  style: TextStyle(fontSize: 12),
-                ),
-                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-              ),
-            ),
-          ..._stock.map(
-            (s) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: s.status == 'ok'
-                      ? Colors.grey.shade100
-                      : Colors.transparent,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        s.formulaName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (s.status != 'ok')
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _statusColor(
-                              s.status,
-                            ).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            s.status == 'rupture' ? 'RUPTURE' : 'BAS',
-                            style: TextStyle(
-                              color: _statusColor(s.status),
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      const Spacer(),
-                      Text(
-                        '${formatQty(s.totalStock)} kg',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: s.lowStockThreshold > 0
-                          ? (s.totalStock / (s.lowStockThreshold * 3)).clamp(
-                              0,
-                              1,
-                            )
-                          : (s.totalStock > 0 ? 1 : 0),
-                      minHeight: 6,
-                      backgroundColor: Colors.grey.shade100,
-                      color: _statusColor(s.status == 'ok' ? 'ok' : s.status),
-                    ),
-                  ),
-                  if (s.batches.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: s.batches
-                          .map(
-                            (b) => Chip(
-                              visualDensity: VisualDensity.compact,
-                              label: Text(
-                                '${b.lotNumber} · ${formatQty(b.remainingQuantity)} kg',
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1387,13 +1151,74 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     );
   }
 
-  Widget _buildHistoryTab() {
+  Widget _buildBody() {
     final page = _deliveryPage;
     final totalPages = page == null || page.totalCount == 0
         ? 1
         : (page.totalCount / _pageSize).ceil();
     return Column(
       children: [
+        if (_perms.manageDelivery)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+              ),
+              child: ListTile(
+                onTap: _showDeliveryDialog,
+                leading: CircleAvatar(
+                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.teal,
+                  ),
+                ),
+                title: const Text(
+                  'Nouvelle livraison',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                ),
+                subtitle: const Text(
+                  'Lot de sujets et lot d\'aliment automatiques',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
+            ),
+          ),
+        if (_perms.manageDelivery)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+              ),
+              child: ListTile(
+                onTap: _showManageDriversVehiclesDialog,
+                leading: CircleAvatar(
+                  backgroundColor: Colors.blueGrey.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.badge_outlined,
+                    color: Colors.blueGrey,
+                  ),
+                ),
+                title: const Text(
+                  'Chauffeurs & véhicules',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                ),
+                subtitle: const Text(
+                  'Liste utilisée lors de la saisie des livraisons',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Row(
@@ -1496,12 +1321,13 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                       child: ListTile(
                         onTap: () => _showDeliveryDetailDialog(d),
                         leading: CircleAvatar(
-                          backgroundColor: (d.isCancelled
-                                  ? Colors.grey
-                                  : (d.isPending
-                                        ? Colors.amber.shade800
-                                        : Colors.teal))
-                              .withValues(alpha: 0.1),
+                          backgroundColor:
+                              (d.isCancelled
+                                      ? Colors.grey
+                                      : (d.isPending
+                                            ? Colors.amber.shade800
+                                            : Colors.teal))
+                                  .withValues(alpha: 0.1),
                           child: Icon(
                             d.isCancelled
                                 ? Icons.undo_rounded
@@ -1629,7 +1455,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'STOCK & LIVRAISON',
+          'LIVRAISONS',
           style: TextStyle(
             fontWeight: FontWeight.w900,
             letterSpacing: .5,
@@ -1645,23 +1471,10 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
             onPressed: _refreshAll,
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.orange,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.orange,
-          tabs: const [
-            Tab(text: 'Stock'),
-            Tab(text: 'Livraisons'),
-          ],
-        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.orange))
-          : TabBarView(
-              controller: _tabController,
-              children: [_buildStockTab(), _buildHistoryTab()],
-            ),
+          : _buildBody(),
     );
   }
 }

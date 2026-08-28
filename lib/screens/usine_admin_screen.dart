@@ -14,6 +14,7 @@ import 'usine_appro_screen.dart';
 import 'usine_daily_report_screen.dart';
 import 'usine_production_screen.dart';
 import 'usine_simulation_screen.dart';
+import 'usine_stock_inventory_screen.dart';
 import 'usine_stock_livraison_screen.dart';
 import 'usine_stats_screen.dart';
 
@@ -1194,7 +1195,7 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                   ),
                   title: const Text('Approvisionnement'),
                   subtitle: const Text(
-                    'Réceptions, lots, pertes, inventaire',
+                    'Réceptions, pertes, historique',
                     style: TextStyle(fontSize: 12),
                   ),
                   onTap: () {
@@ -1203,6 +1204,46 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                       context,
                       MaterialPageRoute(
                         builder: (_) => UsineApproScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.warehouse_outlined,
+                    color: Colors.orange,
+                  ),
+                  title: const Text('Stock & Inventaire'),
+                  subtitle: const Text(
+                    'Stock et inventaire, matières & aliments',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineStockInventoryScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.blue,
+                  ),
+                  title: const Text('Livraisons'),
+                  subtitle: const Text(
+                    'Création et validation des livraisons',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineStockLivraisonScreen(usine: usine),
                       ),
                     );
                   },
@@ -1223,26 +1264,6 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                       context,
                       MaterialPageRoute(
                         builder: (_) => UsineProductionScreen(usine: usine),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(
-                    Icons.local_shipping_outlined,
-                    color: Colors.teal,
-                  ),
-                  title: const Text('Stock & livraison'),
-                  subtitle: const Text(
-                    'Stock d\'aliment produit, livraisons',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => UsineStockLivraisonScreen(usine: usine),
                       ),
                     );
                   },

@@ -10,6 +10,7 @@ import 'usine_appro_screen.dart';
 import 'usine_daily_report_screen.dart';
 import 'usine_production_screen.dart';
 import 'usine_referentiel_screen.dart';
+import 'usine_stock_inventory_screen.dart';
 import 'usine_stock_livraison_screen.dart';
 import 'usine_stats_screen.dart';
 
@@ -164,14 +165,16 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
         permissions.manageReception ||
         permissions.setPrice ||
         permissions.adjustCost ||
-        permissions.seeCosts ||
-        permissions.manageInventory;
-    final canProduction =
-        permissions.manageProduction || permissions.validateCost;
-    final canStockLivraison =
+        permissions.seeCosts;
+    final canStockInventory =
+        permissions.manageReception ||
         permissions.manageDelivery ||
         permissions.manageInventory ||
-        permissions.validateDelivery;
+        permissions.seeCosts;
+    final canLivraisons =
+        permissions.manageDelivery || permissions.validateDelivery;
+    final canProduction =
+        permissions.manageProduction || permissions.validateCost;
     final canAdmin = permissions.manageAdmin;
     final canStats = permissions.viewStats;
 
@@ -181,12 +184,44 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
           icon: Icons.local_shipping_outlined,
           color: Colors.teal,
           title: 'Approvisionnement',
-          subtitle: 'Réceptions, lots, pertes, inventaire',
+          subtitle: 'Réceptions, pertes, historique',
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) =>
                   UsineApproScreen(usine: usine, permissions: permissions),
+            ),
+          ),
+        ),
+      if (canStockInventory)
+        _SectionCard(
+          icon: Icons.warehouse_outlined,
+          color: Colors.orange,
+          title: 'Stock & Inventaire',
+          subtitle: 'Stock et inventaire, matières & aliments',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UsineStockInventoryScreen(
+                usine: usine,
+                permissions: permissions,
+              ),
+            ),
+          ),
+        ),
+      if (canLivraisons)
+        _SectionCard(
+          icon: Icons.local_shipping_outlined,
+          color: Colors.blue,
+          title: 'Livraisons',
+          subtitle: 'Création et validation des livraisons',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UsineStockLivraisonScreen(
+                usine: usine,
+                permissions: permissions,
+              ),
             ),
           ),
         ),
@@ -201,22 +236,6 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
             MaterialPageRoute(
               builder: (_) =>
                   UsineProductionScreen(usine: usine, permissions: permissions),
-            ),
-          ),
-        ),
-      if (canStockLivraison)
-        _SectionCard(
-          icon: Icons.local_shipping_outlined,
-          color: Colors.teal,
-          title: 'Stock & livraison',
-          subtitle: "Stock d'aliment produit, livraisons",
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UsineStockLivraisonScreen(
-                usine: usine,
-                permissions: permissions,
-              ),
             ),
           ),
         ),

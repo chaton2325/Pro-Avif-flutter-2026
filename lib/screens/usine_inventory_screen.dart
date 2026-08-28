@@ -16,7 +16,11 @@ import '../widgets/blocking_loader.dart';
 class UsineInventoryScreen extends StatefulWidget {
   final Usine usine;
   final PostePermissions? permissions;
-  const UsineInventoryScreen({super.key, required this.usine, this.permissions});
+  const UsineInventoryScreen({
+    super.key,
+    required this.usine,
+    this.permissions,
+  });
 
   @override
   State<UsineInventoryScreen> createState() => _UsineInventoryScreenState();
@@ -209,7 +213,9 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(
-                              b != null ? '${m.name} — Lot ${b.lotNumber}' : m.name,
+                              b != null
+                                  ? '${m.name} — Lot ${b.lotNumber}'
+                                  : m.name,
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                               ),
@@ -224,13 +230,17 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
                                         ? '− ${formatQty(v.abs())}'
                                         : '+ ${formatQty(v.abs())}'),
                               style: TextStyle(
-                                color: ok ? Colors.green : Colors.orange.shade800,
+                                color: ok
+                                    ? Colors.green
+                                    : Colors.orange.shade800,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           );
                         }),
-                        if (variances.every((e) => isNegligibleVariance(e.variance)))
+                        if (variances.every(
+                          (e) => isNegligibleVariance(e.variance),
+                        ))
                           const Text(
                             'Aucun écart.',
                             style: TextStyle(color: Colors.grey),
@@ -284,9 +294,7 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
                         } else {
                           for (final b in batches) {
                             final counted =
-                                double.tryParse(
-                                  batchControllers[b.id]!.text,
-                                ) ??
+                                double.tryParse(batchControllers[b.id]!.text) ??
                                 b.remainingQuantity;
                             list.add((
                               material: m,
@@ -421,9 +429,7 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
                                       ? '− ${formatQty(d.variance.abs())}'
                                       : '+ ${formatQty(d.variance.abs())}'),
                             style: TextStyle(
-                              color: ok
-                                  ? Colors.green
-                                  : Colors.orange.shade800,
+                              color: ok ? Colors.green : Colors.orange.shade800,
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
@@ -449,158 +455,147 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
   @override
   Widget build(BuildContext context) {
     final totalPages = _totalCount == 0 ? 1 : (_totalCount / _pageSize).ceil();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'INVENTAIRE — MATIÈRES',
-          style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .5, fontSize: 13),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          if ((_perms.manageReception || _perms.manageInventory) &&
-              _materials.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.grey.shade100),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ListTile(
-                  onTap: _isLoadingData ? null : _showInventoryDialog,
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                    child: const Icon(
-                      Icons.fact_check_outlined,
-                      color: Colors.orange,
-                    ),
-                  ),
-                  title: const Text(
-                    'Lancer un inventaire',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                  ),
-                  subtitle: const Text(
-                    'Comptage physique et recalage du stock',
-                    style: TextStyle(fontSize: 11, color: Colors.grey),
-                  ),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                ),
-              ),
-            ),
-          Expanded(
-            child: _isLoadingSessions
-                ? const Center(
-                    child: CircularProgressIndicator(color: Colors.orange),
-                  )
-                : _sessions.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Aucun inventaire réalisé pour le moment.',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                : RefreshIndicator(
-                    onRefresh: _loadSessionsPage,
-                    color: Colors.orange,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                      itemCount: _sessions.length,
-                      itemBuilder: (context, index) {
-                        final s = _sessions[index];
-                        final ok = s.varianceCount == 0;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.grey.shade100),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.03),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: ListTile(
-                            onTap: () => _showSessionDetail(s),
-                            leading: CircleAvatar(
-                              backgroundColor: (ok ? Colors.green : Colors.orange)
-                                  .withValues(alpha: 0.12),
-                              child: Icon(
-                                Icons.fact_check_outlined,
-                                color: ok ? Colors.green : Colors.orange,
-                                size: 20,
-                              ),
-                            ),
-                            title: Text(
-                              ok
-                                  ? 'Inventaire — aucun écart'
-                                  : 'Inventaire — ${s.varianceCount} écart(s)',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${s.materialsCount} matière(s) contrôlée(s)${s.comment != null && s.comment!.isNotEmpty ? " · ${s.comment}" : ""}'
-                              '\n${s.createdAt != null ? DateFormat('dd/MM/yyyy HH:mm').format(s.createdAt!) : ""}${s.performedBy != null ? " · ${s.performedBy}" : ""}',
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 12,
-                              ),
-                            ),
-                            isThreeLine: true,
-                            trailing: const Icon(
-                              Icons.chevron_right,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-          ),
-          if (totalPages > 1)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: _page > 0 ? () => _goToPage(_page - 1) : null,
-                  ),
-                  Text(
-                    'Page ${_page + 1} / $totalPages · $_totalCount inventaire(s)',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: _page < totalPages - 1
-                        ? () => _goToPage(_page + 1)
-                        : null,
+    return Column(
+      children: [
+        if ((_perms.manageReception || _perms.manageInventory) &&
+            _materials.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
+              child: ListTile(
+                onTap: _isLoadingData ? null : _showInventoryDialog,
+                leading: CircleAvatar(
+                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.fact_check_outlined,
+                    color: Colors.orange,
+                  ),
+                ),
+                title: const Text(
+                  'Lancer un inventaire',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                subtitle: const Text(
+                  'Comptage physique et recalage du stock',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
             ),
-        ],
-      ),
+          ),
+        Expanded(
+          child: _isLoadingSessions
+              ? const Center(
+                  child: CircularProgressIndicator(color: Colors.orange),
+                )
+              : _sessions.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Aucun inventaire réalisé pour le moment.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadSessionsPage,
+                  color: Colors.orange,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    itemCount: _sessions.length,
+                    itemBuilder: (context, index) {
+                      final s = _sessions[index];
+                      final ok = s.varianceCount == 0;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.grey.shade100),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          onTap: () => _showSessionDetail(s),
+                          leading: CircleAvatar(
+                            backgroundColor: (ok ? Colors.green : Colors.orange)
+                                .withValues(alpha: 0.12),
+                            child: Icon(
+                              Icons.fact_check_outlined,
+                              color: ok ? Colors.green : Colors.orange,
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            ok
+                                ? 'Inventaire — aucun écart'
+                                : 'Inventaire — ${s.varianceCount} écart(s)',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${s.materialsCount} matière(s) contrôlée(s)${s.comment != null && s.comment!.isNotEmpty ? " · ${s.comment}" : ""}'
+                            '\n${s.createdAt != null ? DateFormat('dd/MM/yyyy HH:mm').format(s.createdAt!) : ""}${s.performedBy != null ? " · ${s.performedBy}" : ""}',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 12,
+                            ),
+                          ),
+                          isThreeLine: true,
+                          trailing: const Icon(
+                            Icons.chevron_right,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ),
+        if (totalPages > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _page > 0 ? () => _goToPage(_page - 1) : null,
+                ),
+                Text(
+                  'Page ${_page + 1} / $totalPages · $_totalCount inventaire(s)',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _page < totalPages - 1
+                      ? () => _goToPage(_page + 1)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
