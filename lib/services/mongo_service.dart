@@ -839,7 +839,12 @@ class MongoService {
     if (response.statusCode == 200) {
       return InventorySessionPage.fromMap(jsonDecode(response.body));
     }
-    return InventorySessionPage(totalCount: 0, items: [], limit: limit, skip: skip);
+    return InventorySessionPage(
+      totalCount: 0,
+      items: [],
+      limit: limit,
+      skip: skip,
+    );
   }
 
   /// Inventaire du stock d'aliment produit : comptage global par référence (les lots de
@@ -1484,6 +1489,7 @@ class MongoService {
       final offlineSession = WeighingSession(
         userId: session.userId,
         lotId: session.lotId,
+        lotNumber: session.lotNumber,
         operator: session.operator,
         farmName: session.farmName,
         roomName: session.roomName,
