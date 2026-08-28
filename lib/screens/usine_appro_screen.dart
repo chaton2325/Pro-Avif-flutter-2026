@@ -1390,7 +1390,8 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 trailing: const Icon(Icons.chevron_right, color: Colors.grey),
               ),
             ),
-          if (_perms.manageReception && _materials.isNotEmpty)
+          if ((_perms.manageReception || _perms.manageInventory) &&
+              _materials.isNotEmpty)
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(

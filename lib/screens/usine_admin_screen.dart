@@ -1131,199 +1131,207 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
   void _showUsineActionsSheet(Usine usine) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                    child: const Icon(
-                      Icons.factory_rounded,
-                      color: Colors.orange,
-                    ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                        child: const Icon(
+                          Icons.factory_rounded,
+                          color: Colors.orange,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        usine.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    usine.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 17,
-                    ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(
+                    Icons.inventory_2_outlined,
+                    color: Colors.indigo,
                   ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(
-                Icons.inventory_2_outlined,
-                color: Colors.indigo,
-              ),
-              title: const Text('Référentiel'),
-              subtitle: const Text(
-                'Matières premières & formules',
-                style: TextStyle(fontSize: 12),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UsineReferentielScreen(usine: usine),
+                  title: const Text('Référentiel'),
+                  subtitle: const Text(
+                    'Matières premières & formules',
+                    style: TextStyle(fontSize: 12),
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.local_shipping_outlined,
-                color: Colors.teal,
-              ),
-              title: const Text('Approvisionnement'),
-              subtitle: const Text(
-                'Réceptions, lots, pertes, inventaire',
-                style: TextStyle(fontSize: 12),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UsineApproScreen(usine: usine),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineReferentielScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.teal,
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.precision_manufacturing_outlined,
-                color: Colors.deepPurple,
-              ),
-              title: const Text('Production'),
-              subtitle: const Text(
-                'Fabrication & coût de revient',
-                style: TextStyle(fontSize: 12),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UsineProductionScreen(usine: usine),
+                  title: const Text('Approvisionnement'),
+                  subtitle: const Text(
+                    'Réceptions, lots, pertes, inventaire',
+                    style: TextStyle(fontSize: 12),
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.local_shipping_outlined,
-                color: Colors.teal,
-              ),
-              title: const Text('Stock & livraison'),
-              subtitle: const Text(
-                'Stock d\'aliment produit, livraisons',
-                style: TextStyle(fontSize: 12),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UsineStockLivraisonScreen(usine: usine),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineApproScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.precision_manufacturing_outlined,
+                    color: Colors.deepPurple,
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.calculate_outlined,
-                color: Colors.orange,
-              ),
-              title: const Text('Simulation'),
-              subtitle: const Text(
-                'Ce qu\'on peut produire, plan optimisé',
-                style: TextStyle(fontSize: 12),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UsineSimulationScreen(usine: usine),
+                  title: const Text('Production'),
+                  subtitle: const Text(
+                    'Fabrication & coût de revient',
+                    style: TextStyle(fontSize: 12),
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.bar_chart_rounded,
-                color: Colors.blueGrey,
-              ),
-              title: const Text('Statistiques'),
-              subtitle: const Text(
-                'Consommation, traçabilité, budgets',
-                style: TextStyle(fontSize: 12),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UsineStatsScreen(usine: usine),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineProductionScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.teal,
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.summarize_outlined,
-                color: Colors.brown,
-              ),
-              title: const Text('Rapport de production'),
-              subtitle: const Text(
-                'Matière, production, livraison — format WhatsApp',
-                style: TextStyle(fontSize: 12),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UsineDailyReportScreen(usine: usine),
+                  title: const Text('Stock & livraison'),
+                  subtitle: const Text(
+                    'Stock d\'aliment produit, livraisons',
+                    style: TextStyle(fontSize: 12),
                   ),
-                );
-              },
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineStockLivraisonScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.calculate_outlined,
+                    color: Colors.orange,
+                  ),
+                  title: const Text('Simulation'),
+                  subtitle: const Text(
+                    'Ce qu\'on peut produire, plan optimisé',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineSimulationScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.bar_chart_rounded,
+                    color: Colors.blueGrey,
+                  ),
+                  title: const Text('Statistiques'),
+                  subtitle: const Text(
+                    'Consommation, traçabilité, budgets',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineStatsScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.summarize_outlined,
+                    color: Colors.brown,
+                  ),
+                  title: const Text('Rapport de production'),
+                  subtitle: const Text(
+                    'Matière, production, livraison — format WhatsApp',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UsineDailyReportScreen(usine: usine),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.edit_rounded, color: Colors.blue),
+                  title: const Text('Modifier l\'usine'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showUsineDialog(usine: usine);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.redAccent,
+                  ),
+                  title: const Text('Supprimer l\'usine'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _mongoService.deleteUsine(usine.id!);
+                    _refreshData();
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
             ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.edit_rounded, color: Colors.blue),
-              title: const Text('Modifier l\'usine'),
-              onTap: () {
-                Navigator.pop(context);
-                _showUsineDialog(usine: usine);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.delete_outline_rounded,
-                color: Colors.redAccent,
-              ),
-              title: const Text('Supprimer l\'usine'),
-              onTap: () async {
-                Navigator.pop(context);
-                await _mongoService.deleteUsine(usine.id!);
-                _refreshData();
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+          ),
         ),
       ),
     );
@@ -1660,14 +1668,17 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                               color: Colors.redAccent,
                             ),
                             onPressed: () async {
-                              final updated = await runBlocking(context, () async {
-                                await _mongoService.deletePosteAssignment(
-                                  a.id!,
-                                );
-                                return _mongoService.getPosteAssignments(
-                                  userId: usineUser.id,
-                                );
-                              });
+                              final updated = await runBlocking(
+                                context,
+                                () async {
+                                  await _mongoService.deletePosteAssignment(
+                                    a.id!,
+                                  );
+                                  return _mongoService.getPosteAssignments(
+                                    userId: usineUser.id,
+                                  );
+                                },
+                              );
                               setDialogState(
                                 () => currentAssignments = updated,
                               );
@@ -1746,18 +1757,21 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                               if (selectedPosteId == null ||
                                   selectedUsineId == null)
                                 return;
-                              final updated = await runBlocking(context, () async {
-                                await _mongoService.addPosteAssignment(
-                                  PosteAssignment(
-                                    userId: usineUser.id!,
-                                    posteId: selectedPosteId!,
-                                    usineId: selectedUsineId!,
-                                  ),
-                                );
-                                return _mongoService.getPosteAssignments(
-                                  userId: usineUser.id,
-                                );
-                              });
+                              final updated = await runBlocking(
+                                context,
+                                () async {
+                                  await _mongoService.addPosteAssignment(
+                                    PosteAssignment(
+                                      userId: usineUser.id!,
+                                      posteId: selectedPosteId!,
+                                      usineId: selectedUsineId!,
+                                    ),
+                                  );
+                                  return _mongoService.getPosteAssignments(
+                                    userId: usineUser.id,
+                                  );
+                                },
+                              );
                               setDialogState(
                                 () => currentAssignments = updated,
                               );

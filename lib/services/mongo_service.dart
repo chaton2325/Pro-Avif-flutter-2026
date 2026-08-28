@@ -1157,8 +1157,26 @@ class MongoService {
     );
   }
 
-  /// Annule une livraison confirmée : le stock d'aliment prélevé revient sur les lots
-  /// d'où il venait (jamais un simple retrait de l'historique).
+  /// Valide une livraison en attente : c'est ici, pas à la création, que le stock
+  /// d'aliment est réellement attribué (FIFO) et déduit.
+  Future<String?> validateDelivery(String id) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/deliveries/$id/validate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'performedBy': _performedBy}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  /// Annule (ou rejette, si encore en attente) une livraison : si le stock avait déjà
+  /// été déduit (livraison validée), il revient sur les lots d'où il venait — jamais un
+  /// simple retrait de l'historique.
   Future<String?> cancelDelivery(String id, String reason) async {
     final response = await http.post(
       Uri.parse('$baseUrl/deliveries/$id/cancel'),

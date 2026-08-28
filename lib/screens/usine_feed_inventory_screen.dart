@@ -390,7 +390,7 @@ class _UsineFeedInventoryScreenState extends State<UsineFeedInventoryScreen> {
       ),
       body: Column(
         children: [
-          if (_perms.manageDelivery)
+          if (_perms.manageDelivery || _perms.manageInventory)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Container(

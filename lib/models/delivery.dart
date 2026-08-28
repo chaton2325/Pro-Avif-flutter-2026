@@ -36,7 +36,11 @@ class Delivery {
   final double totalCost;
   final DateTime createdAt;
   final String? performedBy;
-  final String status; // "confirmee" | "annulee"
+  // "en_attente" (créée, stock pas encore touché) | "confirmee" (validée, stock déduit)
+  // | "annulee" (annulée/rejetée, à tout moment).
+  final String status;
+  final DateTime? validatedAt;
+  final String? validatedBy;
   final DateTime? cancelledAt;
   final String? cancelledBy;
   final String? cancelReason;
@@ -57,7 +61,9 @@ class Delivery {
     required this.totalCost,
     required this.createdAt,
     this.performedBy,
-    this.status = 'confirmee',
+    this.status = 'en_attente',
+    this.validatedAt,
+    this.validatedBy,
     this.cancelledAt,
     this.cancelledBy,
     this.cancelReason,
@@ -65,6 +71,7 @@ class Delivery {
 
   String get lotsLabel => batchesUsed.map((b) => b.lotNumber).join('+');
   bool get isCancelled => status == 'annulee';
+  bool get isPending => status == 'en_attente';
   // On livre à la ferme, jamais à une salle précise ; roomName ne subsiste que sur les
   // livraisons créées avant ce changement.
   String get destinationLabel => (roomName == null || roomName!.isEmpty)
@@ -90,7 +97,11 @@ class Delivery {
       totalCost: (map['totalCost'] as num?)?.toDouble() ?? 0,
       createdAt: DateTime.parse(map['createdAt'] as String),
       performedBy: map['performedBy'] as String?,
-      status: map['status'] as String? ?? 'confirmee',
+      status: map['status'] as String? ?? 'en_attente',
+      validatedAt: map['validatedAt'] != null
+          ? DateTime.tryParse(map['validatedAt'].toString())
+          : null,
+      validatedBy: map['validatedBy'] as String?,
       cancelledAt: map['cancelledAt'] != null
           ? DateTime.tryParse(map['cancelledAt'].toString())
           : null,

@@ -11,6 +11,8 @@ const PostePermissions fullAccessPermissions = PostePermissions(
   manageDelivery: true,
   manageAdmin: true,
   viewStats: true,
+  manageInventory: true,
+  validateDelivery: true,
 );
 
 /// Ce qu'un poste autorise dans le module Usine Aliment. Le nom du poste est libre
@@ -26,6 +28,8 @@ class PostePermissions {
   final bool manageDelivery;
   final bool manageAdmin;
   final bool viewStats;
+  final bool manageInventory;
+  final bool validateDelivery;
 
   const PostePermissions({
     this.seeCosts = false,
@@ -37,18 +41,28 @@ class PostePermissions {
     this.manageDelivery = false,
     this.manageAdmin = false,
     this.viewStats = false,
+    this.manageInventory = false,
+    this.validateDelivery = false,
   });
 
   static const List<MapEntry<String, String>> labels = [
     MapEntry('seeCosts', 'Voir les coûts (F/kg, FCFA, CUMP)'),
-    MapEntry('manageReception', 'Réceptions, pertes, inventaire (magasinier)'),
+    MapEntry('manageReception', 'Réceptions, pertes (magasinier)'),
     MapEntry('setPrice', "Saisie du prix d'achat (comptabilité)"),
     MapEntry('adjustCost', 'Ajustement manuel du CUMP (comptabilité)'),
     MapEntry('manageProduction', 'Lancer / clôturer une fabrication'),
     MapEntry('validateCost', 'Valider le coût de revient (comptabilité)'),
-    MapEntry('manageDelivery', 'Livraisons vers les bâtiments (logistique)'),
+    MapEntry('manageDelivery', 'Créer des livraisons vers les bâtiments (logistique)'),
     MapEntry('manageAdmin', 'Référentiel matières, formules, usines, postes'),
     MapEntry('viewStats', 'Tableau de bord et statistiques'),
+    MapEntry(
+      'manageInventory',
+      'Inventaire (matières et aliments) et consultation du stock',
+    ),
+    MapEntry(
+      'validateDelivery',
+      'Valider les livraisons créées par la logistique',
+    ),
   ];
 
   bool operator [](String key) {
@@ -71,6 +85,10 @@ class PostePermissions {
         return manageAdmin;
       case 'viewStats':
         return viewStats;
+      case 'manageInventory':
+        return manageInventory;
+      case 'validateDelivery':
+        return validateDelivery;
       default:
         return false;
     }
@@ -87,6 +105,8 @@ class PostePermissions {
       manageDelivery: key == 'manageDelivery' ? value : manageDelivery,
       manageAdmin: key == 'manageAdmin' ? value : manageAdmin,
       viewStats: key == 'viewStats' ? value : viewStats,
+      manageInventory: key == 'manageInventory' ? value : manageInventory,
+      validateDelivery: key == 'validateDelivery' ? value : validateDelivery,
     );
   }
 
@@ -101,6 +121,8 @@ class PostePermissions {
       'manageDelivery': manageDelivery,
       'manageAdmin': manageAdmin,
       'viewStats': viewStats,
+      'manageInventory': manageInventory,
+      'validateDelivery': validateDelivery,
     };
   }
 
@@ -116,6 +138,8 @@ class PostePermissions {
       manageDelivery: map['manageDelivery'] as bool? ?? false,
       manageAdmin: map['manageAdmin'] as bool? ?? false,
       viewStats: map['viewStats'] as bool? ?? false,
+      manageInventory: map['manageInventory'] as bool? ?? false,
+      validateDelivery: map['validateDelivery'] as bool? ?? false,
     );
   }
 }
@@ -133,7 +157,7 @@ class PosteTemplate {
 const List<PosteTemplate> posteTemplates = [
   PosteTemplate(
     "Magasinier de l'usine",
-    PostePermissions(manageReception: true),
+    PostePermissions(manageReception: true, manageInventory: true),
   ),
   PosteTemplate(
     'Responsable de production',
@@ -150,6 +174,10 @@ const List<PosteTemplate> posteTemplates = [
     ),
   ),
   PosteTemplate('Logistique', PostePermissions(manageDelivery: true)),
+  PosteTemplate(
+    'Validation des livraisons',
+    PostePermissions(validateDelivery: true),
+  ),
   PosteTemplate(
     'Administrateur usine',
     PostePermissions(manageAdmin: true, viewStats: true),

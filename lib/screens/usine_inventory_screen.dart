@@ -461,7 +461,8 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
       ),
       body: Column(
         children: [
-          if (_perms.manageReception && _materials.isNotEmpty)
+          if ((_perms.manageReception || _perms.manageInventory) &&
+              _materials.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Container(

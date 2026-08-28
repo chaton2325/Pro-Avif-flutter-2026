@@ -164,10 +164,14 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
         permissions.manageReception ||
         permissions.setPrice ||
         permissions.adjustCost ||
-        permissions.seeCosts;
+        permissions.seeCosts ||
+        permissions.manageInventory;
     final canProduction =
         permissions.manageProduction || permissions.validateCost;
-    final canStockLivraison = permissions.manageDelivery;
+    final canStockLivraison =
+        permissions.manageDelivery ||
+        permissions.manageInventory ||
+        permissions.validateDelivery;
     final canAdmin = permissions.manageAdmin;
     final canStats = permissions.viewStats;
 

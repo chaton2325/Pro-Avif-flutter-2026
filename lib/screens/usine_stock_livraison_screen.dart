@@ -817,6 +817,13 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         ],
                       ),
                     ),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: Text(
+                        'Créée en attente : le stock ne sera déduit qu\'à la validation.',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ),
                     if (error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),
@@ -902,10 +909,10 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         if (!context.mounted) return;
                         Navigator.pop(context);
                         _snack(
-                          'Livraison confirmée : ${formatQty(qty)} kg vers ${selectedFarm!.name}.',
+                          'Livraison créée : ${formatQty(qty)} kg vers ${selectedFarm!.name} — en attente de validation.',
                         );
                       },
-                child: const Text('Confirmer la livraison'),
+                child: const Text('Créer la livraison'),
               ),
             ],
           );
@@ -985,7 +992,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                 trailing: const Icon(Icons.chevron_right, color: Colors.grey),
               ),
             ),
-          if (_perms.manageDelivery)
+          if (_perms.manageDelivery || _perms.manageInventory)
             Container(
               margin: const EdgeInsets.only(bottom: 14),
               decoration: BoxDecoration(
@@ -1166,6 +1173,39 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         color: Colors.red.shade800,
                       ),
                     ),
+                  )
+                else if (d.isPending)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'En attente de validation — le stock ne sera déduit qu\'à ce moment-là.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                  )
+                else if (d.validatedAt != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Validée le ${DateFormat('dd/MM/yyyy').format(d.validatedAt!)}'
+                      '${d.validatedBy != null ? " par ${d.validatedBy}" : ""}.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green.shade800,
+                      ),
+                    ),
                   ),
                 _detailRow(
                   'Date',
@@ -1175,13 +1215,16 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                   'Aliment',
                   '${d.formulaName} · ${formatQty(d.quantity)} kg',
                 ),
-                _detailRow('Lot(s) d\'aliment', d.lotsLabel),
+                _detailRow(
+                  'Lot(s) d\'aliment',
+                  d.isPending ? 'À attribuer à la validation' : d.lotsLabel,
+                ),
                 if (d.lotNumberSujets != null)
                   _detailRow('Lot de sujets', d.lotNumberSujets!),
                 if (d.driverName != null)
                   _detailRow('Chauffeur', d.driverName!),
                 if (d.vehicle != null) _detailRow('Véhicule', d.vehicle!),
-                if (_perms.seeCosts)
+                if (_perms.seeCosts && !d.isPending)
                   _detailRow('Coût', '${d.totalCost.toStringAsFixed(0)} F'),
                 if (d.performedBy != null)
                   _detailRow('Enregistrée par', d.performedBy!),
@@ -1194,16 +1237,40 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
             onPressed: () => Navigator.pop(context),
             child: const Text('Fermer', style: TextStyle(color: Colors.grey)),
           ),
-          if (!d.isCancelled && _perms.manageDelivery)
+          if (!d.isCancelled &&
+              (_perms.manageDelivery ||
+                  (_perms.validateDelivery && d.isPending)))
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
                 _showCancelDeliveryDialog(d);
               },
-              child: const Text(
-                'Annuler la livraison',
-                style: TextStyle(color: Colors.redAccent),
+              child: Text(
+                d.isPending ? 'Refuser la livraison' : 'Annuler la livraison',
+                style: const TextStyle(color: Colors.redAccent),
               ),
+            ),
+          if (d.isPending && _perms.validateDelivery)
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () async {
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.validateDelivery(d.id),
+                );
+                if (err != null) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(err)));
+                  return;
+                }
+                await _refreshAll();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _snack('Livraison validée : le stock a été déduit.');
+              },
+              child: const Text('Valider'),
             ),
         ],
       ),
@@ -1247,9 +1314,9 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text(
-            'Annuler la livraison',
-            style: TextStyle(
+          title: Text(
+            d.isPending ? 'Refuser la livraison' : 'Annuler la livraison',
+            style: const TextStyle(
               color: Colors.redAccent,
               fontWeight: FontWeight.bold,
             ),
@@ -1259,7 +1326,9 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${formatQty(d.quantity)} kg de ${d.formulaName} reviendront en stock (lots ${d.lotsLabel}).',
+                d.isPending
+                    ? 'Cette livraison n\'a pas encore été validée : aucun stock n\'a été déduit, elle sera simplement rejetée.'
+                    : '${formatQty(d.quantity)} kg de ${d.formulaName} reviendront en stock (lots ${d.lotsLabel}).',
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 16),
@@ -1302,9 +1371,15 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                 await _refreshAll();
                 if (!context.mounted) return;
                 Navigator.pop(context);
-                _snack('Livraison annulée, stock reversé.');
+                _snack(
+                  d.isPending
+                      ? 'Livraison refusée.'
+                      : 'Livraison annulée, stock reversé.',
+                );
               },
-              child: const Text('Confirmer l\'annulation'),
+              child: Text(
+                d.isPending ? 'Confirmer le refus' : 'Confirmer l\'annulation',
+              ),
             ),
           ],
         ),
@@ -1421,14 +1496,23 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                       child: ListTile(
                         onTap: () => _showDeliveryDetailDialog(d),
                         leading: CircleAvatar(
-                          backgroundColor:
-                              (d.isCancelled ? Colors.grey : Colors.teal)
-                                  .withValues(alpha: 0.1),
+                          backgroundColor: (d.isCancelled
+                                  ? Colors.grey
+                                  : (d.isPending
+                                        ? Colors.amber.shade800
+                                        : Colors.teal))
+                              .withValues(alpha: 0.1),
                           child: Icon(
                             d.isCancelled
                                 ? Icons.undo_rounded
-                                : Icons.local_shipping_outlined,
-                            color: d.isCancelled ? Colors.grey : Colors.teal,
+                                : (d.isPending
+                                      ? Icons.hourglass_top_rounded
+                                      : Icons.local_shipping_outlined),
+                            color: d.isCancelled
+                                ? Colors.grey
+                                : (d.isPending
+                                      ? Colors.amber.shade800
+                                      : Colors.teal),
                             size: 20,
                           ),
                         ),
@@ -1446,14 +1530,18 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         subtitle: Text(
                           d.isCancelled
                               ? 'Annulée : ${d.cancelReason ?? ""}'
-                              : '${d.lotNumberSujets != null ? "Lot ${d.lotNumberSujets} (sujets) · " : ""}'
-                                    '${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}'
-                                    '${d.driverName != null ? " · " : ""}aliment ${d.lotsLabel}'
-                                    '${_perms.seeCosts ? " · ${d.totalCost.toStringAsFixed(0)} F" : ""}',
+                              : (d.isPending
+                                    ? 'En attente de validation — aliment ${d.formulaName}${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).isNotEmpty ? " · ${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}" : ""}'
+                                    : '${d.lotNumberSujets != null ? "Lot ${d.lotNumberSujets} (sujets) · " : ""}'
+                                          '${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}'
+                                          '${d.driverName != null ? " · " : ""}aliment ${d.lotsLabel}'
+                                          '${_perms.seeCosts ? " · ${d.totalCost.toStringAsFixed(0)} F" : ""}'),
                           style: TextStyle(
                             color: d.isCancelled
                                 ? Colors.red.shade300
-                                : Colors.grey.shade600,
+                                : (d.isPending
+                                      ? Colors.amber.shade800
+                                      : Colors.grey.shade600),
                             fontSize: 11.5,
                           ),
                         ),
@@ -1473,7 +1561,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                                     : null,
                               ),
                             ),
-                            if (d.isCancelled)
+                            if (d.isCancelled || d.isPending)
                               Container(
                                 margin: const EdgeInsets.only(top: 4),
                                 padding: const EdgeInsets.symmetric(
@@ -1481,15 +1569,19 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                                   vertical: 1,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.red.shade50,
+                                  color: d.isCancelled
+                                      ? Colors.red.shade50
+                                      : Colors.amber.shade50,
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: Text(
-                                  'ANNULÉE',
+                                  d.isCancelled ? 'ANNULÉE' : 'EN ATTENTE',
                                   style: TextStyle(
                                     fontSize: 8,
                                     fontWeight: FontWeight.w800,
-                                    color: Colors.red.shade700,
+                                    color: d.isCancelled
+                                        ? Colors.red.shade700
+                                        : Colors.amber.shade900,
                                   ),
                                 ),
                               ),
