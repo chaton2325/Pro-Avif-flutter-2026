@@ -172,6 +172,22 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
         permissions.manageInventory ||
         permissions.viewStock ||
         permissions.seeCosts;
+    // Même règle que les onglets de l'écran cible : un poste sans l'une ni l'autre
+    // permission dédiée (ex. Logistique, entré via manageDelivery) voit les deux, comme
+    // avant — la séparation stricte ne s'applique qu'une fois l'une des deux cochée.
+    final showStockTab = permissions.viewStock || !permissions.manageInventory;
+    final showInventoryTab =
+        permissions.manageInventory || !permissions.viewStock;
+    final stockInventoryTitle = showStockTab && showInventoryTab
+        ? 'Stock & Inventaire'
+        : showStockTab
+        ? 'Stock'
+        : 'Inventaire';
+    final stockInventorySubtitle = showStockTab && showInventoryTab
+        ? 'Stock et inventaire, matières & aliments'
+        : showStockTab
+        ? 'Stock, matières & aliments'
+        : 'Inventaire, matières & aliments';
     final canLivraisons =
         permissions.manageDelivery || permissions.validateDelivery;
     final canProduction =
@@ -198,8 +214,8 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
         _SectionCard(
           icon: Icons.warehouse_outlined,
           color: Colors.orange,
-          title: 'Stock & Inventaire',
-          subtitle: 'Stock et inventaire, matières & aliments',
+          title: stockInventoryTitle,
+          subtitle: stockInventorySubtitle,
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
