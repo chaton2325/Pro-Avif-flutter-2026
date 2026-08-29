@@ -13,6 +13,7 @@ const PostePermissions fullAccessPermissions = PostePermissions(
   viewStats: true,
   manageInventory: true,
   validateDelivery: true,
+  viewStock: true,
 );
 
 /// Ce qu'un poste autorise dans le module Usine Aliment. Le nom du poste est libre
@@ -30,6 +31,7 @@ class PostePermissions {
   final bool viewStats;
   final bool manageInventory;
   final bool validateDelivery;
+  final bool viewStock;
 
   const PostePermissions({
     this.seeCosts = false,
@@ -43,6 +45,7 @@ class PostePermissions {
     this.viewStats = false,
     this.manageInventory = false,
     this.validateDelivery = false,
+    this.viewStock = false,
   });
 
   static const List<MapEntry<String, String>> labels = [
@@ -55,10 +58,8 @@ class PostePermissions {
     MapEntry('manageDelivery', 'Créer des livraisons vers les bâtiments (logistique)'),
     MapEntry('manageAdmin', 'Référentiel matières, formules, usines, postes'),
     MapEntry('viewStats', 'Tableau de bord et statistiques'),
-    MapEntry(
-      'manageInventory',
-      'Inventaire (matières et aliments) et consultation du stock',
-    ),
+    MapEntry('viewStock', 'Voir le stock (matières et aliments)'),
+    MapEntry('manageInventory', "Faire l'inventaire (matières et aliments)"),
     MapEntry(
       'validateDelivery',
       'Valider les livraisons créées par la logistique',
@@ -89,6 +90,8 @@ class PostePermissions {
         return manageInventory;
       case 'validateDelivery':
         return validateDelivery;
+      case 'viewStock':
+        return viewStock;
       default:
         return false;
     }
@@ -107,6 +110,7 @@ class PostePermissions {
       viewStats: key == 'viewStats' ? value : viewStats,
       manageInventory: key == 'manageInventory' ? value : manageInventory,
       validateDelivery: key == 'validateDelivery' ? value : validateDelivery,
+      viewStock: key == 'viewStock' ? value : viewStock,
     );
   }
 
@@ -123,6 +127,7 @@ class PostePermissions {
       'viewStats': viewStats,
       'manageInventory': manageInventory,
       'validateDelivery': validateDelivery,
+      'viewStock': viewStock,
     };
   }
 
@@ -140,6 +145,7 @@ class PostePermissions {
       viewStats: map['viewStats'] as bool? ?? false,
       manageInventory: map['manageInventory'] as bool? ?? false,
       validateDelivery: map['validateDelivery'] as bool? ?? false,
+      viewStock: map['viewStock'] as bool? ?? false,
     );
   }
 }
@@ -157,7 +163,11 @@ class PosteTemplate {
 const List<PosteTemplate> posteTemplates = [
   PosteTemplate(
     "Magasinier de l'usine",
-    PostePermissions(manageReception: true, manageInventory: true),
+    PostePermissions(
+      manageReception: true,
+      manageInventory: true,
+      viewStock: true,
+    ),
   ),
   PosteTemplate(
     'Responsable de production',
