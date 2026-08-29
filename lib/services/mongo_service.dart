@@ -42,11 +42,9 @@ class LicenseBlockedException implements Exception {
   @override
   String toString() => reason;
 }
-
+//Base en production : "https://proavif.mirhosty.com"
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  // TEMPORAIRE (test Partie 0 Usine Aliment) : backend local, remettre l'URL de
-  // production ("https://proavif.mirhosty.com") avant tout build/déploiement.
   final String baseUrl = "https://proavif.mirhosty.com";
   User? currentUser;
   String? connectionError;
