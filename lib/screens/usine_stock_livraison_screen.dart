@@ -963,7 +963,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      'Validée le ${DateFormat('dd/MM/yyyy').format(d.validatedAt!)}'
+                      'Validée le ${DateFormat('dd/MM/yyyy · HH:mm').format(d.validatedAt!)}'
                       '${d.validatedBy != null ? " par ${d.validatedBy}" : ""}.',
                       style: TextStyle(
                         fontSize: 12,
