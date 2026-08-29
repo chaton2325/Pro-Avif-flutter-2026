@@ -117,13 +117,13 @@ class _UsineFeedInventoryScreenState extends State<UsineFeedInventoryScreen> {
   /// les lots d'aliment produit ne sont pas physiquement distinguables une fois stockés
   /// — impossible de demander "combien reste-t-il du lot RL0-0007 ?" lors d'un comptage
   /// physique. L'écart est réparti automatiquement (FIFO) côté serveur.
+  /// Toutes les références sont comptées, même à 0 — un aliment épuisé côté système doit
+  /// pouvoir être recompté (un écart peut aussi être un gain retrouvé physiquement).
   void _showInventoryDialog() {
-    final activeStock = _stock.where((s) => s.batches.isNotEmpty).toList();
+    final activeStock = List<FeedStockSummary>.from(_stock);
     if (activeStock.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aucun stock d\'aliment actif à inventorier.'),
-        ),
+        const SnackBar(content: Text('Aucun aliment défini pour cette usine.')),
       );
       return;
     }
