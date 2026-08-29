@@ -86,6 +86,28 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
     }
   }
 
+  /// Unité effective d'une ligne de composition : celle de la matière première choisie
+  /// (kg, sacs, litres... définie à sa création), ou toujours "kg" pour un aliment-ingrédient
+  /// (ex. SUPER PLUS), qui se consomme systématiquement en kg produits.
+  String _unitForLine(String? sourceId, bool isAliment) {
+    if (isAliment) return 'kg';
+    final material = _materials.cast<RawMaterial?>().firstWhere(
+      (m) => m?.id == sourceId,
+      orElse: () => null,
+    );
+    return material?.unit ?? 'kg';
+  }
+
+  /// Unité affichée pour le total d'une formule : celle commune à toutes ses lignes si
+  /// elles partagent la même, sinon "mixte" (une formule mélangeant des unités ne peut
+  /// pas avoir un total à proprement parler dans une seule unité).
+  String _formulaUnitSummary(Formula f) {
+    final units = f.lines
+        .map((l) => _unitForLine(l.sourceId, l.isIngredientAliment))
+        .toSet();
+    return units.length == 1 ? units.first : 'mixte';
+  }
+
   // ------------------------------------------------------- Matières premières
 
   void _showMaterialDialog({RawMaterial? material}) {
@@ -742,7 +764,15 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                                   ),
                                 ],
                                 decoration: InputDecoration(
-                                  labelText: isManagedInKg ? 'kg/kg' : 'kg/t',
+                                  labelText: () {
+                                    final unit = _unitForLine(
+                                      entry.sourceId,
+                                      entry.isAliment,
+                                    );
+                                    return isManagedInKg
+                                        ? '$unit/kg'
+                                        : '$unit/t';
+                                  }(),
                                   isDense: true,
                                 ),
                                 onChanged: (_) => setDialogState(() {}),
@@ -807,9 +837,23 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                     const Divider(),
                     Builder(
                       builder: (context) {
+                        final lineUnits = lines
+                            .map((l) => _unitForLine(l.sourceId, l.isAliment))
+                            .toSet();
+                        final isHomogeneous = lineUnits.length == 1;
+                        final totalUnit = isHomogeneous
+                            ? lineUnits.first
+                            : null;
+                        // Le contrôle d'équilibre matière (total ≈ 1000 kg/t) est un bilan
+                        // de masse : il n'a de sens que si toutes les lignes partagent la
+                        // même unité kg — mélangées (kg + sacs + litres) ou en sacs/litres
+                        // uniquement, additionner à 1000 ne veut rien dire.
+                        final checkApplies = totalUnit == 'kg';
                         final reference = isManagedInKg ? 1.0 : 1000.0;
                         final tolerance = reference * 0.05;
-                        final isOff = (total - reference).abs() > tolerance;
+                        final isOff =
+                            checkApplies &&
+                            (total - reference).abs() > tolerance;
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -825,10 +869,14 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                                   ),
                                 ),
                                 Text(
-                                  '${formatQty(total)} kg',
+                                  isHomogeneous
+                                      ? '${formatQty(total)} $totalUnit'
+                                      : formatQty(total),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
-                                    color: isOff
+                                    color: !checkApplies
+                                        ? Colors.grey.shade700
+                                        : isOff
                                         ? Colors.orange.shade800
                                         : Colors.green.shade700,
                                   ),
@@ -843,6 +891,14 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
                                 style: const TextStyle(
                                   fontSize: 11,
                                   color: Colors.orange,
+                                ),
+                              )
+                            else if (!checkApplies)
+                              Text(
+                                'Composition non exprimée uniquement en kg : le contrôle d\'équilibre matière ne s\'applique pas ici.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade600,
                                 ),
                               ),
                           ],
@@ -976,6 +1032,10 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
       itemCount: _formulas.length,
       itemBuilder: (context, index) {
         final f = _formulas[index];
+        final unit = _formulaUnitSummary(f);
+        final perUnitLabel = unit == 'mixte'
+            ? '(unités mixtes)'
+            : (f.isManagedInKg ? '$unit/kg' : '$unit/t');
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1070,8 +1130,8 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
               const SizedBox(height: 4),
               Text(
                 f.lines.any((l) => l.isIngredientAliment)
-                    ? '${f.lines.length} ligne(s) · ${formatQty(f.totalPerTon)} ${f.isManagedInKg ? "kg/kg" : "kg/t"} · utilise un aliment produit'
-                    : '${f.lines.length} matière(s) · ${formatQty(f.totalPerTon)} ${f.isManagedInKg ? "kg/kg" : "kg/t"}',
+                    ? '${f.lines.length} ligne(s) · ${formatQty(f.totalPerTon)} $perUnitLabel · utilise un aliment produit'
+                    : '${f.lines.length} matière(s) · ${formatQty(f.totalPerTon)} $perUnitLabel',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11),

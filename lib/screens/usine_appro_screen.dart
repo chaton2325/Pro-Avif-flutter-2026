@@ -290,8 +290,9 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
                   ],
-                  decoration: const InputDecoration(
-                    labelText: 'Quantité reçue (kg)',
+                  decoration: InputDecoration(
+                    labelText:
+                        'Quantité reçue (${_materialById(selectedMaterialId ?? "")?.unit ?? "kg"})',
                   ),
                 ),
                 const SizedBox(height: 16),
