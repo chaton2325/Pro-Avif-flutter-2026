@@ -90,6 +90,7 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
     required String label,
     required double systemQty,
     required TextEditingController controller,
+    required String unit,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -97,7 +98,7 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
         children: [
           Expanded(child: Text(label)),
           Text(
-            'Sys: ${formatQty(systemQty)}',
+            'Sys: ${formatQty(systemQty)} $unit',
             style: const TextStyle(color: Colors.grey, fontSize: 11),
           ),
           const SizedBox(width: 8),
@@ -112,9 +113,10 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
                 FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
               ],
               textAlign: TextAlign.right,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 isDense: true,
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                suffixText: unit,
               ),
             ),
           ),
@@ -173,6 +175,7 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
                               label: m.name,
                               systemQty: m.currentStock,
                               controller: materialControllers[m.id]!,
+                              unit: m.unit,
                             ),
                           ];
                         }
@@ -193,6 +196,7 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
                                 label: 'Lot ${b.lotNumber}',
                                 systemQty: b.remainingQuantity,
                                 controller: batchControllers[b.id]!,
+                                unit: m.unit,
                               ),
                             ),
                           ),
@@ -463,35 +467,45 @@ class _UsineInventoryScreenState extends State<UsineInventoryScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                gradient: LinearGradient(
+                  colors: [Colors.orange.shade600, Colors.orange.shade400],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.grey.shade100),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    color: Colors.orange.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
               child: ListTile(
                 onTap: _isLoadingData ? null : _showInventoryDialog,
                 leading: CircleAvatar(
-                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                  backgroundColor: Colors.white.withValues(alpha: 0.25),
                   child: const Icon(
                     Icons.fact_check_outlined,
-                    color: Colors.orange,
+                    color: Colors.white,
                   ),
                 ),
                 title: const Text(
                   'Lancer un inventaire',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: Colors.white,
+                  ),
                 ),
                 subtitle: const Text(
                   'Comptage physique et recalage du stock',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                  style: TextStyle(fontSize: 11.5, color: Colors.white70),
                 ),
-                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
