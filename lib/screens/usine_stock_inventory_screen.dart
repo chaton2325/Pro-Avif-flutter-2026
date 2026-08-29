@@ -919,8 +919,16 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
     );
   }
 
+  // Séparation stricte des deux onglets par leur permission dédiée respective — sauf
+  // pour un poste n'ayant ni l'une ni l'autre (ex. Logistique, entré ici via un autre
+  // droit comme manageDelivery) : dans ce cas, comportement inchangé, les deux restent
+  // visibles plutôt que de le laisser sans aucun onglet à afficher.
+  bool get _showStockTab => _perms.viewStock || !_perms.manageInventory;
+  bool get _showInventoryTab => _perms.manageInventory || !_perms.viewStock;
+
   @override
   Widget build(BuildContext context) {
+    final showBoth = _showStockTab && _showInventoryTab;
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -940,23 +948,27 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
             onPressed: _refreshData,
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.orange,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.orange,
-          tabs: const [
-            Tab(text: 'Stock'),
-            Tab(text: 'Inventaire'),
-          ],
-        ),
+        bottom: showBoth
+            ? TabBar(
+                controller: _tabController,
+                labelColor: Colors.orange,
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: Colors.orange,
+                tabs: const [
+                  Tab(text: 'Stock'),
+                  Tab(text: 'Inventaire'),
+                ],
+              )
+            : null,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.orange))
-          : TabBarView(
+          : showBoth
+          ? TabBarView(
               controller: _tabController,
               children: [_buildStockTab(), _buildInventoryTab()],
-            ),
+            )
+          : (_showStockTab ? _buildStockTab() : _buildInventoryTab()),
     );
   }
 }
