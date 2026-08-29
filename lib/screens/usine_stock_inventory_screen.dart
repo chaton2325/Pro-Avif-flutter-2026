@@ -51,6 +51,10 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
     length: 2,
     vsync: this,
   );
+  late final TabController _stockTabController = TabController(
+    length: 2,
+    vsync: this,
+  );
 
   List<RawMaterial> _materials = [];
   List<RawMaterialBatch> _activeBatches = [];
@@ -67,6 +71,7 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
   void dispose() {
     _tabController.dispose();
     _inventoryTabController.dispose();
+    _stockTabController.dispose();
     super.dispose();
   }
 
@@ -730,6 +735,33 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
   // -------------------------------------------------------------------- Stock
 
   Widget _buildStockTab() {
+    return Column(
+      children: [
+        TabBar(
+          controller: _stockTabController,
+          labelColor: Colors.orange,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: Colors.orange,
+          labelStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+          tabs: const [
+            Tab(text: 'Matières premières'),
+            Tab(text: 'Aliments'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _stockTabController,
+            children: [_buildStockMaterialsTab(), _buildStockFeedTab()],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStockMaterialsTab() {
     final materialsWithoutCost = _materials
         .where((m) => !m.isParLot && m.weightedCost == null)
         .toList();
@@ -798,19 +830,7 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                 ),
               ),
             ),
-          if (_materials.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text(
-                'MATIÈRES PREMIÈRES',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                  fontSize: 12,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
+          if (_materials.isNotEmpty)
             ..._materials.map((m) {
               final isLow =
                   m.currentStock < m.lowStockThreshold &&
@@ -910,20 +930,29 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                 ),
               );
             }),
-          ],
-          if (_feedStock.isNotEmpty) ...[
+          if (_materials.isEmpty)
             const Padding(
-              padding: EdgeInsets.only(top: 8, bottom: 8),
-              child: Text(
-                'ALIMENTS PRODUITS',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                  fontSize: 12,
-                  letterSpacing: 0.5,
+              padding: EdgeInsets.only(top: 40),
+              child: Center(
+                child: Text(
+                  'Aucune matière première pour cette usine.',
+                  style: TextStyle(color: Colors.grey),
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStockFeedTab() {
+    return RefreshIndicator(
+      onRefresh: _refreshData,
+      color: Colors.orange,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        children: [
+          if (_feedStock.isNotEmpty)
             ..._feedStock.map(
               (s) => Container(
                 margin: const EdgeInsets.only(bottom: 10),
@@ -1022,13 +1051,12 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                 ),
               ),
             ),
-          ],
-          if (_materials.isEmpty && _feedStock.isEmpty)
+          if (_feedStock.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 40),
               child: Center(
                 child: Text(
-                  'Aucune matière première ni aliment produit pour cette usine.',
+                  'Aucun aliment produit pour cette usine.',
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
