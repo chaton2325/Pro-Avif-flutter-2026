@@ -22,10 +22,14 @@ const List<String> _lotCloseReasons = [
 class UsineLotsHistoryScreen extends StatefulWidget {
   final Usine usine;
   final PostePermissions? permissions;
+  // Pré-sélectionne le filtre matière (ex. ouverture depuis "Voir les lots" d'une matière
+  // précise) — reste modifiable ensuite, l'utilisateur peut élargir à "Toutes les matières".
+  final String? initialMaterialId;
   const UsineLotsHistoryScreen({
     super.key,
     required this.usine,
     this.permissions,
+    this.initialMaterialId,
   });
 
   @override
@@ -49,6 +53,7 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _materialFilter = widget.initialMaterialId;
     _loadMaterials();
     _loadPage();
   }

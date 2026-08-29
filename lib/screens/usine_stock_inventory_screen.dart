@@ -12,6 +12,7 @@ import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
 import 'usine_inventory_screen.dart';
 import 'usine_feed_inventory_screen.dart';
+import 'usine_lots_history_screen.dart';
 
 const List<String> _lossReasons = [
   'Avarie (humidité)',
@@ -132,82 +133,21 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
 
   // ------------------------------------------------------------------ Lots
 
-  void _showLotsDialog(RawMaterial material) async {
-    final allBatches = await _mongoService.getRawMaterialBatches(
-      usineId: widget.usine.id,
-      rawMaterialId: material.id,
-    );
-    allBatches.sort(
-      (a, b) => (a.receivedAt ?? DateTime(2000)).compareTo(
-        b.receivedAt ?? DateTime(2000),
-      ),
-    );
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Text(
-            'Lots — ${material.name}',
-            style: const TextStyle(
-              color: Colors.orange,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: SizedBox(
-            width: 420,
-            child: allBatches.isEmpty
-                ? const Text(
-                    'Aucun lot pour cette matière.',
-                    style: TextStyle(color: Colors.grey),
-                  )
-                : SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: allBatches.map((b) {
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            b.lotNumber,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            '${b.receivedAt != null ? DateFormat('dd/MM/yyyy').format(b.receivedAt!) : ""} · ${formatQty(b.remainingQuantity)}/${formatQty(b.receivedQuantity)} ${material.unit}'
-                            '${_perms.seeCosts ? " · ${b.unitCost.toStringAsFixed(1)} F/${material.unit}" : ""}',
-                          ),
-                          trailing: b.isActive
-                              ? TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    _showCloseLotDialog(b, material);
-                                  },
-                                  child: const Text('Clôturer'),
-                                )
-                              : const Text(
-                                  'CLÔTURÉ',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Fermer'),
-            ),
-          ],
+  /// Page dédiée et paginée côté serveur plutôt qu'un modal chargeant tous les lots d'un
+  /// coup — une matière très ancienne peut en accumuler des milliers.
+  Future<void> _showLotsDialog(RawMaterial material) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UsineLotsHistoryScreen(
+          usine: widget.usine,
+          permissions: widget.permissions,
+          initialMaterialId: material.id,
         ),
       ),
     );
+    if (!mounted) return;
+    _refreshData();
   }
 
   /// Écran 07 — fiche matière première, réservée à la comptabilité (seeCosts) : stock/CUMP/
@@ -351,127 +291,6 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
             textAlign: TextAlign.center,
           ),
         ],
-      ),
-    );
-  }
-
-  void _showCloseLotDialog(RawMaterialBatch batch, RawMaterial material) {
-    final countedController = TextEditingController(
-      text: formatQty(batch.remainingQuantity),
-    );
-    String reason = _lossReasons.first;
-    String? errorText;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final counted =
-              double.tryParse(countedController.text) ??
-              batch.remainingQuantity;
-          final variance = batch.remainingQuantity - counted;
-          // "Aucun écart" seulement si c'est un résidu de calcul flottant invisible à
-          // l'affichage — jamais un écart réellement saisi, même petit (0.9 reste 0.9,
-          // pas arrondi à 1).
-          final varianceOk = isNegligibleVariance(variance);
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Text(
-              '${batch.lotNumber} — Clôture',
-              style: const TextStyle(
-                color: Colors.orange,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Restant théorique : ${formatQty(batch.remainingQuantity)} ${material.unit}',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: countedController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
-                  ],
-                  decoration: InputDecoration(
-                    labelText: 'Quantité comptée (pesée finale)',
-                    errorText: errorText,
-                  ),
-                  onChanged: (_) => setDialogState(() {}),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  varianceOk
-                      ? 'Aucun écart'
-                      : (variance > 0
-                            ? 'Perte constatée : ${formatQty(variance)} ${material.unit}'
-                            : 'Gain constaté : ${formatQty(-variance)} ${material.unit}'),
-                  style: TextStyle(
-                    color: varianceOk
-                        ? Colors.grey
-                        : (variance > 0
-                              ? Colors.orange.shade800
-                              : Colors.green.shade700),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Motif'),
-                  value: reason,
-                  items: _lossReasons
-                      .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                      .toList(),
-                  onChanged: (v) => setDialogState(() => reason = v!),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'Annuler',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final c = double.tryParse(countedController.text);
-                  if (c == null || c < 0) {
-                    setDialogState(() => errorText = 'Quantité invalide');
-                    return;
-                  }
-                  final err = await runBlocking(
-                    context,
-                    () => _mongoService.closeRawMaterialBatch(
-                      batch.id!,
-                      c,
-                      reason,
-                    ),
-                  );
-                  if (err != null) {
-                    setDialogState(() => errorText = err);
-                    return;
-                  }
-                  await _refreshData();
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
-                },
-                child: const Text('Clôturer & enregistrer'),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
