@@ -258,7 +258,13 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
               children: [
                 DropdownButtonFormField<String?>(
                   isExpanded: true,
-                  value: _materialFilter,
+                  // _materialFilter peut référencer une matière avant même que
+                  // _materials (chargée en async) ne soit disponible pour la contenir
+                  // (ex. pré-sélection via initialMaterialId) — sans ce garde, la valeur
+                  // ne correspondrait à aucun item au tout premier rendu et plantait.
+                  value: _materials.any((m) => m.id == _materialFilter)
+                      ? _materialFilter
+                      : null,
                   decoration: const InputDecoration(
                     labelText: 'Matière',
                     isDense: true,
