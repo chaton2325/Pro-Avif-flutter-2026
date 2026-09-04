@@ -79,6 +79,35 @@ class DailyReportDeliveryLine {
   }
 }
 
+class DailyReportMaterialDeliveryLine {
+  final String? rawMaterialId;
+  final String materialName;
+  final String unit;
+  final String clientName;
+  final double quantity;
+  final String lotsLabel;
+
+  DailyReportMaterialDeliveryLine({
+    this.rawMaterialId,
+    required this.materialName,
+    this.unit = 'kg',
+    required this.clientName,
+    required this.quantity,
+    required this.lotsLabel,
+  });
+
+  factory DailyReportMaterialDeliveryLine.fromMap(Map<String, dynamic> map) {
+    return DailyReportMaterialDeliveryLine(
+      rawMaterialId: map['rawMaterialId'] as String?,
+      materialName: map['materialName'] as String? ?? '',
+      unit: map['unit'] as String? ?? 'kg',
+      clientName: map['clientName'] as String? ?? '',
+      quantity: (map['quantity'] as num?)?.toDouble() ?? 0,
+      lotsLabel: map['lotsLabel'] as String? ?? '',
+    );
+  }
+}
+
 class DailyReportStockLine {
   final String materialName;
   final String unit;
@@ -109,6 +138,7 @@ class DailyReport {
   final List<DailyReportMaterialLine> consumption;
   final List<DailyReportProductionLine> production;
   final List<DailyReportDeliveryLine> deliveries;
+  final List<DailyReportMaterialDeliveryLine> materialDeliveries;
   final List<FeedStockSummary> feedStock;
   final List<DailyReportStockLine> materialStock;
 
@@ -119,6 +149,7 @@ class DailyReport {
     this.consumption = const [],
     this.production = const [],
     this.deliveries = const [],
+    this.materialDeliveries = const [],
     this.feedStock = const [],
     this.materialStock = const [],
   });
@@ -147,6 +178,13 @@ class DailyReport {
           .map(
             (e) =>
                 DailyReportDeliveryLine.fromMap(e as Map<String, dynamic>),
+          )
+          .toList(),
+      materialDeliveries: (map['materialDeliveries'] as List<dynamic>? ?? [])
+          .map(
+            (e) => DailyReportMaterialDeliveryLine.fromMap(
+              e as Map<String, dynamic>,
+            ),
           )
           .toList(),
       feedStock: (map['feedStock'] as List<dynamic>? ?? [])

@@ -177,17 +177,45 @@ class TraceDelivery {
   }
 }
 
+class TraceMaterialDelivery {
+  final DateTime date;
+  final String materialName;
+  final String clientName;
+  final double quantity;
+  final String lotNumber;
+
+  TraceMaterialDelivery({
+    required this.date,
+    required this.materialName,
+    required this.clientName,
+    required this.quantity,
+    required this.lotNumber,
+  });
+
+  factory TraceMaterialDelivery.fromMap(Map<String, dynamic> map) {
+    return TraceMaterialDelivery(
+      date: toCameroonTime(DateTime.parse(map['date'] as String)),
+      materialName: map['materialName'] as String? ?? '',
+      clientName: map['clientName'] as String? ?? '',
+      quantity: (map['quantity'] as num?)?.toDouble() ?? 0,
+      lotNumber: map['lotNumber'] as String? ?? '',
+    );
+  }
+}
+
 class TraceResult {
   final String query;
   final String matchType; // "matiere" | "aliment" | "sujets" | "introuvable"
   final List<TraceFabrication> fabrications;
   final List<TraceDelivery> deliveries;
+  final List<TraceMaterialDelivery> materialDeliveries;
 
   TraceResult({
     required this.query,
     required this.matchType,
     this.fabrications = const [],
     this.deliveries = const [],
+    this.materialDeliveries = const [],
   });
 
   factory TraceResult.fromMap(Map<String, dynamic> map) {
@@ -199,6 +227,9 @@ class TraceResult {
           .toList(),
       deliveries: (map['deliveries'] as List<dynamic>? ?? [])
           .map((d) => TraceDelivery.fromMap(d as Map<String, dynamic>))
+          .toList(),
+      materialDeliveries: (map['materialDeliveries'] as List<dynamic>? ?? [])
+          .map((d) => TraceMaterialDelivery.fromMap(d as Map<String, dynamic>))
           .toList(),
     );
   }

@@ -913,6 +913,27 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                 ),
               ),
             ],
+            if (result.materialDeliveries.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text(
+                '📦 Livraison matière (client)',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 6),
+              ...result.materialDeliveries.map(
+                (d) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${DateFormat('dd/MM').format(d.date)} · ${d.materialName} → ${d.clientName} · ${formatQty(d.quantity)} kg',
+                    style: const TextStyle(fontSize: 12.5),
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
       ],

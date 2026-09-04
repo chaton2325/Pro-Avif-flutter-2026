@@ -137,6 +137,21 @@ class _UsineDailyReportScreenState extends State<UsineDailyReportScreen> {
 
     buffer.writeln();
     buffer.writeln(sep);
+    buffer.writeln('📦 *LIVRAISON MATIÈRE (clients)*');
+    buffer.writeln(sep);
+    if (r.materialDeliveries.isEmpty) {
+      buffer.writeln('_Aucune livraison_');
+    } else {
+      for (final d in r.materialDeliveries) {
+        final lots = d.lotsLabel.isEmpty ? '' : ' (lot ${d.lotsLabel})';
+        buffer.writeln(
+          '• ${d.materialName} → ${d.clientName} : ${_fmtQty(d.quantity, d.unit)}$lots',
+        );
+      }
+    }
+
+    buffer.writeln();
+    buffer.writeln(sep);
     buffer.writeln('📦 *STOCK ALIMENT USINE*');
     buffer.writeln(sep);
     if (r.feedStock.isEmpty) {
@@ -380,6 +395,42 @@ class _UsineDailyReportScreenState extends State<UsineDailyReportScreen> {
     );
   }
 
+  Widget _materialDeliveryRow(DailyReportMaterialDeliveryLine d) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${d.materialName} → ${d.clientName}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (d.lotsLabel.isNotEmpty)
+                  Text(
+                    'lot ${d.lotsLabel}',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Text(
+            _fmtQty(d.quantity, d.unit),
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _feedStockRow(FeedStockSummary s) {
     final color = s.status == 'rupture'
         ? Colors.grey.shade600
@@ -506,6 +557,14 @@ class _UsineDailyReportScreenState extends State<UsineDailyReportScreen> {
                     title: 'LIVRAISON ALIMENT',
                     emptyLabel: 'Aucune livraison ce jour',
                     rows: r.deliveries.map(_deliveryRow).toList(),
+                  ),
+                  _sectionCard(
+                    emoji: '📦',
+                    title: 'LIVRAISON MATIÈRE (clients)',
+                    emptyLabel: 'Aucune livraison ce jour',
+                    rows: r.materialDeliveries
+                        .map(_materialDeliveryRow)
+                        .toList(),
                   ),
                   _sectionCard(
                     emoji: '📦',
