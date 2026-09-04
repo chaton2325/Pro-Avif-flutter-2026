@@ -50,6 +50,16 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
   bool _isLoading = true;
   String? _error;
 
+  // Recherche dynamique du référentiel (une par onglet) — jamais de mutation des listes
+  // sources (_materials/_formulas), qui restent triées et complètes pour les dropdowns de
+  // composition d'une formule.
+  final TextEditingController _materialSearchController =
+      TextEditingController();
+  final TextEditingController _formulaSearchController =
+      TextEditingController();
+  String _materialSearchQuery = '';
+  String _formulaSearchQuery = '';
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +70,8 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _materialSearchController.dispose();
+    _formulaSearchController.dispose();
     super.dispose();
   }
 
@@ -69,8 +81,10 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
       _error = null;
     });
     try {
-      final materials = await _mongoService.getRawMaterials(widget.usine.id!);
-      final formulas = await _mongoService.getFormulas(widget.usine.id!);
+      final materials = await _mongoService.getRawMaterials(widget.usine.id!)
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      final formulas = await _mongoService.getFormulas(widget.usine.id!)
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       if (!mounted) return;
       setState(() {
         _materials = materials;
@@ -84,6 +98,45 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
         _isLoading = false;
       });
     }
+  }
+
+  List<RawMaterial> get _filteredMaterials {
+    final q = _materialSearchQuery.trim().toLowerCase();
+    if (q.isEmpty) return _materials;
+    return _materials.where((m) => m.name.toLowerCase().contains(q)).toList();
+  }
+
+  List<Formula> get _filteredFormulas {
+    final q = _formulaSearchQuery.trim().toLowerCase();
+    if (q.isEmpty) return _formulas;
+    return _formulas.where((f) => f.name.toLowerCase().contains(q)).toList();
+  }
+
+  /// Champ de recherche compact — dense, fond gris clair, jamais plus qu'une ligne, pour
+  /// ne pas prendre de place inutile au-dessus d'une grille déjà chargée.
+  Widget _searchField({
+    required TextEditingController controller,
+    required String hint,
+    required ValueChanged<String> onChanged,
+  }) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      style: const TextStyle(fontSize: 13),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: hint,
+        hintStyle: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+        prefixIcon: const Icon(Icons.search, size: 18, color: Colors.orange),
+        filled: true,
+        fillColor: Colors.grey.shade100,
+        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
   }
 
   /// Unité effective d'une ligne de composition : celle de la matière première choisie
@@ -454,131 +507,167 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           style: TextStyle(color: Colors.grey),
         ),
       );
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        mainAxisExtent: 148,
-      ),
-      itemCount: _materials.length,
-      itemBuilder: (context, index) {
-        final m = _materials[index];
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.orange.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+    final filtered = _filteredMaterials;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _searchField(
+            controller: _materialSearchController,
+            hint: 'Rechercher une matière première...',
+            onChanged: (v) => setState(() => _materialSearchQuery = v),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 15,
-                    backgroundColor: (m.isActive ? Colors.green : Colors.grey)
-                        .withValues(alpha: 0.1),
-                    child: Icon(
-                      Icons.grass_rounded,
-                      size: 16,
-                      color: m.isActive ? Colors.green : Colors.grey,
-                    ),
+        ),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Aucun résultat pour cette recherche.',
+                    style: TextStyle(color: Colors.grey),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        m.name,
-                        maxLines: 1,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 15,
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    mainAxisExtent: 148,
+                  ),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final m = filtered[index];
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.orange.withValues(alpha: 0.2),
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                m.category ?? 'Sans catégorie',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-              ),
-              Text(
-                '${m.isParLot ? "Par lot" : "Global"} · seuil ${formatQty(m.lowStockThreshold)} ${m.unit}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (m.isActive ? Colors.green : Colors.grey.shade400)
-                          .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      m.isActive ? 'ACTIF' : 'INACTIF',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: m.isActive
-                            ? Colors.green.shade800
-                            : Colors.grey.shade600,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 15,
+                                backgroundColor:
+                                    (m.isActive ? Colors.green : Colors.grey)
+                                        .withValues(alpha: 0.1),
+                                child: Icon(
+                                  Icons.grass_rounded,
+                                  size: 16,
+                                  color: m.isActive
+                                      ? Colors.green
+                                      : Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    m.name,
+                                    maxLines: 1,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            m.category ?? 'Sans catégorie',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 11,
+                            ),
+                          ),
+                          Text(
+                            '${m.isParLot ? "Par lot" : "Global"} · seuil ${formatQty(m.lowStockThreshold)} ${m.unit}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const Spacer(),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (m.isActive
+                                              ? Colors.green
+                                              : Colors.grey.shade400)
+                                          .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  m.isActive ? 'ACTIF' : 'INACTIF',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: m.isActive
+                                        ? Colors.green.shade800
+                                        : Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                              const Spacer(),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: () => _showMaterialDialog(material: m),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(
+                                    Icons.edit_rounded,
+                                    color: Colors.blue,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: () => _confirmDeleteMaterial(m),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: Colors.redAccent,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                  const Spacer(),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _showMaterialDialog(material: m),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.edit_rounded,
-                        color: Colors.blue,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _confirmDeleteMaterial(m),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.delete_outline_rounded,
-                        color: Colors.redAccent,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -1021,178 +1110,216 @@ class _UsineReferentielScreenState extends State<UsineReferentielScreen>
           style: TextStyle(color: Colors.grey),
         ),
       );
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        mainAxisExtent: 160,
-      ),
-      itemCount: _formulas.length,
-      itemBuilder: (context, index) {
-        final f = _formulas[index];
-        final unit = _formulaUnitSummary(f);
-        final perUnitLabel = unit == 'mixte'
-            ? '(unités mixtes)'
-            : (f.isManagedInKg ? '$unit/kg' : '$unit/t');
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.deepPurple.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+    final filtered = _filteredFormulas;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _searchField(
+            controller: _formulaSearchController,
+            hint: 'Rechercher un aliment...',
+            onChanged: (v) => setState(() => _formulaSearchQuery = v),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 15,
-                    backgroundColor: Colors.deepPurple.withValues(alpha: 0.1),
-                    child: const Icon(
-                      Icons.science_rounded,
-                      size: 16,
-                      color: Colors.deepPurple,
-                    ),
+        ),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Aucun résultat pour cette recherche.',
+                    style: TextStyle(color: Colors.grey),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        f.name,
-                        maxLines: 1,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    mainAxisExtent: 160,
                   ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              if (f.canBeIngredient || f.isManagedInKg)
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    if (f.canBeIngredient)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final f = filtered[index];
+                    final unit = _formulaUnitSummary(f);
+                    final perUnitLabel = unit == 'mixte'
+                        ? '(unités mixtes)'
+                        : (f.isManagedInKg ? '$unit/kg' : '$unit/t');
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.deepPurple.withValues(alpha: 0.2),
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.deepPurple.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'INGRÉDIENT',
-                          style: TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.deepPurple.shade700,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
+                        ],
                       ),
-                    if (f.isManagedInKg)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'GÉRÉ EN KG',
-                          style: TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.orange.shade800,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 15,
+                                backgroundColor: Colors.deepPurple.withValues(
+                                  alpha: 0.1,
+                                ),
+                                child: const Icon(
+                                  Icons.science_rounded,
+                                  size: 16,
+                                  color: Colors.deepPurple,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    f.name,
+                                    maxLines: 1,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
+                          const SizedBox(height: 6),
+                          if (f.canBeIngredient || f.isManagedInKg)
+                            Wrap(
+                              spacing: 4,
+                              runSpacing: 4,
+                              children: [
+                                if (f.canBeIngredient)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 1,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepPurple.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      'INGRÉDIENT',
+                                      style: TextStyle(
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.deepPurple.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                if (f.isManagedInKg)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 1,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      'GÉRÉ EN KG',
+                                      style: TextStyle(
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.orange.shade800,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          const SizedBox(height: 4),
+                          Text(
+                            f.lines.any((l) => l.isIngredientAliment)
+                                ? '${f.lines.length} ligne(s) · ${formatQty(f.totalPerTon)} $perUnitLabel · utilise un aliment produit'
+                                : '${f.lines.length} matière(s) · ${formatQty(f.totalPerTon)} $perUnitLabel',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const Spacer(),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (f.isActive
+                                              ? Colors.green
+                                              : Colors.grey.shade400)
+                                          .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  f.isActive ? 'ACTIF' : 'INACTIF',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: f.isActive
+                                        ? Colors.green.shade800
+                                        : Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                              const Spacer(),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: () => _showFormulaDialog(formula: f),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(
+                                    Icons.edit_rounded,
+                                    color: Colors.blue,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: () => _toggleFormulaActive(f),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Icon(
+                                    f.isActive
+                                        ? Icons.block_rounded
+                                        : Icons.check_circle_outline_rounded,
+                                    color: f.isActive
+                                        ? Colors.redAccent
+                                        : Colors.green,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                  ],
+                    );
+                  },
                 ),
-              const SizedBox(height: 4),
-              Text(
-                f.lines.any((l) => l.isIngredientAliment)
-                    ? '${f.lines.length} ligne(s) · ${formatQty(f.totalPerTon)} $perUnitLabel · utilise un aliment produit'
-                    : '${f.lines.length} matière(s) · ${formatQty(f.totalPerTon)} $perUnitLabel',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (f.isActive ? Colors.green : Colors.grey.shade400)
-                          .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      f.isActive ? 'ACTIF' : 'INACTIF',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: f.isActive
-                            ? Colors.green.shade800
-                            : Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _showFormulaDialog(formula: f),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.edit_rounded,
-                        color: Colors.blue,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _toggleFormulaActive(f),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        f.isActive
-                            ? Icons.block_rounded
-                            : Icons.check_circle_outline_rounded,
-                        color: f.isActive ? Colors.redAccent : Colors.green,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+        ),
+      ],
     );
   }
 

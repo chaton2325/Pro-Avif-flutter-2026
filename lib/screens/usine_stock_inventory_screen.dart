@@ -62,6 +62,15 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
   List<FeedStockSummary> _feedStock = [];
   bool _isLoading = true;
 
+  // Recherche dynamique du Stock (une par sous-onglet) — jamais de mutation des listes
+  // sources (_materials/_feedStock), qui restent triées et complètes pour les dropdowns
+  // des dialogs (lots, pertes, ajustement...).
+  final TextEditingController _materialSearchController =
+      TextEditingController();
+  final TextEditingController _feedSearchController = TextEditingController();
+  String _materialSearchQuery = '';
+  String _feedSearchQuery = '';
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +82,8 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
     _tabController.dispose();
     _inventoryTabController.dispose();
     _stockTabController.dispose();
+    _materialSearchController.dispose();
+    _feedSearchController.dispose();
     super.dispose();
   }
 
@@ -87,12 +98,64 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
       _mongoService.getFeedStock(widget.usine.id!),
     ]);
     if (!mounted) return;
+    final materials = results[0] as List<RawMaterial>
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final feedStock = results[2] as List<FeedStockSummary>
+      ..sort(
+        (a, b) =>
+            a.formulaName.toLowerCase().compareTo(b.formulaName.toLowerCase()),
+      );
     setState(() {
-      _materials = results[0] as List<RawMaterial>;
+      _materials = materials;
       _activeBatches = results[1] as List<RawMaterialBatch>;
-      _feedStock = results[2] as List<FeedStockSummary>;
+      _feedStock = feedStock;
       _isLoading = false;
     });
+  }
+
+  List<RawMaterial> get _filteredMaterials {
+    final q = _materialSearchQuery.trim().toLowerCase();
+    if (q.isEmpty) return _materials;
+    return _materials.where((m) => m.name.toLowerCase().contains(q)).toList();
+  }
+
+  List<FeedStockSummary> get _filteredFeedStock {
+    final q = _feedSearchQuery.trim().toLowerCase();
+    if (q.isEmpty) return _feedStock;
+    return _feedStock
+        .where((s) => s.formulaName.toLowerCase().contains(q))
+        .toList();
+  }
+
+  /// Champ de recherche compact — réutilisé Stock (matières & aliments) et Référentiel :
+  /// dense, fond gris clair, jamais plus qu'une ligne, pour ne pas prendre de place inutile
+  /// au-dessus d'une liste déjà longue.
+  Widget _searchField({
+    required TextEditingController controller,
+    required String hint,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        style: const TextStyle(fontSize: 13),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: hint,
+          hintStyle: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+          prefixIcon: const Icon(Icons.search, size: 18, color: Colors.orange),
+          filled: true,
+          fillColor: Colors.grey.shade100,
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
   }
 
   void _snack(String message) {
@@ -591,6 +654,12 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         children: [
+          if (_materials.isNotEmpty)
+            _searchField(
+              controller: _materialSearchController,
+              hint: 'Rechercher une matière première...',
+              onChanged: (v) => setState(() => _materialSearchQuery = v),
+            ),
           if (_perms.seeCosts && _materials.isNotEmpty)
             Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -650,7 +719,7 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
               ),
             ),
           if (_materials.isNotEmpty)
-            ..._materials.map((m) {
+            ..._filteredMaterials.map((m) {
               final isLow =
                   m.currentStock < m.lowStockThreshold &&
                   m.lowStockThreshold > 0;
@@ -758,6 +827,16 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
+            )
+          else if (_filteredMaterials.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 40),
+              child: Center(
+                child: Text(
+                  'Aucun résultat pour cette recherche.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
             ),
         ],
       ),
@@ -772,7 +851,13 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         children: [
           if (_feedStock.isNotEmpty)
-            ..._feedStock.map(
+            _searchField(
+              controller: _feedSearchController,
+              hint: 'Rechercher un aliment...',
+              onChanged: (v) => setState(() => _feedSearchQuery = v),
+            ),
+          if (_feedStock.isNotEmpty)
+            ..._filteredFeedStock.map(
               (s) => Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
@@ -876,6 +961,16 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
               child: Center(
                 child: Text(
                   'Aucun aliment produit pour cette usine.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            )
+          else if (_filteredFeedStock.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 40),
+              child: Center(
+                child: Text(
+                  'Aucun résultat pour cette recherche.',
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
