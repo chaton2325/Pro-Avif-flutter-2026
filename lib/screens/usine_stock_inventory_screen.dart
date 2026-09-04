@@ -183,6 +183,20 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
     return total;
   }
 
+  /// Valorisation totale du stock d'aliments produits (coût de revient figé à la
+  /// validation comptable de chaque lot) — même principe que _totalStockValueFcfa pour
+  /// les matières premières, uniquement comptable/admin.
+  double get _totalFeedStockValueFcfa {
+    double total = 0;
+    for (final s in _feedStock) {
+      total += s.batches.fold(
+        0.0,
+        (sum, b) => sum + b.remainingQuantity * b.unitCost,
+      );
+    }
+    return total;
+  }
+
   Color _statusColor(String status) {
     switch (status) {
       case 'rupture':
@@ -855,6 +869,31 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
               controller: _feedSearchController,
               hint: 'Rechercher un aliment...',
               onChanged: (v) => setState(() => _feedSearchQuery = v),
+            ),
+          if (_perms.seeCosts && _feedStock.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: Colors.grey,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "Valeur totale du stock d'aliments : ${NumberFormat('#,###', 'fr_FR').format(_totalFeedStockValueFcfa)} FCFA",
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ),
             ),
           if (_feedStock.isNotEmpty)
             ..._filteredFeedStock.map(
