@@ -23,6 +23,8 @@ import '../models/simulation.dart';
 import '../models/feed_stock.dart';
 import '../models/delivery.dart';
 import '../models/delivery_resource.dart';
+import '../models/client.dart';
+import '../models/material_delivery.dart';
 import '../models/usine_stats.dart';
 import '../models/daily_report.dart';
 import '../models/inventory_session.dart';
@@ -45,7 +47,7 @@ class LicenseBlockedException implements Exception {
 //Base en production : "https://proavif.mirhosty.com"
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "https://proavif.mirhosty.com";
+  final String baseUrl = "http://192.168.1.187:8010";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -1289,6 +1291,166 @@ class MongoService {
       Uri.parse('$baseUrl/delivery-resources/vehicles/$id'),
     );
     return response.statusCode == 200 ? null : 'Erreur inconnue';
+  }
+
+  // ---- Usine Aliment : Clients (livraison de matières premières) ----
+  // Permission dédiée (manageClients / viewClients), distincte de manageDelivery qui
+  // gère les livraisons elles-mêmes ainsi que les chauffeurs/véhicules.
+
+  Future<List<Client>> getClients(String usineId) async {
+    final uri = Uri.parse(
+      '$baseUrl/clients',
+    ).replace(queryParameters: {'usineId': usineId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List)
+          .map((c) => Client.fromMap(c))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<String?> createClient(String usineId, String name) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/clients'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'usineId': usineId, 'name': name, 'isActive': true}),
+    );
+    return response.statusCode == 201 ? null : 'Erreur inconnue';
+  }
+
+  Future<String?> updateClient(
+    String id,
+    String usineId,
+    String name,
+    bool isActive,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/clients/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'usineId': usineId,
+        'name': name,
+        'isActive': isActive,
+      }),
+    );
+    return response.statusCode == 200 ? null : 'Erreur inconnue';
+  }
+
+  Future<String?> deleteClient(String id) async {
+    final response = await http.delete(Uri.parse('$baseUrl/clients/$id'));
+    return response.statusCode == 200 ? null : 'Erreur inconnue';
+  }
+
+  // ---- Usine Aliment : Livraisons de matières premières aux clients ----
+  // Même cycle de vie que /deliveries (aliment -> ferme, voir plus haut) : créée en
+  // attente, stock déduit à la validation (FIFO si « par lot », CUMP si gestion
+  // globale), restitué à l'annulation.
+
+  Future<({MaterialDelivery? delivery, String? error})> createMaterialDelivery({
+    required String usineId,
+    required String rawMaterialId,
+    required String clientName,
+    required double quantity,
+    String? driverName,
+    String? vehicle,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/material-deliveries'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'usineId': usineId,
+        'rawMaterialId': rawMaterialId,
+        'clientName': clientName,
+        'quantity': quantity,
+        'driverName': driverName,
+        'vehicle': vehicle,
+        'performedBy': _performedBy,
+      }),
+    );
+    if (response.statusCode == 201) {
+      return (
+        delivery: MaterialDelivery.fromMap(jsonDecode(response.body)),
+        error: null,
+      );
+    }
+    try {
+      return (
+        delivery: null,
+        error:
+            jsonDecode(response.body)['detail']?.toString() ??
+            'Erreur inconnue',
+      );
+    } catch (_) {
+      return (delivery: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<MaterialDeliveryPagedResult> getMaterialDeliveries({
+    required String usineId,
+    String? rawMaterialId,
+    String? clientName,
+    String sortBy = 'createdAt',
+    String sortOrder = 'desc',
+    int skip = 0,
+    int limit = 30,
+  }) async {
+    final queryParams = <String, String>{
+      'usineId': usineId,
+      'sortBy': sortBy,
+      'sortOrder': sortOrder,
+      'skip': '$skip',
+      'limit': '$limit',
+    };
+    if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
+    if (clientName != null) queryParams['clientName'] = clientName;
+    final uri = Uri.parse(
+      '$baseUrl/material-deliveries',
+    ).replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return MaterialDeliveryPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return MaterialDeliveryPagedResult(
+      totalCount: 0,
+      data: [],
+      limit: limit,
+      skip: skip,
+    );
+  }
+
+  /// Valide une livraison en attente : c'est ici que le stock de matière première est
+  /// réellement déduit (FIFO si « par lot », CUMP si gestion globale).
+  Future<String?> validateMaterialDelivery(String id) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/material-deliveries/$id/validate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'performedBy': _performedBy}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  /// Annule (ou rejette, si encore en attente) une livraison : si le stock avait déjà
+  /// été déduit, il revient sur les lots d'où il venait (ou sur le stock global).
+  Future<String?> cancelMaterialDelivery(String id, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/material-deliveries/$id/cancel'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'reason': reason, 'performedBy': _performedBy}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
   }
 
   // ---- Usine Aliment : Statistiques & traçabilité ----

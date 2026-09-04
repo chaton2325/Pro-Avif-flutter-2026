@@ -8,6 +8,10 @@ import '../models/feed_stock.dart';
 import '../models/delivery.dart';
 import '../models/delivery_resource.dart';
 import '../models/poste.dart';
+import '../models/raw_material.dart';
+import '../models/raw_material_batch.dart';
+import '../models/client.dart';
+import '../models/material_delivery.dart';
 import '../services/mongo_service.dart';
 import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
@@ -15,7 +19,8 @@ import '../widgets/blocking_loader.dart';
 /// Parcours 04 — Livraisons (le stock d'aliment produit se consulte désormais depuis
 /// « Stock & Inventaire ») : création d'une livraison (attribution automatique du lot
 /// d'aliment par FIFO et rappel automatique du lot de sujets du bâtiment — jamais de choix
-/// manuel de lot) puis validation/annulation, le tout dans une seule vue sans onglets.
+/// manuel de lot) puis validation/annulation. Deux onglets : aliment vers une ferme, et
+/// matière première vers un client (même principe de validation/décrémentation).
 class UsineStockLivraisonScreen extends StatefulWidget {
   final Usine usine;
   final PostePermissions? permissions;
@@ -30,10 +35,12 @@ class UsineStockLivraisonScreen extends StatefulWidget {
       _UsineStockLivraisonScreenState();
 }
 
-class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
+class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
+    with SingleTickerProviderStateMixin {
   final MongoService _mongoService = MongoService();
   PostePermissions get _perms => widget.permissions ?? fullAccessPermissions;
   static const int _pageSize = 20;
+  late final TabController _tabController;
 
   List<FeedStockSummary> _stock = [];
   List<Formula> _formulas = [];
@@ -48,10 +55,27 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
   String _historySortOrder = 'desc';
   int _currentPage = 0;
 
+  // Onglet matières premières -> clients.
+  List<RawMaterial> _rawMaterials = [];
+  List<Client> _clients = [];
+  MaterialDeliveryPagedResult? _materialDeliveryPage;
+  bool _isLoadingMaterialHistory = true;
+  String? _historyMaterialFilter; // rawMaterialId, null = toutes les matières
+  String _materialHistorySortBy = 'createdAt';
+  String _materialHistorySortOrder = 'desc';
+  int _materialCurrentPage = 0;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _refreshAll();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _refreshAll() async {
@@ -62,6 +86,8 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
       _mongoService.getFarms(),
       _mongoService.getDrivers(widget.usine.id!),
       _mongoService.getVehicles(widget.usine.id!),
+      _mongoService.getRawMaterials(widget.usine.id!),
+      _mongoService.getClients(widget.usine.id!),
     ]);
     if (!mounted) return;
     setState(() {
@@ -71,9 +97,12 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _drivers = results[3] as List<DeliveryResource>;
       _vehicles = results[4] as List<DeliveryResource>;
+      _rawMaterials = results[5] as List<RawMaterial>;
+      _clients = (results[6] as List<Client>)
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _isLoading = false;
     });
-    await _loadHistoryPage();
+    await Future.wait([_loadHistoryPage(), _loadMaterialHistoryPage()]);
   }
 
   Future<void> _loadHistoryPage() async {
@@ -129,6 +158,58 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
     _loadHistoryPage();
   }
 
+  Future<void> _loadMaterialHistoryPage() async {
+    setState(() => _isLoadingMaterialHistory = true);
+    final page = await _mongoService.getMaterialDeliveries(
+      usineId: widget.usine.id!,
+      rawMaterialId: _historyMaterialFilter,
+      sortBy: _materialHistorySortBy,
+      sortOrder: _materialHistorySortOrder,
+      skip: _materialCurrentPage * _pageSize,
+      limit: _pageSize,
+    );
+    if (!mounted) return;
+    setState(() {
+      _materialDeliveryPage = page;
+      _isLoadingMaterialHistory = false;
+    });
+  }
+
+  void _applyMaterialHistoryFilter(String? rawMaterialId) {
+    setState(() {
+      _historyMaterialFilter = rawMaterialId;
+      _materialCurrentPage = 0;
+    });
+    _loadMaterialHistoryPage();
+  }
+
+  static const Map<String, (String, String)> _materialHistorySortOptions = {
+    'createdAt_desc': ('createdAt', 'desc'),
+    'createdAt_asc': ('createdAt', 'asc'),
+    'clientName_asc': ('clientName', 'asc'),
+    'driverName_asc': ('driverName', 'asc'),
+    'vehicle_asc': ('vehicle', 'asc'),
+    'quantity_desc': ('quantity', 'desc'),
+    'quantity_asc': ('quantity', 'asc'),
+  };
+
+  void _applyMaterialHistorySort(String? key) {
+    if (key == null) return;
+    final option = _materialHistorySortOptions[key];
+    if (option == null) return;
+    setState(() {
+      _materialHistorySortBy = option.$1;
+      _materialHistorySortOrder = option.$2;
+      _materialCurrentPage = 0;
+    });
+    _loadMaterialHistoryPage();
+  }
+
+  void _goToMaterialPage(int page) {
+    setState(() => _materialCurrentPage = page);
+    _loadMaterialHistoryPage();
+  }
+
   void _snack(String message) {
     ScaffoldMessenger.of(
       context,
@@ -137,6 +218,24 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
 
   List<MapEntry<String, double>> _previewFifo(
     List<FeedStockBatch> batches,
+    double qty,
+  ) {
+    double remaining = qty;
+    final result = <MapEntry<String, double>>[];
+    for (final b in batches) {
+      if (remaining <= 0) break;
+      final take = remaining < b.remainingQuantity
+          ? remaining
+          : b.remainingQuantity;
+      if (take <= 0) continue;
+      result.add(MapEntry(b.lotNumber, take));
+      remaining -= take;
+    }
+    return result;
+  }
+
+  List<MapEntry<String, double>> _previewFifoMaterial(
+    List<RawMaterialBatch> batches,
     double qty,
   ) {
     double remaining = qty;
@@ -257,6 +356,119 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
                                   style: const TextStyle(fontSize: 12),
                                 ),
                                 onTap: () => Navigator.pop(sheetContext, farm),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Même principe que _pickFarm, mais pour choisir un client (livraison de matière
+  /// première) dans la liste tenue par la logistique.
+  Future<Client?> _pickClient(BuildContext context) async {
+    final searchController = TextEditingController();
+    final activeClients = _clients.where((c) => c.isActive).toList();
+    return showModalBottomSheet<Client>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        List<Client> filtered = List.of(activeClients);
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            return SizedBox(
+              height: MediaQuery.of(sheetContext).size.height * 0.75,
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                    child: Text(
+                      'Choisir un client',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: TextField(
+                      controller: searchController,
+                      autofocus: false,
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher un client...',
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.orange,
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (query) {
+                        final q = query.toLowerCase();
+                        setSheetState(() {
+                          filtered = activeClients
+                              .where((c) => c.name.toLowerCase().contains(q))
+                              .toList();
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Aucun client trouvé',
+                              style: TextStyle(color: Colors.grey.shade500),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) =>
+                                Divider(height: 1, color: Colors.grey.shade200),
+                            itemBuilder: (_, i) {
+                              final client = filtered[i];
+                              return ListTile(
+                                leading: const CircleAvatar(
+                                  backgroundColor: Color(0xFFFFF3E0),
+                                  child: Icon(
+                                    Icons.storefront_outlined,
+                                    color: Colors.orange,
+                                    size: 20,
+                                  ),
+                                ),
+                                title: Text(
+                                  client.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                onTap: () =>
+                                    Navigator.pop(sheetContext, client),
                               );
                             },
                           ),
@@ -483,6 +695,180 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
     );
   }
 
+  /// Gestion de la liste des clients : ajout/désactivation/suppression réservés à
+  /// manageClients (« élaboration ») — un poste n'ayant que viewClients (« consultation »)
+  /// voit la liste (juste le nom) mais sans les contrôles d'édition.
+  void _showManageClientsDialog() {
+    final canManage = _perms.manageClients;
+    final nameController = TextEditingController();
+    bool isBusy = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> reload() async {
+            final clients = await _mongoService.getClients(widget.usine.id!);
+            if (!mounted) return;
+            clients.sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            );
+            setState(() => _clients = clients);
+            setDialogState(() {});
+          }
+
+          Future<void> add() async {
+            if (isBusy || !canManage) return;
+            final name = nameController.text.trim();
+            if (name.isEmpty) return;
+            setDialogState(() => isBusy = true);
+            final error = await runBlocking(
+              context,
+              () => _mongoService.createClient(widget.usine.id!, name),
+            );
+            nameController.clear();
+            if (error != null) _snack(error);
+            await reload();
+            setDialogState(() => isBusy = false);
+          }
+
+          Future<void> toggleActive(Client item) async {
+            if (isBusy || !canManage) return;
+            setDialogState(() => isBusy = true);
+            final error = await runBlocking(
+              context,
+              () => _mongoService.updateClient(
+                item.id,
+                item.usineId,
+                item.name,
+                !item.isActive,
+              ),
+            );
+            if (error != null) _snack(error);
+            await reload();
+            setDialogState(() => isBusy = false);
+          }
+
+          Future<void> remove(Client item) async {
+            if (isBusy || !canManage) return;
+            setDialogState(() => isBusy = true);
+            final error = await runBlocking(
+              context,
+              () => _mongoService.deleteClient(item.id),
+            );
+            if (error != null) _snack(error);
+            await reload();
+            setDialogState(() => isBusy = false);
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Text(
+              'Clients',
+              style: TextStyle(
+                color: Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: SizedBox(
+              width: 420,
+              height: 440,
+              child: Column(
+                children: [
+                  if (canManage) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: nameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Nom du client',
+                              isDense: true,
+                            ),
+                            onSubmitted: (_) => add(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.filled(
+                          onPressed: isBusy ? null : add,
+                          icon: const Icon(Icons.add),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  Expanded(
+                    child: _clients.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Aucun client enregistré',
+                              style: TextStyle(color: Colors.grey.shade500),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: _clients.length,
+                            separatorBuilder: (_, __) =>
+                                Divider(height: 1, color: Colors.grey.shade200),
+                            itemBuilder: (_, i) {
+                              final item = _clients[i];
+                              return ListTile(
+                                dense: true,
+                                title: Text(
+                                  item.name,
+                                  style: TextStyle(
+                                    decoration: item.isActive
+                                        ? null
+                                        : TextDecoration.lineThrough,
+                                    color: item.isActive
+                                        ? Colors.black87
+                                        : Colors.grey,
+                                  ),
+                                ),
+                                trailing: canManage
+                                    ? Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Switch(
+                                            value: item.isActive,
+                                            activeTrackColor: Colors.orange,
+                                            onChanged: (_) =>
+                                                toggleActive(item),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              color: Colors.red,
+                                              size: 20,
+                                            ),
+                                            onPressed: () => remove(item),
+                                          ),
+                                        ],
+                                      )
+                                    : null,
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Fermer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showDeliveryDialog() {
     if (_stock.isEmpty || _farms.isEmpty) {
       _snack(
@@ -517,7 +903,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
           final batches = stockEntry.isNotEmpty
               ? stockEntry.first.batches
               : <FeedStockBatch>[];
-          final qty = double.tryParse(quantityController.text) ?? 0;
+          final qty = parseQty(quantityController.text) ?? 0;
           final preview = _previewFifo(batches, qty);
           final remainAfter = (available - qty).clamp(0, double.infinity);
 
@@ -671,7 +1057,9 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
                       ),
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d*$'),
+                          // Point OU virgule comme séparateur décimal (clavier numérique
+                          // en français) — jamais les deux à la fois.
+                          RegExp(r'^\d*[.,]?\d*$'),
                         ),
                       ],
                       decoration: InputDecoration(
@@ -1151,6 +1539,609 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
     );
   }
 
+  void _showMaterialDeliveryDialog() {
+    final activeMaterials = _rawMaterials.where((m) => m.isActive).toList();
+    if (activeMaterials.isEmpty || _clients.where((c) => c.isActive).isEmpty) {
+      _snack(
+        activeMaterials.isEmpty
+            ? 'Aucune matière première configurée dans le référentiel.'
+            : "Aucun client enregistré — ajoutez-en un via « Clients ».",
+      );
+      return;
+    }
+    RawMaterial selectedMaterial = activeMaterials.firstWhere(
+      (m) => m.currentStock > 0,
+      orElse: () => activeMaterials.first,
+    );
+    Client? selectedClient;
+    List<RawMaterialBatch> materialBatches = [];
+    bool batchesLoading = false;
+    final quantityController = TextEditingController();
+    String? selectedDriverName;
+    String? selectedVehicleName;
+    String? error;
+    bool isBusy = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final available = selectedMaterial.currentStock;
+          final qty = parseQty(quantityController.text) ?? 0;
+          final preview = selectedMaterial.isParLot
+              ? _previewFifoMaterial(materialBatches, qty)
+              : <MapEntry<String, double>>[];
+          final remainAfter = (available - qty).clamp(0, double.infinity);
+
+          Future<void> fetchBatches() async {
+            if (!selectedMaterial.isParLot) {
+              setDialogState(() => materialBatches = []);
+              return;
+            }
+            setDialogState(() => batchesLoading = true);
+            final batches = await _mongoService.getRawMaterialBatches(
+              usineId: widget.usine.id!,
+              rawMaterialId: selectedMaterial.id,
+              status: 'actif',
+            );
+            setDialogState(() {
+              materialBatches = batches;
+              batchesLoading = false;
+            });
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Text(
+              'Nouvelle livraison matière première',
+              style: TextStyle(
+                color: Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: selectedMaterial.id,
+                      decoration: const InputDecoration(
+                        labelText: 'Matière première',
+                      ),
+                      items: activeMaterials
+                          .map(
+                            (m) => DropdownMenuItem(
+                              value: m.id,
+                              child: Text(
+                                '${m.name} · ${formatQty(m.currentStock)} ${m.unit} dispo',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        final m = activeMaterials.firstWhere(
+                          (m) => m.id == v,
+                        );
+                        setDialogState(() => selectedMaterial = m);
+                        fetchBatches();
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () async {
+                        final picked = await _pickClient(context);
+                        if (picked == null) return;
+                        setDialogState(() => selectedClient = picked);
+                      },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Client',
+                          suffixIcon: Icon(Icons.arrow_drop_down),
+                        ),
+                        child: Text(
+                          selectedClient?.name ?? 'Choisir un client',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: selectedClient == null
+                                ? Colors.grey.shade600
+                                : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Stock disponible',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${formatQty(available)} ${selectedMaterial.unit}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: quantityController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          // Point OU virgule comme séparateur décimal (clavier numérique
+                          // en français) — jamais les deux à la fois.
+                          RegExp(r'^\d*[.,]?\d*$'),
+                        ),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'Quantité à livrer (${selectedMaterial.unit})',
+                        errorText: qty > available
+                            ? 'Dépasse le stock disponible (${formatQty(available)} ${selectedMaterial.unit})'
+                            : null,
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: selectedDriverName,
+                      decoration: InputDecoration(
+                        labelText: 'Chauffeur',
+                        helperText: _drivers.where((d) => d.isActive).isEmpty
+                            ? 'Aucun chauffeur configuré'
+                            : null,
+                      ),
+                      items: _drivers
+                          .where((d) => d.isActive)
+                          .map(
+                            (d) => DropdownMenuItem(
+                              value: d.name,
+                              child: Text(
+                                d.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setDialogState(() => selectedDriverName = v),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: selectedVehicleName,
+                      decoration: InputDecoration(
+                        labelText: 'Véhicule',
+                        helperText: _vehicles.where((v) => v.isActive).isEmpty
+                            ? 'Aucun véhicule configuré'
+                            : null,
+                      ),
+                      items: _vehicles
+                          .where((v) => v.isActive)
+                          .map(
+                            (v) => DropdownMenuItem(
+                              value: v.name,
+                              child: Text(
+                                v.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setDialogState(() => selectedVehicleName = v),
+                    ),
+                    if (selectedMaterial.isParLot && batchesLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 12),
+                        child: LinearProgressIndicator(color: Colors.orange),
+                      ),
+                    if (preview.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          border: Border.all(color: Colors.green.shade300),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Lot(s) attribué(s) (AUTO)',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: preview
+                                  .map(
+                                    (p) => Chip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: Text(
+                                        '${p.key} · ${formatQty(p.value)} ${selectedMaterial.unit}',
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Stock restant après livraison',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${formatQty(remainAfter)} ${selectedMaterial.unit}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: Text(
+                        'Créée en attente : le stock ne sera déduit qu\'à la validation.',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ),
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          error!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    if (isBusy)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 16),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isBusy ? null : () => Navigator.pop(context),
+                child: const Text(
+                  'Annuler',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: (isBusy || qty <= 0 || qty > available)
+                    ? null
+                    : () async {
+                        if (selectedClient == null) {
+                          setDialogState(
+                            () => error = 'Choisissez le client destinataire.',
+                          );
+                          return;
+                        }
+                        if (qty <= 0) {
+                          setDialogState(() => error = 'Quantité invalide.');
+                          return;
+                        }
+                        if (qty > available) {
+                          setDialogState(
+                            () => error =
+                                'La quantité dépasse le stock disponible.',
+                          );
+                          return;
+                        }
+                        setDialogState(() {
+                          isBusy = true;
+                          error = null;
+                        });
+                        final result = await runBlocking(
+                          context,
+                          () => _mongoService.createMaterialDelivery(
+                            usineId: widget.usine.id!,
+                            rawMaterialId: selectedMaterial.id!,
+                            clientName: selectedClient!.name,
+                            quantity: qty,
+                            driverName: selectedDriverName,
+                            vehicle: selectedVehicleName,
+                          ),
+                        );
+                        if (result.error != null) {
+                          setDialogState(() {
+                            error = result.error;
+                            isBusy = false;
+                          });
+                          return;
+                        }
+                        await _refreshAll();
+                        if (!context.mounted) return;
+                        Navigator.pop(context);
+                        _snack(
+                          'Livraison créée : ${formatQty(qty)} ${selectedMaterial.unit} vers ${selectedClient!.name} — en attente de validation.',
+                        );
+                      },
+                child: const Text('Créer la livraison'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showMaterialDeliveryDetailDialog(MaterialDelivery d) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          d.clientName,
+          style: const TextStyle(
+            color: Colors.orange,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (d.isCancelled)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Annulée${d.cancelledAt != null ? " le ${DateFormat('dd/MM/yyyy').format(d.cancelledAt!)}" : ""}'
+                      '${d.cancelledBy != null ? " par ${d.cancelledBy}" : ""} : ${d.cancelReason ?? ""}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.red.shade800,
+                      ),
+                    ),
+                  )
+                else if (d.isPending)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'En attente de validation — le stock ne sera déduit qu\'à ce moment-là.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                  )
+                else if (d.validatedAt != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Validée le ${DateFormat('dd/MM/yyyy · HH:mm').format(d.validatedAt!)}'
+                      '${d.validatedBy != null ? " par ${d.validatedBy}" : ""}.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green.shade800,
+                      ),
+                    ),
+                  ),
+                _detailRow(
+                  'Date',
+                  DateFormat('dd/MM/yyyy · HH:mm').format(d.createdAt),
+                ),
+                _detailRow(
+                  'Matière',
+                  '${d.materialName} · ${formatQty(d.quantity)} ${d.unit}',
+                ),
+                _detailRow(
+                  'Lot(s)',
+                  d.isPending
+                      ? 'À attribuer à la validation'
+                      : (d.isParLot ? d.lotsLabel : 'Gestion globale (CUMP)'),
+                ),
+                if (d.driverName != null)
+                  _detailRow('Chauffeur', d.driverName!),
+                if (d.vehicle != null) _detailRow('Véhicule', d.vehicle!),
+                if (_perms.seeCosts && !d.isPending)
+                  _detailRow('Coût', '${d.totalCost.toStringAsFixed(0)} F'),
+                if (d.performedBy != null)
+                  _detailRow('Enregistrée par', d.performedBy!),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer', style: TextStyle(color: Colors.grey)),
+          ),
+          if (!d.isCancelled &&
+              (_perms.manageDelivery ||
+                  (_perms.validateDelivery && d.isPending)))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _showCancelMaterialDeliveryDialog(d);
+              },
+              child: Text(
+                d.isPending ? 'Refuser la livraison' : 'Annuler la livraison',
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ),
+          if (d.isPending && _perms.validateDelivery)
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () async {
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.validateMaterialDelivery(d.id),
+                );
+                if (err != null) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(err)));
+                  return;
+                }
+                await _refreshAll();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _snack('Livraison validée : le stock a été déduit.');
+              },
+              child: const Text('Valider'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showCancelMaterialDeliveryDialog(MaterialDelivery d) {
+    final reasonController = TextEditingController();
+    String? error;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            d.isPending ? 'Refuser la livraison' : 'Annuler la livraison',
+            style: const TextStyle(
+              color: Colors.redAccent,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                d.isPending
+                    ? 'Cette livraison n\'a pas encore été validée : aucun stock n\'a été déduit, elle sera simplement rejetée.'
+                    : (d.isParLot
+                          ? '${formatQty(d.quantity)} ${d.unit} de ${d.materialName} reviendront en stock (lots ${d.lotsLabel}).'
+                          : '${formatQty(d.quantity)} ${d.unit} de ${d.materialName} reviendront en stock.'),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                decoration: InputDecoration(
+                  labelText: 'Motif',
+                  errorText: error,
+                ),
+                autofocus: true,
+                maxLines: 2,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Retour', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
+              onPressed: () async {
+                if (reasonController.text.trim().isEmpty) {
+                  setDialogState(() => error = 'Motif requis');
+                  return;
+                }
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.cancelMaterialDelivery(
+                    d.id,
+                    reasonController.text.trim(),
+                  ),
+                );
+                if (err != null) {
+                  setDialogState(() => error = err);
+                  return;
+                }
+                await _refreshAll();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _snack(
+                  d.isPending
+                      ? 'Livraison refusée.'
+                      : 'Livraison annulée, stock reversé.',
+                );
+              },
+              child: Text(
+                d.isPending ? 'Confirmer le refus' : 'Confirmer l\'annulation',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBody() {
     final page = _deliveryPage;
     final totalPages = page == null || page.totalCount == 0
@@ -1450,6 +2441,307 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
     );
   }
 
+  Widget _buildMaterialBody() {
+    final page = _materialDeliveryPage;
+    final totalPages = page == null || page.totalCount == 0
+        ? 1
+        : (page.totalCount / _pageSize).ceil();
+    return Column(
+      children: [
+        if (_perms.manageDelivery)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+              ),
+              child: ListTile(
+                onTap: _showMaterialDeliveryDialog,
+                leading: CircleAvatar(
+                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.teal,
+                  ),
+                ),
+                title: const Text(
+                  'Nouvelle livraison',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                ),
+                subtitle: const Text(
+                  'Matière première livrée directement à un client',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
+            ),
+          ),
+        if (_perms.manageClients || _perms.viewClients)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade100),
+              ),
+              child: ListTile(
+                onTap: _showManageClientsDialog,
+                leading: CircleAvatar(
+                  backgroundColor: Colors.blueGrey.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.storefront_outlined,
+                    color: Colors.blueGrey,
+                  ),
+                ),
+                title: const Text(
+                  'Clients',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                ),
+                subtitle: Text(
+                  _perms.manageClients
+                      ? 'Liste utilisée lors de la saisie des livraisons'
+                      : 'Consultation seule',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              ),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String?>(
+                  isExpanded: true,
+                  value: _historyMaterialFilter,
+                  decoration: const InputDecoration(
+                    labelText: 'Matière première',
+                    isDense: true,
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Toutes les matières'),
+                    ),
+                    ..._rawMaterials
+                        .where((m) => m.id != null)
+                        .map(
+                          (m) => DropdownMenuItem(
+                            value: m.id,
+                            child: Text(m.name),
+                          ),
+                        ),
+                  ],
+                  onChanged: _applyMaterialHistoryFilter,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: '${_materialHistorySortBy}_$_materialHistorySortOrder',
+                  decoration: const InputDecoration(
+                    labelText: 'Trier par',
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'createdAt_desc',
+                      child: Text('Date (récent → ancien)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'createdAt_asc',
+                      child: Text('Date (ancien → récent)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'clientName_asc',
+                      child: Text('Client (A → Z)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'driverName_asc',
+                      child: Text('Chauffeur (A → Z)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'vehicle_asc',
+                      child: Text('Véhicule (A → Z)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'quantity_desc',
+                      child: Text('Quantité (grande → petite)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'quantity_asc',
+                      child: Text('Quantité (petite → grande)'),
+                    ),
+                  ],
+                  onChanged: _applyMaterialHistorySort,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _isLoadingMaterialHistory
+              ? const Center(
+                  child: CircularProgressIndicator(color: Colors.orange),
+                )
+              : (page == null || page.data.isEmpty)
+              ? const Center(
+                  child: Text(
+                    'Aucune livraison pour ce filtre.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  itemCount: page.data.length,
+                  itemBuilder: (context, index) {
+                    final d = page.data[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade100),
+                      ),
+                      child: ListTile(
+                        onTap: () => _showMaterialDeliveryDetailDialog(d),
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              (d.isCancelled
+                                      ? Colors.grey
+                                      : (d.isPending
+                                            ? Colors.amber.shade800
+                                            : Colors.teal))
+                                  .withValues(alpha: 0.1),
+                          child: Icon(
+                            d.isCancelled
+                                ? Icons.undo_rounded
+                                : (d.isPending
+                                      ? Icons.hourglass_top_rounded
+                                      : Icons.local_shipping_outlined),
+                            color: d.isCancelled
+                                ? Colors.grey
+                                : (d.isPending
+                                      ? Colors.amber.shade800
+                                      : Colors.teal),
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(
+                          '${DateFormat('dd/MM/yyyy').format(d.createdAt)} · ${d.clientName}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: d.isCancelled ? Colors.grey : Colors.black,
+                            decoration: d.isCancelled
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                        subtitle: Text(
+                          d.isCancelled
+                              ? 'Annulée : ${d.cancelReason ?? ""}'
+                              : (d.isPending
+                                    ? 'En attente de validation — ${d.materialName}${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).isNotEmpty ? " · ${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}" : ""}'
+                                    : '${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}'
+                                          '${d.driverName != null ? " · " : ""}${d.materialName}'
+                                          '${d.isParLot ? " (${d.lotsLabel})" : ""}'
+                                          '${_perms.seeCosts ? " · ${d.totalCost.toStringAsFixed(0)} F" : ""}'),
+                          style: TextStyle(
+                            color: d.isCancelled
+                                ? Colors.red.shade300
+                                : (d.isPending
+                                      ? Colors.amber.shade800
+                                      : Colors.grey.shade600),
+                            fontSize: 11.5,
+                          ),
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${formatQty(d.quantity)} ${d.unit}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: d.isCancelled
+                                    ? Colors.grey
+                                    : Colors.black,
+                                decoration: d.isCancelled
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
+                            if (d.isCancelled || d.isPending)
+                              Container(
+                                margin: const EdgeInsets.only(top: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: d.isCancelled
+                                      ? Colors.red.shade50
+                                      : Colors.amber.shade50,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  d.isCancelled ? 'ANNULÉE' : 'EN ATTENTE',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w800,
+                                    color: d.isCancelled
+                                        ? Colors.red.shade700
+                                        : Colors.amber.shade900,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        if (page != null && totalPages > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _materialCurrentPage > 0
+                      ? () => _goToMaterialPage(_materialCurrentPage - 1)
+                      : null,
+                ),
+                Text(
+                  'Page ${_materialCurrentPage + 1} / $totalPages · ${page.totalCount} livraison(s)',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _materialCurrentPage < totalPages - 1
+                      ? () => _goToMaterialPage(_materialCurrentPage + 1)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1471,10 +2763,27 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen> {
             onPressed: _refreshAll,
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.orange,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: Colors.orange,
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 12.5,
+          ),
+          tabs: const [
+            Tab(text: 'Aliment → Fermes'),
+            Tab(text: 'Matières → Clients'),
+          ],
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.orange))
-          : _buildBody(),
+          : TabBarView(
+              controller: _tabController,
+              children: [_buildBody(), _buildMaterialBody()],
+            ),
     );
   }
 }

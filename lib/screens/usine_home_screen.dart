@@ -189,7 +189,10 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
         ? 'Stock, matières & aliments'
         : 'Inventaire, matières & aliments';
     final canLivraisons =
-        permissions.manageDelivery || permissions.validateDelivery;
+        permissions.manageDelivery ||
+        permissions.validateDelivery ||
+        permissions.manageClients ||
+        permissions.viewClients;
     final canProduction =
         permissions.manageProduction || permissions.validateCost;
     final canAdmin = permissions.manageAdmin;

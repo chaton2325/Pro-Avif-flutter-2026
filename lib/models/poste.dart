@@ -14,6 +14,8 @@ const PostePermissions fullAccessPermissions = PostePermissions(
   manageInventory: true,
   validateDelivery: true,
   viewStock: true,
+  manageClients: true,
+  viewClients: true,
 );
 
 /// Ce qu'un poste autorise dans le module Usine Aliment. Le nom du poste est libre
@@ -32,6 +34,8 @@ class PostePermissions {
   final bool manageInventory;
   final bool validateDelivery;
   final bool viewStock;
+  final bool manageClients;
+  final bool viewClients;
 
   const PostePermissions({
     this.seeCosts = false,
@@ -46,6 +50,8 @@ class PostePermissions {
     this.manageInventory = false,
     this.validateDelivery = false,
     this.viewStock = false,
+    this.manageClients = false,
+    this.viewClients = false,
   });
 
   static const List<MapEntry<String, String>> labels = [
@@ -64,6 +70,8 @@ class PostePermissions {
       'validateDelivery',
       'Valider les livraisons créées par la logistique',
     ),
+    MapEntry('manageClients', 'Créer / modifier la liste des clients'),
+    MapEntry('viewClients', 'Consulter la liste des clients (nom uniquement)'),
   ];
 
   bool operator [](String key) {
@@ -92,6 +100,10 @@ class PostePermissions {
         return validateDelivery;
       case 'viewStock':
         return viewStock;
+      case 'manageClients':
+        return manageClients;
+      case 'viewClients':
+        return viewClients;
       default:
         return false;
     }
@@ -111,6 +123,8 @@ class PostePermissions {
       manageInventory: key == 'manageInventory' ? value : manageInventory,
       validateDelivery: key == 'validateDelivery' ? value : validateDelivery,
       viewStock: key == 'viewStock' ? value : viewStock,
+      manageClients: key == 'manageClients' ? value : manageClients,
+      viewClients: key == 'viewClients' ? value : viewClients,
     );
   }
 
@@ -128,6 +142,8 @@ class PostePermissions {
       'manageInventory': manageInventory,
       'validateDelivery': validateDelivery,
       'viewStock': viewStock,
+      'manageClients': manageClients,
+      'viewClients': viewClients,
     };
   }
 
@@ -146,6 +162,8 @@ class PostePermissions {
       manageInventory: map['manageInventory'] as bool? ?? false,
       validateDelivery: map['validateDelivery'] as bool? ?? false,
       viewStock: map['viewStock'] as bool? ?? false,
+      manageClients: map['manageClients'] as bool? ?? false,
+      viewClients: map['viewClients'] as bool? ?? false,
     );
   }
 }
@@ -183,7 +201,14 @@ const List<PosteTemplate> posteTemplates = [
       viewStats: true,
     ),
   ),
-  PosteTemplate('Logistique', PostePermissions(manageDelivery: true)),
+  PosteTemplate(
+    'Logistique',
+    PostePermissions(
+      manageDelivery: true,
+      manageClients: true,
+      viewClients: true,
+    ),
+  ),
   PosteTemplate(
     'Validation des livraisons',
     PostePermissions(validateDelivery: true),

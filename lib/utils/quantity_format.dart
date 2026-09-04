@@ -23,3 +23,9 @@ String formatQty(num value, {int maxDecimals = 2}) {
 bool isNegligibleVariance(num value, {int maxDecimals = 2}) {
   return formatQty(value.abs(), maxDecimals: maxDecimals) == '0';
 }
+
+/// Lit une quantité saisie au clavier numérique : le clavier décimal d'un téléphone en
+/// français affiche une virgule sur la touche séparateur, jamais un point — sans cette
+/// conversion, `double.tryParse` rejette silencieusement toute valeur décimale saisie
+/// normalement (ex. "12,5" -> null) et fait passer le formulaire pour vide/invalide.
+double? parseQty(String text) => double.tryParse(text.trim().replaceAll(',', '.'));
