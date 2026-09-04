@@ -604,12 +604,19 @@ class MongoService {
   /// utilisateur usine connecté.
   String get _performedBy => currentUsineUser?.name ?? 'Admin';
 
-  Future<void> addReception(Reception reception) async {
-    await http.post(
+  /// Renvoie la réception créée (toujours "en_attente" à ce stade, jamais valorisée par
+  /// cet appel) — pour permettre, si l'utilisateur a saisi un prix, de l'enchaîner
+  /// immédiatement avec un appel à valorizeReception sur son id.
+  Future<Reception?> addReception(Reception reception) async {
+    final response = await http.post(
       Uri.parse('$baseUrl/receptions'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(reception.toCreateMap(performedBy: _performedBy)),
     );
+    if (response.statusCode == 201) {
+      return Reception.fromMap(jsonDecode(response.body));
+    }
+    return null;
   }
 
   /// Renvoie un message d'erreur (côté serveur) si la valorisation échoue, sinon null.
@@ -618,6 +625,25 @@ class MongoService {
       Uri.parse('$baseUrl/receptions/$id/valorize'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'unitPrice': unitPrice, 'performedBy': _performedBy}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ??
+          'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  /// Annule une réception encore en attente de prix (jamais une déjà valorisée, où le
+  /// stock a pu bouger depuis) — motif obligatoire, réception conservée dans l'historique
+  /// avec le statut "annulée". Renvoie un message d'erreur si l'annulation échoue, sinon
+  /// null.
+  Future<String?> cancelReception(String id, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/receptions/$id/cancel'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'reason': reason, 'performedBy': _performedBy}),
     );
     if (response.statusCode == 200) return null;
     try {

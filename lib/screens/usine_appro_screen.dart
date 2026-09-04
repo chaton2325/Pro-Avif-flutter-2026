@@ -47,6 +47,7 @@ class _HistoryEntry {
 const Map<String, String> _historyTypeLabels = {
   'attente': 'En attente',
   'reception': 'Réceptions',
+  'annulee': 'Annulées',
   'perte': 'Pertes / écarts',
   'ajustement': 'Ajustements CUMP',
 };
@@ -114,6 +115,10 @@ class _UsineApproScreenState extends State<UsineApproScreen>
         usineId: widget.usine.id,
         status: 'valorisee',
       );
+      final cancelled = await _mongoService.getReceptions(
+        usineId: widget.usine.id,
+        status: 'annulee',
+      );
       final losses = await _mongoService.getStockLosses(
         usineId: widget.usine.id,
       );
@@ -164,6 +169,19 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 : '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
             type: 'reception',
             performedBy: r.valorizedBy ?? r.createdBy,
+            reception: r,
+          ),
+        ),
+        ...cancelled.map(
+          (r) => _HistoryEntry(
+            date: r.cancelledAt ?? r.createdAt ?? DateTime.now(),
+            icon: Icons.undo_rounded,
+            color: Colors.grey,
+            title: 'Réception annulée — ${materialName(r.rawMaterialId)}',
+            subtitle:
+                '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""} · ${r.cancelReason ?? ""}',
+            type: 'annulee',
+            performedBy: r.cancelledBy ?? r.createdBy,
             reception: r,
           ),
         ),
@@ -220,6 +238,42 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     }
   }
 
+  /// Demande de confirmation générique (« Êtes-vous sûr ? ») avant une action qui touche
+  /// au stock ou est irréversible — se pose PAR-DESSUS le dialog déjà ouvert (jamais à sa
+  /// place), pour qu'un "Annuler" ici revienne au formulaire avec sa saisie intacte plutôt
+  /// que de tout perdre. Ne remplace jamais l'indicateur d'activité bloquant (runBlocking),
+  /// qui reste posé sur l'appel réseau lui-même une fois confirmé.
+  Future<bool> _confirmAction(
+    String title,
+    String message, {
+    required String confirmLabel,
+    required Color confirmColor,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          title,
+          style: TextStyle(color: confirmColor, fontWeight: FontWeight.bold),
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: confirmColor),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
   RawMaterial? _materialById(String id) => _materials
       .cast<RawMaterial?>()
       .firstWhere((m) => m?.id == id, orElse: () => null);
@@ -242,6 +296,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     final supplierController = TextEditingController();
     final quantityController = TextEditingController();
     final noteController = TextEditingController();
+    final priceController = TextEditingController();
 
     showDialog(
       context: context,
@@ -303,13 +358,35 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   ),
                   maxLines: 2,
                 ),
+                if (_perms.setPrice) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: priceController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*[.,]?\d*$'),
+                      ),
+                    ],
+                    decoration: InputDecoration(
+                      labelText:
+                          'Prix d\'achat (optionnel — par ${_materialById(selectedMaterialId ?? "")?.unit ?? "kg"})',
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
-                const Align(
+                Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Sans prix : la comptabilité valorisera cette réception avant qu\'elle ne compte en stock. '
-                    'Date et heure de réception enregistrées automatiquement.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                    _perms.setPrice
+                        ? 'Avec prix : la réception est valorisée immédiatement et intègre le stock tout de suite. '
+                              'Sans prix : elle reste en attente, à valoriser plus tard. '
+                              'Date et heure de réception enregistrées automatiquement.'
+                        : 'Sans prix : la comptabilité valorisera cette réception avant qu\'elle ne compte en stock. '
+                              'Date et heure de réception enregistrées automatiquement.',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                 ),
               ],
@@ -328,8 +405,12 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 final qty = double.tryParse(quantityController.text);
                 if (selectedMaterialId == null || qty == null || qty <= 0)
                   return;
+                final price = _perms.setPrice
+                    ? parseQty(priceController.text)
+                    : null;
+                String? valorizeError;
                 await runBlocking(context, () async {
-                  await _mongoService.addReception(
+                  final created = await _mongoService.addReception(
                     Reception(
                       usineId: widget.usine.id!,
                       rawMaterialId: selectedMaterialId!,
@@ -342,10 +423,25 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                           : noteController.text.trim(),
                     ),
                   );
+                  // La personne choisit de valoriser tout de suite ou non : un prix
+                  // renseigné enchaîne la valorisation, sinon la réception reste en
+                  // attente — dans les deux cas elle est déjà visible dans l'historique
+                  // et le journal d'activité dès sa création.
+                  if (created?.id != null && price != null && price > 0) {
+                    valorizeError = await _mongoService.valorizeReception(
+                      created!.id!,
+                      price,
+                    );
+                  }
                   await _refreshData();
                 });
                 if (!context.mounted) return;
                 Navigator.pop(context);
+                if (valorizeError != null) {
+                  _snack(
+                    'Réception enregistrée, mais non valorisée : $valorizeError',
+                  );
+                }
               },
               child: const Text('Enregistrer la réception'),
             ),
@@ -387,21 +483,41 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                         subtitle: Text(
                           '${r.lotNumber} · ${r.supplier ?? "?"} · ${formatQty(r.quantity)} ${material?.unit ?? ""}',
                         ),
-                        trailing: _perms.setPrice
-                            ? TextButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  _showValorizeDialog(r, material);
-                                },
-                                child: const Text('Valoriser'),
-                              )
-                            : const Text(
+                        trailing: !(_perms.setPrice || _perms.manageReception)
+                            ? const Text(
                                 'En attente',
                                 style: TextStyle(
                                   color: Colors.grey,
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                 ),
+                              )
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_perms.manageReception ||
+                                      _perms.setPrice)
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.redAccent,
+                                        size: 20,
+                                      ),
+                                      tooltip: 'Annuler la réception',
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        _showCancelReceptionDialog(r);
+                                      },
+                                    ),
+                                  if (_perms.setPrice)
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        _showValorizeDialog(r, material);
+                                      },
+                                      child: const Text('Valoriser'),
+                                    ),
+                                ],
                               ),
                       );
                     }).toList(),
@@ -481,6 +597,16 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showCancelReceptionDialog(reception);
+                },
+                child: const Text(
+                  'Ne pas valoriser (annuler)',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+              ),
               ElevatedButton(
                 onPressed: () async {
                   final p = double.tryParse(priceController.text);
@@ -488,6 +614,18 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                     setDialogState(() => errorText = 'Prix invalide');
                     return;
                   }
+                  final total = p * reception.quantity;
+                  final confirmed = await _confirmAction(
+                    'Confirmer la valorisation ?',
+                    'Êtes-vous sûr de vouloir valoriser ${formatQty(reception.quantity)} '
+                        '${material?.unit ?? "kg"} de ${material?.name ?? "?"} à '
+                        '${p.toStringAsFixed(2)} F/${material?.unit ?? "unité"} '
+                        '(${total.toStringAsFixed(0)} F au total) ? '
+                        'Le stock sera immédiatement mis à jour.',
+                    confirmLabel: 'Valoriser',
+                    confirmColor: Colors.green,
+                  );
+                  if (!confirmed || !context.mounted) return;
                   final err = await runBlocking(
                     context,
                     () => _mongoService.valorizeReception(reception.id!, p),
@@ -505,6 +643,98 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Annule une réception encore en attente de prix : rien n'a encore bougé en stock à ce
+  /// stade, l'annulation n'est donc qu'un changement de statut — mais jamais un simple
+  /// retrait silencieux, elle reste visible dans l'historique et le journal avec son motif.
+  void _showCancelReceptionDialog(Reception reception) {
+    final reasonController = TextEditingController();
+    String? error;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Annuler la réception',
+            style: TextStyle(
+              color: Colors.redAccent,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${reception.lotNumber} · ${formatQty(reception.quantity)} '
+                '${_materialById(reception.rawMaterialId)?.unit ?? "kg"} de '
+                '${_materialById(reception.rawMaterialId)?.name ?? "?"} — '
+                'cette réception n\'a pas encore été valorisée, aucun stock n\'a été touché.',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                decoration: InputDecoration(
+                  labelText: 'Motif',
+                  errorText: error,
+                ),
+                autofocus: true,
+                maxLines: 2,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Retour', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
+              onPressed: () async {
+                if (reasonController.text.trim().isEmpty) {
+                  setDialogState(() => error = 'Motif requis');
+                  return;
+                }
+                final confirmed = await _confirmAction(
+                  'Confirmer l\'annulation ?',
+                  'Êtes-vous sûr de vouloir annuler définitivement cette réception '
+                      '(${formatQty(reception.quantity)} '
+                      '${_materialById(reception.rawMaterialId)?.unit ?? "kg"} de '
+                      '${_materialById(reception.rawMaterialId)?.name ?? "?"}) ? '
+                      'Cette action est irréversible.',
+                  confirmLabel: 'Annuler la réception',
+                  confirmColor: Colors.redAccent,
+                );
+                if (!confirmed || !context.mounted) return;
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.cancelReception(
+                    reception.id!,
+                    reasonController.text.trim(),
+                  ),
+                );
+                if (err != null) {
+                  setDialogState(() => error = err);
+                  return;
+                }
+                await _refreshData();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _snack('Réception annulée.');
+              },
+              child: const Text('Confirmer l\'annulation'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -749,7 +979,16 @@ class _UsineApproScreenState extends State<UsineApproScreen>
         _detailRow('Enregistrée par', r.createdBy ?? '—'),
         if (r.isPending)
           _detailRow('Statut', 'En attente de valorisation')
-        else ...[
+        else if (r.isCancelled) ...[
+          _detailRow('Statut', 'Annulée'),
+          if (r.cancelledAt != null)
+            _detailRow(
+              'Annulée le',
+              DateFormat('dd/MM/yyyy · HH:mm').format(r.cancelledAt!),
+            ),
+          _detailRow('Annulée par', r.cancelledBy ?? '—'),
+          _detailRow('Motif', r.cancelReason ?? '—'),
+        ] else ...[
           if (_perms.seeCosts) ...[
             _detailRow(
               'Prix unitaire',
@@ -845,6 +1084,19 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             onPressed: () => Navigator.pop(context),
             child: const Text('Fermer'),
           ),
+          if (h.reception != null &&
+              h.reception!.isPending &&
+              (_perms.manageReception || _perms.setPrice))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _showCancelReceptionDialog(h.reception!);
+              },
+              child: const Text(
+                'Annuler la réception',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ),
         ],
       ),
     );

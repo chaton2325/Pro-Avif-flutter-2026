@@ -139,6 +139,10 @@ class DailyReport {
   final List<DailyReportProductionLine> production;
   final List<DailyReportDeliveryLine> deliveries;
   final List<DailyReportMaterialDeliveryLine> materialDeliveries;
+  // Créées ce jour, pas encore validées (stock pas encore touché) — distinctes des listes
+  // ci-dessus, qui elles ne contiennent que des livraisons confirmées.
+  final List<DailyReportDeliveryLine> pendingDeliveries;
+  final List<DailyReportMaterialDeliveryLine> pendingMaterialDeliveries;
   final List<FeedStockSummary> feedStock;
   final List<DailyReportStockLine> materialStock;
 
@@ -150,6 +154,8 @@ class DailyReport {
     this.production = const [],
     this.deliveries = const [],
     this.materialDeliveries = const [],
+    this.pendingDeliveries = const [],
+    this.pendingMaterialDeliveries = const [],
     this.feedStock = const [],
     this.materialStock = const [],
   });
@@ -187,6 +193,20 @@ class DailyReport {
             ),
           )
           .toList(),
+      pendingDeliveries: (map['pendingDeliveries'] as List<dynamic>? ?? [])
+          .map(
+            (e) =>
+                DailyReportDeliveryLine.fromMap(e as Map<String, dynamic>),
+          )
+          .toList(),
+      pendingMaterialDeliveries:
+          (map['pendingMaterialDeliveries'] as List<dynamic>? ?? [])
+              .map(
+                (e) => DailyReportMaterialDeliveryLine.fromMap(
+                  e as Map<String, dynamic>,
+                ),
+              )
+              .toList(),
       feedStock: (map['feedStock'] as List<dynamic>? ?? [])
           .map((e) => FeedStockSummary.fromMap(e as Map<String, dynamic>))
           .toList(),

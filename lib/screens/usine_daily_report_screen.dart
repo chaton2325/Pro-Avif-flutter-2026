@@ -152,6 +152,34 @@ class _UsineDailyReportScreenState extends State<UsineDailyReportScreen> {
 
     buffer.writeln();
     buffer.writeln(sep);
+    buffer.writeln('⏳ *LIVRAISON ALIMENT (en attente de validation)*');
+    buffer.writeln(sep);
+    if (r.pendingDeliveries.isEmpty) {
+      buffer.writeln('_Aucune livraison en attente_');
+    } else {
+      for (final d in r.pendingDeliveries) {
+        buffer.writeln(
+          '• ${d.formulaName} → ${d.farmName} : ${_fmtQty(d.quantity, "kg")}',
+        );
+      }
+    }
+
+    buffer.writeln();
+    buffer.writeln(sep);
+    buffer.writeln('⏳ *LIVRAISON MATIÈRE (clients, en attente de validation)*');
+    buffer.writeln(sep);
+    if (r.pendingMaterialDeliveries.isEmpty) {
+      buffer.writeln('_Aucune livraison en attente_');
+    } else {
+      for (final d in r.pendingMaterialDeliveries) {
+        buffer.writeln(
+          '• ${d.materialName} → ${d.clientName} : ${_fmtQty(d.quantity, d.unit)}',
+        );
+      }
+    }
+
+    buffer.writeln();
+    buffer.writeln(sep);
     buffer.writeln('📦 *STOCK ALIMENT USINE*');
     buffer.writeln(sep);
     if (r.feedStock.isEmpty) {
@@ -563,6 +591,20 @@ class _UsineDailyReportScreenState extends State<UsineDailyReportScreen> {
                     title: 'LIVRAISON MATIÈRE (clients)',
                     emptyLabel: 'Aucune livraison ce jour',
                     rows: r.materialDeliveries
+                        .map(_materialDeliveryRow)
+                        .toList(),
+                  ),
+                  _sectionCard(
+                    emoji: '⏳',
+                    title: 'LIVRAISON ALIMENT (en attente)',
+                    emptyLabel: 'Aucune livraison en attente',
+                    rows: r.pendingDeliveries.map(_deliveryRow).toList(),
+                  ),
+                  _sectionCard(
+                    emoji: '⏳',
+                    title: 'LIVRAISON MATIÈRE (clients, en attente)',
+                    emptyLabel: 'Aucune livraison en attente',
+                    rows: r.pendingMaterialDeliveries
                         .map(_materialDeliveryRow)
                         .toList(),
                   ),

@@ -8,13 +8,16 @@ class Reception {
   final double quantity;
   final String? note;
   final String lotNumber;
-  final String status; // "en_attente" | "valorisee"
+  final String status; // "en_attente" | "valorisee" | "annulee"
   final double? unitPrice;
   final double? totalAmount;
   final DateTime? createdAt;
   final DateTime? valorizedAt;
   final String? createdBy;
   final String? valorizedBy;
+  final DateTime? cancelledAt;
+  final String? cancelledBy;
+  final String? cancelReason;
 
   Reception({
     this.id,
@@ -31,9 +34,13 @@ class Reception {
     this.valorizedAt,
     this.createdBy,
     this.valorizedBy,
+    this.cancelledAt,
+    this.cancelledBy,
+    this.cancelReason,
   });
 
   bool get isPending => status == 'en_attente';
+  bool get isCancelled => status == 'annulee';
 
   Map<String, dynamic> toCreateMap({String? performedBy}) {
     return {
@@ -62,6 +69,9 @@ class Reception {
       valorizedAt: parseCameroonTime(map['valorizedAt']?.toString()),
       createdBy: map['createdBy'] as String?,
       valorizedBy: map['valorizedBy'] as String?,
+      cancelledAt: parseCameroonTime(map['cancelledAt']?.toString()),
+      cancelledBy: map['cancelledBy'] as String?,
+      cancelReason: map['cancelReason'] as String?,
     );
   }
 }
