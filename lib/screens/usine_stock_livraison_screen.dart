@@ -1377,7 +1377,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                   _detailRow('Chauffeur', d.driverName!),
                 if (d.vehicle != null) _detailRow('Véhicule', d.vehicle!),
                 if (_perms.seeCosts && !d.isPending)
-                  _detailRow('Coût', '${d.totalCost.toStringAsFixed(0)} F'),
+                  _detailRow('Coût', '${formatQty(d.totalCost)} F'),
                 if (d.performedBy != null)
                   _detailRow('Enregistrée par', d.performedBy!),
               ],
@@ -1626,9 +1626,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                           )
                           .toList(),
                       onChanged: (v) {
-                        final m = activeMaterials.firstWhere(
-                          (m) => m.id == v,
-                        );
+                        final m = activeMaterials.firstWhere((m) => m.id == v);
                         setDialogState(() => selectedMaterial = m);
                         fetchBatches();
                       },
@@ -1695,7 +1693,8 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                         ),
                       ],
                       decoration: InputDecoration(
-                        labelText: 'Quantité à livrer (${selectedMaterial.unit})',
+                        labelText:
+                            'Quantité à livrer (${selectedMaterial.unit})',
                         errorText: qty > available
                             ? 'Dépasse le stock disponible (${formatQty(available)} ${selectedMaterial.unit})'
                             : null,
@@ -2005,7 +2004,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                   _detailRow('Chauffeur', d.driverName!),
                 if (d.vehicle != null) _detailRow('Véhicule', d.vehicle!),
                 if (_perms.seeCosts && !d.isPending)
-                  _detailRow('Coût', '${d.totalCost.toStringAsFixed(0)} F'),
+                  _detailRow('Coût', '${formatQty(d.totalCost)} F'),
                 if (d.performedBy != null)
                   _detailRow('Enregistrée par', d.performedBy!),
               ],
@@ -2352,7 +2351,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                                     : '${d.lotNumberSujets != null ? "Lot ${d.lotNumberSujets} (sujets) · " : ""}'
                                           '${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}'
                                           '${d.driverName != null ? " · " : ""}aliment ${d.lotsLabel}'
-                                          '${_perms.seeCosts ? " · ${d.totalCost.toStringAsFixed(0)} F" : ""}'),
+                                          '${_perms.seeCosts ? " · ${formatQty(d.totalCost)} F" : ""}'),
                           style: TextStyle(
                             color: d.isCancelled
                                 ? Colors.red.shade300
@@ -2653,7 +2652,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                                     : '${[d.driverName, d.vehicle].where((e) => e != null && e.isNotEmpty).join(' — ')}'
                                           '${d.driverName != null ? " · " : ""}${d.materialName}'
                                           '${d.isParLot ? " (${d.lotsLabel})" : ""}'
-                                          '${_perms.seeCosts ? " · ${d.totalCost.toStringAsFixed(0)} F" : ""}'),
+                                          '${_perms.seeCosts ? " · ${formatQty(d.totalCost)} F" : ""}'),
                           style: TextStyle(
                             color: d.isCancelled
                                 ? Colors.red.shade300

@@ -166,7 +166,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             color: Colors.green,
             title: 'Réception valorisée — ${materialName(r.rawMaterialId)}',
             subtitle: showCosts
-                ? '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)} @ ${r.unitPrice?.toStringAsFixed(2) ?? "—"} F${r.supplier != null ? " · ${r.supplier}" : ""}'
+                ? '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)} @ ${r.unitPrice != null ? formatQty(r.unitPrice!) : "—"} F${r.supplier != null ? " · ${r.supplier}" : ""}'
                 : '${r.lotNumber} · ${formatQty(r.quantity)} ${materialUnit(r.rawMaterialId)}${r.supplier != null ? " · ${r.supplier}" : ""}',
             type: 'reception',
             performedBy: r.valorizedBy ?? r.createdBy,
@@ -216,7 +216,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
               color: Colors.indigo,
               title: 'Ajustement CUMP — ${materialName(a.rawMaterialId)}',
               subtitle:
-                  '${a.previousCost.toStringAsFixed(2)} → ${a.newCost.toStringAsFixed(2)} F/${materialUnit(a.rawMaterialId)} · ${a.reason}',
+                  '${formatQty(a.previousCost)} → ${formatQty(a.newCost)} F/${materialUnit(a.rawMaterialId)} · ${a.reason}',
               type: 'ajustement',
               performedBy: a.performedBy,
               adjustment: a,
@@ -674,8 +674,8 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                     'Confirmer la valorisation ?',
                     'Êtes-vous sûr de vouloir valoriser ${formatQty(reception.quantity)} '
                         '${material?.unit ?? "kg"} de ${material?.name ?? "?"} à '
-                        '${p.toStringAsFixed(2)} F/${material?.unit ?? "unité"} '
-                        '(${total.toStringAsFixed(0)} F au total) ? '
+                        '${formatQty(p)} F/${material?.unit ?? "unité"} '
+                        '(${formatQty(total)} F au total) ? '
                         'Le stock sera immédiatement mis à jour.',
                     confirmLabel: 'Valoriser',
                     confirmColor: Colors.green,
@@ -1057,11 +1057,11 @@ class _UsineApproScreenState extends State<UsineApproScreen>
           if (_perms.seeCosts) ...[
             _detailRow(
               'Prix unitaire',
-              '${r.unitPrice?.toStringAsFixed(2) ?? "—"} F',
+              '${r.unitPrice != null ? formatQty(r.unitPrice!) : "—"} F',
             ),
             _detailRow(
               'Montant total',
-              '${(r.totalAmount ?? ((r.unitPrice ?? 0) * r.quantity)).toStringAsFixed(0)} F',
+              '${formatQty(r.totalAmount ?? ((r.unitPrice ?? 0) * r.quantity))} F',
             ),
           ],
           if (r.valorizedAt != null)
@@ -1107,11 +1107,11 @@ class _UsineApproScreenState extends State<UsineApproScreen>
         _detailRow('Matière', material?.name ?? '?'),
         _detailRow(
           'Ancien coût',
-          '${a.previousCost.toStringAsFixed(2)} F/${material?.unit ?? "kg"}',
+          '${formatQty(a.previousCost)} F/${material?.unit ?? "kg"}',
         ),
         _detailRow(
           'Nouveau coût',
-          '${a.newCost.toStringAsFixed(2)} F/${material?.unit ?? "kg"}',
+          '${formatQty(a.newCost)} F/${material?.unit ?? "kg"}',
         ),
         _detailRow('Motif', a.reason),
         if (a.createdAt != null)

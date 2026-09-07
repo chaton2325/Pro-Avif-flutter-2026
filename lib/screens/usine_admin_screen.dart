@@ -610,7 +610,7 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                             const SizedBox(width: 8),
                             _statMini(
                               Icons.payments_outlined,
-                              '${d.avgCostPerKg.toStringAsFixed(0)} F',
+                              '${formatQty(d.avgCostPerKg)} F',
                               'Coût moyen /kg',
                             ),
                             const SizedBox(width: 8),

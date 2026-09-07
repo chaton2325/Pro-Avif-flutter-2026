@@ -669,7 +669,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                 const SizedBox(width: 12),
                 _statIconCard(
                   Icons.payments_outlined,
-                  '${d.avgCostPerKg.toStringAsFixed(0)} F',
+                  '${formatQty(d.avgCostPerKg)} F',
                   'Coût moyen /kg',
                 ),
                 const SizedBox(width: 12),
@@ -1308,7 +1308,7 @@ class _UsineStatsScreenState extends State<UsineStatsScreen>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              '${f.avgCostPerUnit.toStringAsFixed(1)} F/kg',
+                              '${formatQty(f.avgCostPerUnit)} F/kg',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12.5,

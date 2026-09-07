@@ -375,7 +375,7 @@ class _UsineLotsHistoryScreenState extends State<UsineLotsHistoryScreen> {
                           ),
                           subtitle: Text(
                             '${b.materialName ?? "?"} · ${b.receivedAt != null ? DateFormat('dd/MM/yyyy').format(b.receivedAt!) : ""} · ${formatQty(b.remainingQuantity)}/${formatQty(b.receivedQuantity)}'
-                            '${_perms.seeCosts ? " · ${b.unitCost.toStringAsFixed(1)} F" : ""}',
+                            '${_perms.seeCosts ? " · ${formatQty(b.unitCost)} F" : ""}',
                             style: TextStyle(
                               color: Colors.grey.shade600,
                               fontSize: 12,

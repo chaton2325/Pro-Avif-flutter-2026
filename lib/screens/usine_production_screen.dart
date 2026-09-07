@@ -995,7 +995,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                               ),
                             ),
                             Text(
-                              c.lineCost.toStringAsFixed(0),
+                              formatQty(c.lineCost),
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                               ),
@@ -1047,7 +1047,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                         Text(
-                          '${previewPerUnit.toStringAsFixed(2)} F/kg',
+                          '${formatQty(previewPerUnit)} F/kg',
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                             color: previewPerUnit <= 0
@@ -1156,7 +1156,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                           ),
                         ),
                         Text(
-                          c.lineCost.toStringAsFixed(0),
+                          formatQty(c.lineCost),
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ],
@@ -1168,7 +1168,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(
-                      'Ajustement comptable : ${batch.costAdjustment > 0 ? '+' : ''}${batch.costAdjustment.toStringAsFixed(0)} FCFA${batch.adjustmentReason != null ? ' (${batch.adjustmentReason})' : ''}',
+                      'Ajustement comptable : ${batch.costAdjustment > 0 ? '+' : ''}${formatQty(batch.costAdjustment)} FCFA${batch.adjustmentReason != null ? ' (${batch.adjustmentReason})' : ''}',
                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ),
@@ -1180,7 +1180,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      '${batch.costPerUnit.toStringAsFixed(2)} F/kg',
+                      '${formatQty(batch.costPerUnit)} F/kg',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         color: Colors.green.shade700,
@@ -1302,7 +1302,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         subtitle: Text(
                           b.isRejected && !b.isValidated
                               ? 'Renvoyé : ${b.rejectionReason}'
-                              : '${formatQty(b.actualQuantityProduced)} kg · ${b.costPerUnit.toStringAsFixed(2)} F/kg',
+                              : '${formatQty(b.actualQuantityProduced)} kg · ${formatQty(b.costPerUnit)} F/kg',
                           style: TextStyle(
                             color: b.isRejected && !b.isValidated
                                 ? Colors.redAccent
