@@ -165,7 +165,11 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
         permissions.manageReception ||
         permissions.setPrice ||
         permissions.adjustCost ||
-        permissions.seeCosts;
+        permissions.seeCosts ||
+        // Un responsable production n'y valorise ni n'y annule rien (ces actions
+        // restent gérées par manageReception/setPrice dans l'écran), mais doit voir la
+        // file d'attente pour relancer le validateur via WhatsApp le cas échéant.
+        permissions.manageProduction;
     final canStockInventory =
         permissions.manageReception ||
         permissions.manageDelivery ||

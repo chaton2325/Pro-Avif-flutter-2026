@@ -3,12 +3,14 @@ class Usine {
   final String name;
   final String? address;
   final bool isActive;
+  final String? supplyValidatorWhatsapp;
 
   Usine({
     this.id,
     required this.name,
     this.address,
     this.isActive = true,
+    this.supplyValidatorWhatsapp,
   });
 
   Map<String, dynamic> toMap() {
@@ -16,6 +18,7 @@ class Usine {
       'name': name,
       'address': address,
       'isActive': isActive,
+      'supplyValidatorWhatsapp': supplyValidatorWhatsapp,
     };
   }
 
@@ -25,6 +28,7 @@ class Usine {
       name: map['name'] as String,
       address: map['address'] as String?,
       isActive: map['isActive'] as bool? ?? true,
+      supplyValidatorWhatsapp: map['supplyValidatorWhatsapp'] as String?,
     );
   }
 

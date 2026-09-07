@@ -9,6 +9,7 @@ import '../models/cost_adjustment.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
 import '../utils/quantity_format.dart';
+import '../utils/whatsapp.dart';
 import '../widgets/blocking_loader.dart';
 import 'usine_lots_history_screen.dart';
 
@@ -285,6 +286,43 @@ class _UsineApproScreenState extends State<UsineApproScreen>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // -------------------------------------------------- Rappel WhatsApp (validateur)
+
+  String _reminderLineFor(Reception r) {
+    final material = _materialById(r.rawMaterialId);
+    final supplierPart = r.supplier != null ? ' · ${r.supplier}' : '';
+    return '${r.lotNumber} : ${material?.name ?? "?"}, '
+        '${formatQty(r.quantity)} ${material?.unit ?? "kg"}$supplierPart';
+  }
+
+  String _reminderMessageOne(Reception r) =>
+      'Bonjour, une réception est en attente de validation du prix sur '
+      'PRO-AVIF — ${widget.usine.name} :\n${_reminderLineFor(r)}\n'
+      'Merci de valider dès que possible.';
+
+  String _reminderMessageAll() {
+    final lines = _pendingReceptions.map(_reminderLineFor).join('\n');
+    return 'Bonjour, ${_pendingReceptions.length} réception(s) sont en attente de '
+        'validation du prix sur PRO-AVIF — ${widget.usine.name} :\n$lines\n'
+        'Merci de valider dès que possible.';
+  }
+
+  /// Ouvre WhatsApp vers le numéro du validateur configuré par l'admin sur cette usine
+  /// (Administration > Usines) — pas de numéro configuré = on prévient plutôt que
+  /// d'ouvrir WhatsApp sans destinataire.
+  Future<void> _sendReminder(String message) async {
+    final phone = widget.usine.supplyValidatorWhatsapp;
+    if (phone == null || phone.trim().isEmpty) {
+      _snack(
+        'Aucun numéro de validateur configuré pour cette usine. '
+        'Un administrateur peut le renseigner dans Administration > Usines.',
+      );
+      return;
+    }
+    final ok = await openWhatsAppReminder(phone, message);
+    if (!ok) _snack('Impossible d\'ouvrir WhatsApp avec ce numéro.');
+  }
+
   // --------------------------------------------------------- Nouvelle réception
 
   void _showNewReceptionDialog() {
@@ -483,48 +521,61 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                         subtitle: Text(
                           '${r.lotNumber} · ${r.supplier ?? "?"} · ${formatQty(r.quantity)} ${material?.unit ?? ""}',
                         ),
-                        trailing: !(_perms.setPrice || _perms.manageReception)
-                            ? const Text(
-                                'En attente',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              )
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_perms.manageReception ||
-                                      _perms.setPrice)
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.close,
-                                        color: Colors.redAccent,
-                                        size: 20,
-                                      ),
-                                      tooltip: 'Annuler la réception',
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                        _showCancelReceptionDialog(r);
-                                      },
-                                    ),
-                                  if (_perms.setPrice)
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                        _showValorizeDialog(r, material);
-                                      },
-                                      child: const Text('Valoriser'),
-                                    ),
-                                ],
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.chat_bubble_rounded,
+                                color: Colors.green,
+                                size: 20,
                               ),
+                              tooltip: 'Rappeler via WhatsApp',
+                              onPressed: () =>
+                                  _sendReminder(_reminderMessageOne(r)),
+                            ),
+                            if (_perms.manageReception || _perms.setPrice)
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.close,
+                                  color: Colors.redAccent,
+                                  size: 20,
+                                ),
+                                tooltip: 'Annuler la réception',
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _showCancelReceptionDialog(r);
+                                },
+                              ),
+                            if (_perms.setPrice)
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _showValorizeDialog(r, material);
+                                },
+                                child: const Text('Valoriser'),
+                              ),
+                          ],
+                        ),
                       );
                     }).toList(),
                   ),
                 ),
         ),
         actions: [
+          if (_pendingReceptions.isNotEmpty)
+            TextButton.icon(
+              icon: const Icon(
+                Icons.chat_bubble_rounded,
+                color: Colors.green,
+                size: 18,
+              ),
+              onPressed: () => _sendReminder(_reminderMessageAll()),
+              label: const Text(
+                'Rappeler tout',
+                style: TextStyle(color: Colors.green),
+              ),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Fermer'),
@@ -846,6 +897,15 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                         ),
                       ),
                     ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.chat_bubble_rounded,
+                        color: Colors.green,
+                        size: 20,
+                      ),
+                      tooltip: 'Rappeler tout via WhatsApp',
+                      onPressed: () => _sendReminder(_reminderMessageAll()),
+                    ),
                   ],
                 ),
               ),
@@ -1084,6 +1144,20 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             onPressed: () => Navigator.pop(context),
             child: const Text('Fermer'),
           ),
+          if (h.reception != null && h.reception!.isPending)
+            TextButton.icon(
+              icon: const Icon(
+                Icons.chat_bubble_rounded,
+                color: Colors.green,
+                size: 18,
+              ),
+              onPressed: () =>
+                  _sendReminder(_reminderMessageOne(h.reception!)),
+              label: const Text(
+                'Rappeler',
+                style: TextStyle(color: Colors.green),
+              ),
+            ),
           if (h.reception != null &&
               h.reception!.isPending &&
               (_perms.manageReception || _perms.setPrice))
@@ -1297,23 +1371,44 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                           ),
                           isThreeLine: h.performedBy != null,
                           trailing: h.isPending
-                              ? Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.shade100,
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    'EN ATTENTE',
-                                    style: TextStyle(
-                                      color: Colors.amber.shade900,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w800,
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.shade100,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'EN ATTENTE',
+                                        style: TextStyle(
+                                          color: Colors.amber.shade900,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.chat_bubble_rounded,
+                                        color: Colors.green,
+                                        size: 18,
+                                      ),
+                                      tooltip: 'Rappeler via WhatsApp',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _sendReminder(
+                                        _reminderMessageOne(h.reception!),
+                                      ),
+                                    ),
+                                  ],
                                 )
                               : Text(
                                   DateFormat('dd/MM/yy').format(h.date),
