@@ -28,6 +28,7 @@ import '../models/material_delivery.dart';
 import '../models/usine_stats.dart';
 import '../models/daily_report.dart';
 import '../models/inventory_session.dart';
+import '../models/stock_movement.dart';
 import './session_storage.dart';
 
 /// Une ligne de comptage d'inventaire : [batchId] null = comptage global d'une matière,
@@ -701,6 +702,33 @@ class MongoService {
       return RawMaterialBatchPage.fromMap(jsonDecode(response.body));
     }
     return RawMaterialBatchPage(
+      totalCount: 0,
+      items: [],
+      limit: limit,
+      skip: skip,
+    );
+  }
+
+  /// Historique paginé des mouvements (approvisionnement ET décrément) d'UNE matière
+  /// première OU d'UN aliment précis — jamais les deux à la fois. Tri et pagination faits
+  /// côté serveur (voir GET /stats/stock-movements).
+  Future<StockMovementPage> getStockMovements({
+    String? rawMaterialId,
+    String? formulaId,
+    int limit = 30,
+    int skip = 0,
+  }) async {
+    final queryParams = <String, String>{'limit': '$limit', 'skip': '$skip'};
+    if (rawMaterialId != null) queryParams['rawMaterialId'] = rawMaterialId;
+    if (formulaId != null) queryParams['formulaId'] = formulaId;
+    final uri = Uri.parse(
+      '$baseUrl/stats/stock-movements',
+    ).replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return StockMovementPage.fromMap(jsonDecode(response.body));
+    }
+    return StockMovementPage(
       totalCount: 0,
       items: [],
       limit: limit,

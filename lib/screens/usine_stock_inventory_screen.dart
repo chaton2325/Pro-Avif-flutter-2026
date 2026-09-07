@@ -13,6 +13,7 @@ import '../widgets/blocking_loader.dart';
 import 'usine_inventory_screen.dart';
 import 'usine_feed_inventory_screen.dart';
 import 'usine_lots_history_screen.dart';
+import 'usine_stock_movement_history_screen.dart';
 
 const List<String> _lossReasons = [
   'Avarie (humidité)',
@@ -44,6 +45,10 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
     with TickerProviderStateMixin {
   final MongoService _mongoService = MongoService();
   PostePermissions get _perms => widget.permissions ?? fullAccessPermissions;
+  // Réservé à l'admin par défaut (manageAdmin) — viewMovementHistory permet à l'admin
+  // d'étendre cette visibilité à un autre poste sans lui donner tout manageAdmin.
+  bool get _canViewMovementHistory =>
+      _perms.manageAdmin || _perms.viewMovementHistory;
   late final TabController _tabController = TabController(
     length: 2,
     vsync: this,
@@ -164,6 +169,23 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _openMovementHistory({
+    required String name,
+    String? rawMaterialId,
+    String? formulaId,
+  }) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UsineStockMovementHistoryScreen(
+          materialOrFeedName: name,
+          rawMaterialId: rawMaterialId,
+          formulaId: formulaId,
+        ),
+      ),
+    );
+  }
+
   List<RawMaterialBatch> _batchesFor(String materialId) =>
       _activeBatches.where((b) => b.rawMaterialId == materialId).toList();
 
@@ -264,7 +286,7 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                     ),
                     _ficheStat(
                       fiche.weightedCost != null
-                          ? fiche.weightedCost!.toStringAsFixed(1)
+                          ? formatQty(fiche.weightedCost!)
                           : '—',
                       'CUMP F/${fiche.unit}',
                     ),
@@ -318,7 +340,7 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                             )
                           : (h.amountFcfa != null
                                 ? Text(
-                                    h.amountFcfa!.toStringAsFixed(0),
+                                    formatQty(h.amountFcfa!),
                                     style: const TextStyle(
                                       fontSize: 11.5,
                                       fontWeight: FontWeight.w700,
@@ -558,7 +580,7 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
               Text(
                 material.weightedCost == null
                     ? 'Aucun coût de référence défini pour l\'instant.'
-                    : 'Coût actuel : ${material.weightedCost!.toStringAsFixed(2)} F/${material.unit}',
+                    : 'Coût actuel : ${formatQty(material.weightedCost!)} F/${material.unit}',
                 style: const TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 16),
@@ -779,7 +801,7 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                     m.isParLot
                         ? '${formatQty(m.currentStock)} ${m.unit} · $batchCount lot(s) actif(s)'
                         : _perms.seeCosts
-                        ? '${formatQty(m.currentStock)} ${m.unit} · CUMP ${m.weightedCost?.toStringAsFixed(2) ?? "—"} F/${m.unit}'
+                        ? '${formatQty(m.currentStock)} ${m.unit} · CUMP ${m.weightedCost != null ? formatQty(m.weightedCost!) : "—"} F/${m.unit}'
                         : '${formatQty(m.currentStock)} ${m.unit}',
                     style: TextStyle(
                       color: isLow
@@ -795,7 +817,8 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                           (!m.isParLot &&
                               (_perms.manageReception ||
                                   _perms.adjustCost ||
-                                  _perms.seeCosts)))
+                                  _perms.seeCosts)) ||
+                          _canViewMovementHistory)
                       ? PopupMenuButton<String>(
                           icon: const Icon(Icons.more_vert, color: Colors.grey),
                           onSelected: (value) {
@@ -803,6 +826,12 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                             if (value == 'fiche') _showMaterialFicheDialog(m);
                             if (value == 'perte') _showDeclareLossDialog(m);
                             if (value == 'ajuster') _showAdjustCostDialog(m);
+                            if (value == 'mouvements') {
+                              _openMovementHistory(
+                                name: m.name,
+                                rawMaterialId: m.id,
+                              );
+                            }
                           },
                           itemBuilder: (context) => [
                             if (m.isParLot &&
@@ -825,6 +854,11 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                               const PopupMenuItem(
                                 value: 'ajuster',
                                 child: Text('Ajuster le CUMP'),
+                              ),
+                            if (_canViewMovementHistory)
+                              const PopupMenuItem(
+                                value: 'mouvements',
+                                child: Text('Historique des mouvements'),
                               ),
                           ],
                         )
@@ -955,6 +989,21 @@ class _UsineStockInventoryScreenState extends State<UsineStockInventoryScreen>
                           '${formatQty(s.totalStock)} kg',
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
+                        if (_canViewMovementHistory)
+                          IconButton(
+                            icon: const Icon(
+                              Icons.history_rounded,
+                              color: Colors.grey,
+                              size: 20,
+                            ),
+                            tooltip: 'Historique des mouvements',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _openMovementHistory(
+                              name: s.formulaName,
+                              formulaId: s.formulaId,
+                            ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 6),

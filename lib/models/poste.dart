@@ -16,6 +16,7 @@ const PostePermissions fullAccessPermissions = PostePermissions(
   viewStock: true,
   manageClients: true,
   viewClients: true,
+  viewMovementHistory: true,
 );
 
 /// Ce qu'un poste autorise dans le module Usine Aliment. Le nom du poste est libre
@@ -36,6 +37,7 @@ class PostePermissions {
   final bool viewStock;
   final bool manageClients;
   final bool viewClients;
+  final bool viewMovementHistory;
 
   const PostePermissions({
     this.seeCosts = false,
@@ -52,6 +54,7 @@ class PostePermissions {
     this.viewStock = false,
     this.manageClients = false,
     this.viewClients = false,
+    this.viewMovementHistory = false,
   });
 
   static const List<MapEntry<String, String>> labels = [
@@ -61,7 +64,10 @@ class PostePermissions {
     MapEntry('adjustCost', 'Ajustement manuel du CUMP (comptabilité)'),
     MapEntry('manageProduction', 'Lancer / clôturer une fabrication'),
     MapEntry('validateCost', 'Valider le coût de revient (comptabilité)'),
-    MapEntry('manageDelivery', 'Créer des livraisons vers les bâtiments (logistique)'),
+    MapEntry(
+      'manageDelivery',
+      'Créer des livraisons vers les bâtiments (logistique)',
+    ),
     MapEntry('manageAdmin', 'Référentiel matières, formules, usines, postes'),
     MapEntry('viewStats', 'Tableau de bord et statistiques'),
     MapEntry('viewStock', 'Voir le stock (matières et aliments)'),
@@ -72,6 +78,10 @@ class PostePermissions {
     ),
     MapEntry('manageClients', 'Créer / modifier la liste des clients'),
     MapEntry('viewClients', 'Consulter la liste des clients (nom uniquement)'),
+    MapEntry(
+      'viewMovementHistory',
+      "Historique des mouvements de stock par matière/aliment (réservé à l'admin par défaut)",
+    ),
   ];
 
   bool operator [](String key) {
@@ -104,6 +114,8 @@ class PostePermissions {
         return manageClients;
       case 'viewClients':
         return viewClients;
+      case 'viewMovementHistory':
+        return viewMovementHistory;
       default:
         return false;
     }
@@ -125,6 +137,9 @@ class PostePermissions {
       viewStock: key == 'viewStock' ? value : viewStock,
       manageClients: key == 'manageClients' ? value : manageClients,
       viewClients: key == 'viewClients' ? value : viewClients,
+      viewMovementHistory: key == 'viewMovementHistory'
+          ? value
+          : viewMovementHistory,
     );
   }
 
@@ -144,6 +159,7 @@ class PostePermissions {
       'viewStock': viewStock,
       'manageClients': manageClients,
       'viewClients': viewClients,
+      'viewMovementHistory': viewMovementHistory,
     };
   }
 
@@ -164,6 +180,7 @@ class PostePermissions {
       viewStock: map['viewStock'] as bool? ?? false,
       manageClients: map['manageClients'] as bool? ?? false,
       viewClients: map['viewClients'] as bool? ?? false,
+      viewMovementHistory: map['viewMovementHistory'] as bool? ?? false,
     );
   }
 }
