@@ -28,7 +28,7 @@ class UsineDailyReportScreen extends StatefulWidget {
 
 class _UsineDailyReportScreenState extends State<UsineDailyReportScreen> {
   final MongoService _mongoService = MongoService();
-  final NumberFormat _qtyFmt = NumberFormat('#,##0.##', 'fr_FR');
+  final NumberFormat _qtyFmt = NumberFormat('#,##0.#####', 'fr_FR');
 
   DateTime _selectedDate = DateTime.now();
   DailyReport? _report;

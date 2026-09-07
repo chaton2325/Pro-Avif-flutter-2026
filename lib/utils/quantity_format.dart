@@ -5,7 +5,7 @@
 /// À utiliser à la place de `toStringAsFixed(0)` pour toute quantité de matière
 /// première, d'aliment ou de livraison : ces valeurs ne sont pas forcément des
 /// entiers, et arrondir à l'unité masque silencieusement de vrais écarts.
-String formatQty(num value, {int maxDecimals = 2}) {
+String formatQty(num value, {int maxDecimals = 5}) {
   if (value.isNaN || value.isInfinite) return value.toString();
   var s = value.toStringAsFixed(maxDecimals);
   if (s.contains('.')) {
@@ -20,7 +20,7 @@ String formatQty(num value, {int maxDecimals = 2}) {
 /// calcul flottant (ex. 0.0000001), jamais un écart réel saisi par l'utilisateur (ex.
 /// 0.9). Sert à décider "OK" vs "écart" de façon toujours cohérente avec ce qui est
 /// affiché : jamais de décision basée sur un arrondi différent de l'affichage.
-bool isNegligibleVariance(num value, {int maxDecimals = 2}) {
+bool isNegligibleVariance(num value, {int maxDecimals = 5}) {
   return formatQty(value.abs(), maxDecimals: maxDecimals) == '0';
 }
 
