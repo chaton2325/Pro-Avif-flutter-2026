@@ -34,9 +34,15 @@ class UsineHomeScreen extends StatefulWidget {
 }
 
 class _UsineHomeScreenState extends State<UsineHomeScreen> {
+  final MongoService _mongoService = MongoService();
   late Timer _clockTimer;
   String _currentTime = '';
   String _currentDateStr = '';
+
+  // Nombre de réceptions en attente de prix — uniquement pour la personne qui valide
+  // (setPrice, ex. comptabilité) : c'est elle qui doit être alertée qu'il y a du travail
+  // en attente, pas les autres postes ayant seulement accès en lecture à cet écran.
+  int? _pendingApproCount;
 
   @override
   void initState() {
@@ -46,6 +52,22 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
       const Duration(seconds: 1),
       (_) => _updateClock(),
     );
+    _refreshPendingApproCount();
+  }
+
+  Future<void> _refreshPendingApproCount() async {
+    if (!widget.permissions.setPrice) return;
+    try {
+      final pending = await _mongoService.getReceptions(
+        usineId: widget.usine.id,
+        status: 'en_attente',
+      );
+      if (!mounted) return;
+      setState(() => _pendingApproCount = pending.length);
+    } catch (_) {
+      // Silencieux : un badge de notification qui échoue à se charger ne doit jamais
+      // bloquer l'accès au tableau de bord, juste rester absent.
+    }
   }
 
   @override
@@ -209,13 +231,21 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
           color: Colors.teal,
           title: 'Approvisionnement',
           subtitle: 'Réceptions, pertes, historique',
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  UsineApproScreen(usine: usine, permissions: permissions),
-            ),
-          ),
+          badgeCount: _pendingApproCount,
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    UsineApproScreen(usine: usine, permissions: permissions),
+              ),
+            );
+            // Le nombre en attente a pu changer (valorisation, annulation, nouvelle
+            // réception) pendant qu'on était sur l'écran — sans ça le badge restait figé
+            // sur l'ancien compte jusqu'à quitter/revenir sur le tableau de bord.
+            if (!mounted) return;
+            _refreshPendingApproCount();
+          },
         ),
       if (canStockInventory)
         _SectionCard(
@@ -392,6 +422,7 @@ class _SectionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final int? badgeCount;
 
   const _SectionCard({
     required this.icon,
@@ -399,6 +430,7 @@ class _SectionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.badgeCount,
   });
 
   @override
@@ -422,10 +454,41 @@ class _SectionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              backgroundColor: color.withValues(alpha: 0.1),
-              radius: 22,
-              child: Icon(icon, color: color, size: 22),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  backgroundColor: color.withValues(alpha: 0.1),
+                  radius: 22,
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                if ((badgeCount ?? 0) > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      child: Text(
+                        badgeCount! > 99 ? '99+' : '$badgeCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             Text(

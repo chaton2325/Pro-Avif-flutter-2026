@@ -524,16 +524,20 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(
-                              icon: const Icon(
-                                Icons.chat_bubble_rounded,
-                                color: Colors.green,
-                                size: 20,
+                            // La personne qui valide (setPrice) n'a pas à se rappeler
+                            // elle-même de valider — le bouton n'a de sens que pour les
+                            // autres postes qui attendent sa validation.
+                            if (!_perms.setPrice)
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.chat_bubble_rounded,
+                                  color: Colors.green,
+                                  size: 20,
+                                ),
+                                tooltip: 'Rappeler via WhatsApp',
+                                onPressed: () =>
+                                    _sendReminder(_reminderMessageOne(r)),
                               ),
-                              tooltip: 'Rappeler via WhatsApp',
-                              onPressed: () =>
-                                  _sendReminder(_reminderMessageOne(r)),
-                            ),
                             if (_perms.manageReception || _perms.setPrice)
                               IconButton(
                                 icon: const Icon(
@@ -563,7 +567,7 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                 ),
         ),
         actions: [
-          if (_pendingReceptions.isNotEmpty)
+          if (_pendingReceptions.isNotEmpty && !_perms.setPrice)
             TextButton.icon(
               icon: const Icon(
                 Icons.chat_bubble_rounded,
@@ -897,15 +901,16 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                         ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.chat_bubble_rounded,
-                        color: Colors.green,
-                        size: 20,
+                    if (!_perms.setPrice)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.chat_bubble_rounded,
+                          color: Colors.green,
+                          size: 20,
+                        ),
+                        tooltip: 'Rappeler tout via WhatsApp',
+                        onPressed: () => _sendReminder(_reminderMessageAll()),
                       ),
-                      tooltip: 'Rappeler tout via WhatsApp',
-                      onPressed: () => _sendReminder(_reminderMessageAll()),
-                    ),
                   ],
                 ),
               ),
@@ -1144,15 +1149,14 @@ class _UsineApproScreenState extends State<UsineApproScreen>
             onPressed: () => Navigator.pop(context),
             child: const Text('Fermer'),
           ),
-          if (h.reception != null && h.reception!.isPending)
+          if (h.reception != null && h.reception!.isPending && !_perms.setPrice)
             TextButton.icon(
               icon: const Icon(
                 Icons.chat_bubble_rounded,
                 color: Colors.green,
                 size: 18,
               ),
-              onPressed: () =>
-                  _sendReminder(_reminderMessageOne(h.reception!)),
+              onPressed: () => _sendReminder(_reminderMessageOne(h.reception!)),
               label: const Text(
                 'Rappeler',
                 style: TextStyle(color: Colors.green),
@@ -1394,20 +1398,22 @@ class _UsineApproScreenState extends State<UsineApproScreen>
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.chat_bubble_rounded,
-                                        color: Colors.green,
-                                        size: 18,
+                                    if (!_perms.setPrice) ...[
+                                      const SizedBox(width: 4),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.chat_bubble_rounded,
+                                          color: Colors.green,
+                                          size: 18,
+                                        ),
+                                        tooltip: 'Rappeler via WhatsApp',
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        onPressed: () => _sendReminder(
+                                          _reminderMessageOne(h.reception!),
+                                        ),
                                       ),
-                                      tooltip: 'Rappeler via WhatsApp',
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      onPressed: () => _sendReminder(
-                                        _reminderMessageOne(h.reception!),
-                                      ),
-                                    ),
+                                    ],
                                   ],
                                 )
                               : Text(
