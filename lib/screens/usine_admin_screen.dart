@@ -995,6 +995,9 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
     final whatsappController = TextEditingController(
       text: usine?.supplyValidatorWhatsapp ?? '',
     );
+    final productionWhatsappController = TextEditingController(
+      text: usine?.productionValidatorWhatsapp ?? '',
+    );
     bool isActive = usine?.isActive ?? true;
 
     showDialog(
@@ -1052,6 +1055,29 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: productionWhatsappController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText:
+                        'WhatsApp du validateur de production (optionnel)',
+                    hintText: 'Ex. +237 6XX XXX XXX',
+                    prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Indicatif + numéro de la personne qui valide le coût de revient '
+                      'des fabrications — le responsable de production pourra la '
+                      'relancer directement via WhatsApp depuis l\'écran Production.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -1081,9 +1107,14 @@ class _UsineAdminScreenState extends State<UsineAdminScreen>
                       ? null
                       : addressController.text.trim(),
                   isActive: isActive,
-                  supplyValidatorWhatsapp: whatsappController.text.trim().isEmpty
+                  supplyValidatorWhatsapp:
+                      whatsappController.text.trim().isEmpty
                       ? null
                       : whatsappController.text.trim(),
+                  productionValidatorWhatsapp:
+                      productionWhatsappController.text.trim().isEmpty
+                      ? null
+                      : productionWhatsappController.text.trim(),
                 );
                 if (usine == null) {
                   await _mongoService.addUsine(newUsine);

@@ -4,6 +4,7 @@ class Usine {
   final String? address;
   final bool isActive;
   final String? supplyValidatorWhatsapp;
+  final String? productionValidatorWhatsapp;
 
   Usine({
     this.id,
@@ -11,6 +12,7 @@ class Usine {
     this.address,
     this.isActive = true,
     this.supplyValidatorWhatsapp,
+    this.productionValidatorWhatsapp,
   });
 
   Map<String, dynamic> toMap() {
@@ -19,6 +21,7 @@ class Usine {
       'address': address,
       'isActive': isActive,
       'supplyValidatorWhatsapp': supplyValidatorWhatsapp,
+      'productionValidatorWhatsapp': productionValidatorWhatsapp,
     };
   }
 
@@ -29,6 +32,8 @@ class Usine {
       address: map['address'] as String?,
       isActive: map['isActive'] as bool? ?? true,
       supplyValidatorWhatsapp: map['supplyValidatorWhatsapp'] as String?,
+      productionValidatorWhatsapp:
+          map['productionValidatorWhatsapp'] as String?,
     );
   }
 

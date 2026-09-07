@@ -7,6 +7,7 @@ import '../models/production_batch.dart';
 import '../models/poste.dart';
 import '../services/mongo_service.dart';
 import '../utils/quantity_format.dart';
+import '../utils/whatsapp.dart';
 import '../widgets/blocking_loader.dart';
 import 'usine_simulation_screen.dart';
 
@@ -566,6 +567,39 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // ------------------------------------------------- Rappel WhatsApp (validateur)
+
+  String _reminderLineForBatch(ProductionBatch b) =>
+      '${b.lotNumber} : ${b.formulaName}, ${formatQty(b.actualQuantityProduced)} kg';
+
+  String _reminderMessageOneBatch(ProductionBatch b) =>
+      'Bonjour, une fabrication est en attente de validation du coût de revient '
+      'sur PRO-AVIF — ${widget.usine.name} :\n${_reminderLineForBatch(b)}\n'
+      'Merci de valider dès que possible.';
+
+  String _reminderMessageAllBatches(List<ProductionBatch> pending) {
+    final lines = pending.map(_reminderLineForBatch).join('\n');
+    return 'Bonjour, ${pending.length} fabrication(s) sont en attente de validation '
+        'du coût de revient sur PRO-AVIF — ${widget.usine.name} :\n$lines\n'
+        'Merci de valider dès que possible.';
+  }
+
+  /// Ouvre WhatsApp vers le numéro du validateur de production configuré par l'admin sur
+  /// cette usine (Administration > Usines) — pas de numéro configuré = on prévient plutôt
+  /// que d'ouvrir WhatsApp sans destinataire.
+  Future<void> _sendProductionReminder(String message) async {
+    final phone = widget.usine.productionValidatorWhatsapp;
+    if (phone == null || phone.trim().isEmpty) {
+      _snack(
+        'Aucun numéro de validateur configuré pour cette usine. '
+        'Un administrateur peut le renseigner dans Administration > Usines.',
+      );
+      return;
+    }
+    final ok = await openWhatsAppReminder(phone, message);
+    if (!ok) _snack('Impossible d\'ouvrir WhatsApp avec ce numéro.');
+  }
+
   Widget _buildLaunchTab() {
     if (!_perms.manageProduction) {
       return const Center(
@@ -585,8 +619,94 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
     // validateCost, sinon la production n'a jamais connaissance des lots à finaliser ou
     // des renvois.
     final drafts = _batches.where((b) => b.isDraft).toList();
+    // Lots envoyés au comptable (écran 18), en attente de sa validation — visible même
+    // sans validateCost, sinon le responsable production n'a aucun moyen de savoir qu'un
+    // lot attend, ni de relancer le comptable. Jamais de coût affiché ici (réservé à
+    // validateCost dans l'onglet Suivi & historique), juste le lot et sa quantité.
+    final awaitingValidation = _batches
+        .where((b) => b.status == 'a_valider')
+        .toList();
     return Column(
       children: [
+        if (awaitingValidation.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.amber.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.hourglass_top_rounded,
+                      color: Colors.orange,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${awaitingValidation.length} fabrication(s) en attente de validation comptable',
+                        style: const TextStyle(
+                          color: Colors.brown,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                    if (!_perms.validateCost)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.chat_bubble_rounded,
+                          color: Colors.green,
+                          size: 20,
+                        ),
+                        tooltip: 'Rappeler tout via WhatsApp',
+                        onPressed: () => _sendProductionReminder(
+                          _reminderMessageAllBatches(awaitingValidation),
+                        ),
+                      ),
+                  ],
+                ),
+                ...awaitingValidation.map(
+                  (b) => Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${b.lotNumber} — ${formatQty(b.actualQuantityProduced)} kg',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ),
+                        if (!_perms.validateCost)
+                          IconButton(
+                            icon: const Icon(
+                              Icons.chat_bubble_rounded,
+                              color: Colors.green,
+                              size: 18,
+                            ),
+                            tooltip: 'Rappeler via WhatsApp',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _sendProductionReminder(
+                              _reminderMessageOneBatch(b),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (drafts.isNotEmpty)
           Container(
             margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -871,7 +991,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                           children: [
                             Expanded(
                               child: Text(
-                                '${c.materialName} · ${formatQty(c.quantityConsumed)} kg × ${c.unitCost.toStringAsFixed(2)} F',
+                                '${c.materialName} · ${formatQty(c.quantityConsumed)} kg × ${formatQty(c.unitCost)} F',
                               ),
                             ),
                             Text(
@@ -1032,7 +1152,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                       children: [
                         Expanded(
                           child: Text(
-                            '${c.materialName} · ${formatQty(c.quantityConsumed)} kg × ${c.unitCost.toStringAsFixed(2)} F',
+                            '${c.materialName} · ${formatQty(c.quantityConsumed)} kg × ${formatQty(c.unitCost)} F',
                           ),
                         ),
                         Text(
