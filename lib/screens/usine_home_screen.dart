@@ -44,6 +44,10 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
   // en attente, pas les autres postes ayant seulement accès en lecture à cet écran.
   int? _pendingApproCount;
 
+  // Même principe pour les lots de fabrication envoyés au comptable (statut "a_valider")
+  // — uniquement pour la personne qui valide le coût de revient (validateCost).
+  int? _pendingProductionCount;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +57,7 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
       (_) => _updateClock(),
     );
     _refreshPendingApproCount();
+    _refreshPendingProductionCount();
   }
 
   Future<void> _refreshPendingApproCount() async {
@@ -67,6 +72,20 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
     } catch (_) {
       // Silencieux : un badge de notification qui échoue à se charger ne doit jamais
       // bloquer l'accès au tableau de bord, juste rester absent.
+    }
+  }
+
+  Future<void> _refreshPendingProductionCount() async {
+    if (!widget.permissions.validateCost) return;
+    try {
+      final pending = await _mongoService.getProductionBatches(
+        usineId: widget.usine.id,
+        status: 'a_valider',
+      );
+      if (!mounted) return;
+      setState(() => _pendingProductionCount = pending.length);
+    } catch (_) {
+      // Silencieux, même raison que _refreshPendingApproCount ci-dessus.
     }
   }
 
@@ -285,13 +304,20 @@ class _UsineHomeScreenState extends State<UsineHomeScreen> {
           color: Colors.deepPurple,
           title: 'Production',
           subtitle: 'Fabrication & coût de revient',
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  UsineProductionScreen(usine: usine, permissions: permissions),
-            ),
-          ),
+          badgeCount: _pendingProductionCount,
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    UsineProductionScreen(usine: usine, permissions: permissions),
+              ),
+            );
+            // Le nombre à valider a pu changer (validation, renvoi, nouvelle clôture)
+            // pendant qu'on était sur l'écran — même raison que pour Approvisionnement.
+            if (!mounted) return;
+            _refreshPendingProductionCount();
+          },
         ),
       if (canAdmin)
         _SectionCard(

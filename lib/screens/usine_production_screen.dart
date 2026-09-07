@@ -335,7 +335,8 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         final qty = double.parse(quantityController.text);
                         // La quantité produite est provisoirement = la cible : la pesée de
                         // sortie réelle, souvent connue plus tard, se corrige à la clôture
-                        // (écran 17) — le stock, lui, est bien consommé maintenant.
+                        // (écran 17). Le stock, lui, ne bouge pas ici — seule la validation
+                        // comptable (écran 18/19) le consomme réellement.
                         final result = await runBlocking(
                           context,
                           () => _mongoService.launchProduction(
@@ -381,10 +382,11 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
     );
   }
 
-  /// Écran 17 — clôture : le stock est déjà consommé (lancement), il ne reste qu'à
-  /// corriger la quantité réellement produite (pesée de sortie, souvent connue plus tard)
-  /// avant de rester en brouillon ou d'envoyer au comptable. Jamais de F/kg ni de FCFA ici
-  /// — cet écran reste celui de la production (annotation B).
+  /// Écran 17 — clôture : le stock ne bouge pas ici (il n'est consommé qu'à la validation
+  /// comptable), il ne reste qu'à corriger la quantité réellement produite (pesée de
+  /// sortie, souvent connue plus tard) avant de rester en brouillon ou d'envoyer au
+  /// comptable. Jamais de F/kg ni de FCFA ici — cet écran reste celui de la production
+  /// (annotation B).
   void _showCloseDialog(ProductionBatch batch, {bool justLaunched = false}) {
     final actualController = TextEditingController(
       text: formatQty(batch.actualQuantityProduced),
@@ -422,7 +424,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
-                        'Fabrication lancée, stock déjà prélevé. Si la pesée de sortie n\'est pas encore connue, enregistrez en brouillon et revenez-y plus tard depuis l\'onglet Fabrication.',
+                        'Fabrication lancée — le stock ne sera prélevé qu\'à la validation du coût par le comptable. Si la pesée de sortie n\'est pas encore connue, enregistrez en brouillon et revenez-y plus tard depuis l\'onglet Fabrication.',
                         style: TextStyle(fontSize: 11.5, color: Colors.grey),
                       ),
                     ),
@@ -577,10 +579,11 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
         ),
       );
     }
-    // Écran 17 : brouillons en attente de clôture — lancés (stock déjà prélevé) mais pas
-    // encore envoyés au comptable, soit fraîchement créés, soit renvoyés par la
-    // comptabilité (écran 19). Visible même sans validateCost, sinon la production n'a
-    // jamais connaissance des lots à finaliser ou des renvois.
+    // Écran 17 : brouillons en attente de clôture — lancés (stock pas encore touché, il ne
+    // bouge qu'à la validation comptable) mais pas encore envoyés au comptable, soit
+    // fraîchement créés, soit renvoyés par la comptabilité (écran 19). Visible même sans
+    // validateCost, sinon la production n'a jamais connaissance des lots à finaliser ou
+    // des renvois.
     final drafts = _batches.where((b) => b.isDraft).toList();
     return Column(
       children: [
@@ -879,6 +882,15 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                             ),
                           ],
                         ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Coûts estimés au lancement — le stock n\'est réellement prélevé '
+                        'et le coût figé qu\'en validant ci-dessous ; ils peuvent différer '
+                        'légèrement si le stock a changé depuis.',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                     ),
                     const Divider(),

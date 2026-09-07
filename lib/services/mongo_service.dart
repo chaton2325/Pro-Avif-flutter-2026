@@ -44,6 +44,7 @@ class LicenseBlockedException implements Exception {
   @override
   String toString() => reason;
 }
+
 //Base en production : "https://proavif.mirhosty.com"
 class MongoService {
   static final MongoService _instance = MongoService._internal();
@@ -969,7 +970,9 @@ class MongoService {
     return ProductionCheckResult(canLaunch: false, lines: []);
   }
 
-  /// Lance la fabrication (consomme réellement le stock / les lots FIFO). Renvoie le lot
+  /// Lance la fabrication — ne touche pas encore le stock (ni matières premières ni
+  /// aliment produit), seulement une estimation du coût affichée jusqu'à la validation
+  /// comptable, qui seule consomme réellement le stock / les lots FIFO. Renvoie le lot
   /// créé si succès, ou un message d'erreur serveur sinon.
   Future<({ProductionBatch? batch, String? error})> launchProduction({
     required String usineId,
@@ -1024,6 +1027,10 @@ class MongoService {
     return [];
   }
 
+  /// Écran 18 — validation comptable : c'est ce seul appel qui consomme réellement le
+  /// stock (matières premières et aliment-ingrédient FIFO) et alimente le stock d'aliment
+  /// fini. Peut échouer avec un message "Stock insuffisant..." si le stock a changé depuis
+  /// le lancement de cette fabrication — à afficher tel quel au comptable.
   Future<String?> validateProduction(
     String id, {
     double adjustment = 0,
@@ -1072,8 +1079,9 @@ class MongoService {
     }
   }
 
-  /// Écran 19 — « Renvoyer » : la comptabilité signale un problème sur le lot sans toucher
-  /// au stock déjà consommé (déjà réel physiquement), un simple drapeau tracé.
+  /// Écran 19 — « Renvoyer » : la comptabilité signale un problème sur le lot. Le stock n'a
+  /// pas encore bougé à ce stade (il ne bouge qu'à la validation) — un simple drapeau
+  /// tracé, rien à annuler côté stock.
   Future<String?> rejectProduction(String id, String reason) async {
     final response = await http.post(
       Uri.parse('$baseUrl/production/$id/reject'),
