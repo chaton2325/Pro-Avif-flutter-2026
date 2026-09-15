@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/delivery.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_widgets.dart';
 
 /// Réception d'aliments côté ferme : les fermes reçoivent l'aliment produit par l'usine
 /// (module Usine Aliment, voir routers/deliveries.py) — cet écran laisse le rédacteur
@@ -103,11 +104,7 @@ class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: AppBar(
-        backgroundColor: DailyReportColors.green900,
-        foregroundColor: Colors.white,
-        title: const Text("Réception d'aliments"),
-      ),
+      appBar: dailyReportAppBar("Réception d'aliments"),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: DailyReportColors.green700))
           : RefreshIndicator(
@@ -115,19 +112,22 @@ class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _toggleButton('En attente (${_pending.length})', !_showHistory,
-                            () => setState(() => _showHistory = false)),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _toggleButton('Historique', _showHistory, () => setState(() => _showHistory = true)),
-                      ),
-                    ],
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _toggleButton('En attente (${_pending.length})', !_showHistory,
+                              () => setState(() => _showHistory = false)),
+                        ),
+                        Expanded(
+                          child: _toggleButton('Historique', _showHistory, () => setState(() => _showHistory = true)),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                   if (!_showHistory)
                     if (_pending.isEmpty)
                       _emptyState("Aucune livraison en attente de réception.")
@@ -144,58 +144,119 @@ class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
   }
 
   Widget _toggleButton(String label, bool active, VoidCallback onTap) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        backgroundColor: active ? DailyReportColors.green700 : Colors.white,
-        foregroundColor: active ? Colors.white : DailyReportColors.green700,
-        side: const BorderSide(color: DailyReportColors.green700),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          gradient: active ? const LinearGradient(colors: [DailyReportColors.green700, DailyReportColors.green600]) : null,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
+            color: active ? Colors.white : Colors.grey.shade600,
+          ),
+        ),
       ),
-      child: Text(label, style: const TextStyle(fontSize: 12.5)),
     );
   }
 
   Widget _emptyState(String message) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Center(child: Text(message, style: TextStyle(color: Colors.grey.shade500))),
+        padding: const EdgeInsets.symmetric(vertical: 50),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.inbox_outlined, size: 40, color: Colors.grey.shade400),
+              const SizedBox(height: 10),
+              Text(message, style: TextStyle(color: Colors.grey.shade500)),
+            ],
+          ),
+        ),
       );
 
   Widget _pendingCard(Delivery d) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: DailyReportColors.yellow500),
-      ),
-      child: ListTile(
-        title: Text('${d.formulaName} · ${d.quantity} kg', style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(
-          '${DateFormat('dd/MM/yyyy').format(d.createdAt)}'
-          '${d.driverName != null ? " · ${d.driverName}" : ""}'
-          '${d.vehicle != null ? " (${d.vehicle})" : ""}',
+    return DailyReportCard(
+      accentColor: DailyReportColors.yellow500,
+      margin: const EdgeInsets.only(bottom: 12),
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(color: DailyReportColors.yellow100, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.local_shipping_outlined, color: DailyReportColors.yellow600),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${d.formulaName} · ${d.quantity} kg', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${DateFormat('dd/MM/yyyy').format(d.createdAt)}'
+                    '${d.driverName != null ? " · ${d.driverName}" : ""}'
+                    '${d.vehicle != null ? " (${d.vehicle})" : ""}',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        trailing: ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.yellow500, foregroundColor: Colors.black87),
-          onPressed: () => _openAckDialog(d),
-          child: const Text('Confirmer'),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: DailyReportColors.yellow500,
+              foregroundColor: Colors.black87,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => _openAckDialog(d),
+            child: const Text('Confirmer la réception', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
         ),
-      ),
+      ],
     );
   }
 
   Widget _historyCard(Delivery d) {
-    return Card(
-      elevation: 0,
+    return DailyReportCard(
+      accentColor: DailyReportColors.green600,
       margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-      child: ListTile(
-        leading: const Icon(Icons.check_circle, color: DailyReportColors.green600),
-        title: Text('${d.formulaName} · ${d.farmReceivedQuantity ?? d.quantity} kg', style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(
-          d.farmReceivedAt != null ? DateFormat('dd/MM/yyyy à HH:mm').format(d.farmReceivedAt!) : '',
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(color: DailyReportColors.green100, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.check_circle_rounded, color: DailyReportColors.green700),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${d.formulaName} · ${d.farmReceivedQuantity ?? d.quantity} kg', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text(
+                    d.farmReceivedAt != null ? DateFormat('dd/MM/yyyy à HH:mm').format(d.farmReceivedAt!) : '',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ),
+      ],
     );
   }
 }

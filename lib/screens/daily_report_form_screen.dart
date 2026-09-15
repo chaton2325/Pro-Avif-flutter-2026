@@ -6,6 +6,7 @@ import '../models/treatment_reference.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_widgets.dart';
 import 'daily_report_summary_screen.dart';
 
 const List<String> kStaffStatuses = ['present', 'repos', 'absent', 'malade', 'permission'];
@@ -153,20 +154,34 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: AppBar(
-        backgroundColor: DailyReportColors.green900,
-        foregroundColor: Colors.white,
+      appBar: dailyReportAppBar(
+        _stepTitles[_step],
+        subtitle: 'Étape ${_step + 1} / 4',
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back),
-        title: Text(_stepTitles[_step]),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(10),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: List.generate(4, (i) {
+                final active = i <= _step;
+                return Expanded(
+                  child: Container(
+                    height: 5,
+                    margin: EdgeInsets.only(right: i < 3 ? 5 : 0),
+                    decoration: BoxDecoration(
+                      color: active ? DailyReportColors.yellow500 : Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
       ),
       body: Column(
         children: [
-          LinearProgressIndicator(
-            value: (_step + 1) / 4,
-            backgroundColor: Colors.grey.shade200,
-            color: DailyReportColors.yellow500,
-            minHeight: 3,
-          ),
           if (_error != null)
             Container(
               width: double.infinity,
@@ -190,27 +205,50 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
           child: Row(
             children: [
               Expanded(
-                child: OutlinedButton(
-                  onPressed: _saving ? null : _back,
-                  child: const Text('Retour'),
+                child: SizedBox(
+                  height: 50,
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : _back,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: DailyReportColors.green700,
+                      side: const BorderSide(color: DailyReportColors.green600, width: 1.4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Retour', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 flex: 2,
-                child: ElevatedButton(
-                  onPressed: _saving ? null : _saveStepAndAdvance,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: DailyReportColors.green700,
-                    foregroundColor: Colors.white,
+                child: Container(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: const LinearGradient(colors: [DailyReportColors.green700, DailyReportColors.green600]),
+                    boxShadow: [
+                      BoxShadow(color: DailyReportColors.green700.withValues(alpha: 0.32), blurRadius: 10, offset: const Offset(0, 4)),
+                    ],
                   ),
-                  child: _saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Text(_step < 3 ? 'Suivant' : 'Voir le récapitulatif'),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: _saving ? null : _saveStepAndAdvance,
+                      child: Center(
+                        child: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : Text(
+                                _step < 3 ? 'Suivant' : 'Voir le récapitulatif',
+                                style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                              ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -571,31 +609,17 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     );
   }
 
-  Widget _sectionTitle(String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          title.toUpperCase(),
-          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.grey.shade600, letterSpacing: 0.5),
-        ),
-      );
+  Widget _sectionTitle(String title) => DailyReportSectionLabel(title);
 
-  Widget _card(List<Widget> children) => Card(
-        elevation: 0,
-        margin: const EdgeInsets.only(bottom: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
-        ),
-      );
+  Widget _card(List<Widget> children) => DailyReportCard(children: children);
 
   Widget _readonlyRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 5),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(child: Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5))),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: DailyReportColors.green900)),
           ],
         ),
       );
@@ -619,26 +643,41 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   }
 
   Widget _stepperField({required String label, required int value, required ValueChanged<int> onChanged}) {
+    final active = value > 0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: active ? DailyReportColors.yellow100 : DailyReportColors.surface,
+        border: Border.all(color: active ? DailyReportColors.yellow500 : Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12)),
+          Expanded(
+            child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+          ),
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: const Icon(Icons.remove_circle_outline, size: 20),
+                icon: Icon(Icons.remove_circle, size: 22, color: value > 0 ? DailyReportColors.green700 : Colors.grey.shade300),
                 onPressed: value > 0 ? () => onChanged(value - 1) : null,
               ),
-              SizedBox(width: 24, child: Text('$value', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
+              SizedBox(
+                width: 26,
+                child: Text(
+                  '$value',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontWeight: FontWeight.w800, color: active ? DailyReportColors.yellow600 : DailyReportColors.green900),
+                ),
+              ),
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: const Icon(Icons.add_circle_outline, size: 20),
+                icon: const Icon(Icons.add_circle, size: 22, color: DailyReportColors.green700),
                 onPressed: () => onChanged(value + 1),
               ),
             ],

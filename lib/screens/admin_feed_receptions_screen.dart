@@ -4,8 +4,12 @@ import '../models/delivery.dart';
 import '../models/usine.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_widgets.dart';
 
 enum _ReceptionFilter { all, pendingUsine, pendingFarm, received, cancelled }
+enum _ReceptionSort { alpha, dateDesc }
+
+const _pageSize = 30;
 
 /// Vue admin des réceptions d'aliments, toutes fermes confondues (contrairement à
 /// FeedReceptionScreen qui est scopée à UNE ferme, pour un rédacteur) — reprend
@@ -24,12 +28,23 @@ class _AdminFeedReceptionsScreenState extends State<AdminFeedReceptionsScreen> {
   Usine? _selectedUsine;
   List<Delivery> _deliveries = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  int _totalCount = 0;
   _ReceptionFilter _filter = _ReceptionFilter.pendingFarm;
+  _ReceptionSort _sortMode = _ReceptionSort.alpha;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _init();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -48,27 +63,50 @@ class _AdminFeedReceptionsScreenState extends State<AdminFeedReceptionsScreen> {
       _selectedUsine = usine;
       _loading = true;
     });
-    final result = await _mongoService.getDeliveries(usineId: usine.id!, limit: 300);
+    final result = await _mongoService.getDeliveries(usineId: usine.id!, skip: 0, limit: _pageSize);
     if (!mounted) return;
     setState(() {
       _deliveries = result.data;
+      _totalCount = result.totalCount;
       _loading = false;
     });
   }
 
+  bool get _hasMore => _deliveries.length < _totalCount;
+
+  Future<void> _loadMore() async {
+    if (_selectedUsine == null || _loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    final result = await _mongoService.getDeliveries(
+      usineId: _selectedUsine!.id!,
+      skip: _deliveries.length,
+      limit: _pageSize,
+    );
+    if (!mounted) return;
+    setState(() {
+      _deliveries = [..._deliveries, ...result.data];
+      _totalCount = result.totalCount;
+      _loadingMore = false;
+    });
+  }
+
   List<Delivery> get _filtered {
-    switch (_filter) {
-      case _ReceptionFilter.pendingUsine:
-        return _deliveries.where((d) => d.status == 'en_attente').toList();
-      case _ReceptionFilter.pendingFarm:
-        return _deliveries.where((d) => d.isAwaitingFarmAck).toList();
-      case _ReceptionFilter.received:
-        return _deliveries.where((d) => d.farmReceivedAt != null).toList();
-      case _ReceptionFilter.cancelled:
-        return _deliveries.where((d) => d.isCancelled).toList();
-      case _ReceptionFilter.all:
-        return _deliveries;
+    Iterable<Delivery> result = switch (_filter) {
+      _ReceptionFilter.pendingUsine => _deliveries.where((d) => d.status == 'en_attente'),
+      _ReceptionFilter.pendingFarm => _deliveries.where((d) => d.isAwaitingFarmAck),
+      _ReceptionFilter.received => _deliveries.where((d) => d.farmReceivedAt != null),
+      _ReceptionFilter.cancelled => _deliveries.where((d) => d.isCancelled),
+      _ReceptionFilter.all => _deliveries,
+    };
+    if (_searchQuery.trim().isNotEmpty) {
+      final q = _searchQuery.trim().toLowerCase();
+      result = result.where((d) => d.farmName.toLowerCase().contains(q) || d.formulaName.toLowerCase().contains(q));
     }
+    final list = result.toList();
+    list.sort((a, b) => _sortMode == _ReceptionSort.alpha
+        ? a.farmName.toLowerCase().compareTo(b.farmName.toLowerCase())
+        : b.createdAt.compareTo(a.createdAt));
+    return list;
   }
 
   void _openAckDialog(Delivery delivery) {
@@ -130,11 +168,7 @@ class _AdminFeedReceptionsScreenState extends State<AdminFeedReceptionsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: AppBar(
-        backgroundColor: DailyReportColors.green900,
-        foregroundColor: Colors.white,
-        title: const Text('Réceptions — toutes fermes'),
-      ),
+      appBar: dailyReportAppBar('Réceptions — toutes fermes'),
       body: Column(
         children: [
           if (_usines.length > 1)
@@ -148,7 +182,21 @@ class _AdminFeedReceptionsScreenState extends State<AdminFeedReceptionsScreen> {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: DailySearchSortBar<_ReceptionSort>(
+              controller: _searchController,
+              hintText: 'Rechercher une ferme, un aliment…',
+              onSearchChanged: (v) => setState(() => _searchQuery = v),
+              sortValue: _sortMode,
+              onSortChanged: (v) => setState(() => _sortMode = v),
+              sortOptions: const [
+                DailySortOption(_ReceptionSort.alpha, 'Ferme (A→Z)'),
+                DailySortOption(_ReceptionSort.dateDesc, 'Plus récent'),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Wrap(
               spacing: 6,
               children: [
@@ -169,17 +217,51 @@ class _AdminFeedReceptionsScreenState extends State<AdminFeedReceptionsScreen> {
                         onRefresh: () => _selectUsine(_selectedUsine!),
                         child: _filtered.isEmpty
                             ? ListView(
-                                children: const [
-                                  Padding(
+                                children: [
+                                  const Padding(
                                     padding: EdgeInsets.symmetric(vertical: 60),
                                     child: Center(child: Text('Rien ici.')),
                                   ),
+                                  if (_hasMore)
+                                    Center(
+                                      child: _loadingMore
+                                          ? const CircularProgressIndicator(color: DailyReportColors.green700)
+                                          : OutlinedButton(
+                                              onPressed: _loadMore,
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: DailyReportColors.green700,
+                                                side: const BorderSide(color: DailyReportColors.green600),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                              ),
+                                              child: Text('Charger plus (${_totalCount - _deliveries.length} restantes)'),
+                                            ),
+                                    ),
                                 ],
                               )
                             : ListView.builder(
                                 padding: const EdgeInsets.all(12),
-                                itemCount: _filtered.length,
-                                itemBuilder: (context, i) => _row(_filtered[i]),
+                                itemCount: _filtered.length + (_hasMore ? 1 : 0),
+                                itemBuilder: (context, i) {
+                                  if (i == _filtered.length) {
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      child: Center(
+                                        child: _loadingMore
+                                            ? const CircularProgressIndicator(color: DailyReportColors.green700)
+                                            : OutlinedButton(
+                                                onPressed: _loadMore,
+                                                style: OutlinedButton.styleFrom(
+                                                  foregroundColor: DailyReportColors.green700,
+                                                  side: const BorderSide(color: DailyReportColors.green600),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                ),
+                                                child: Text('Charger plus (${_totalCount - _deliveries.length} restantes)'),
+                                              ),
+                                      ),
+                                    );
+                                  }
+                                  return _row(_filtered[i]);
+                                },
                               ),
                       ),
           ),
@@ -191,42 +273,60 @@ class _AdminFeedReceptionsScreenState extends State<AdminFeedReceptionsScreen> {
   Widget _filterChip(String label, _ReceptionFilter value) {
     final selected = _filter == value;
     return ChoiceChip(
-      label: Text(label, style: const TextStyle(fontSize: 11.5)),
+      label: Text(label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
       selected: selected,
-      selectedColor: DailyReportColors.green600,
-      labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87),
+      backgroundColor: Colors.white,
+      selectedColor: DailyReportColors.green700,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999), side: BorderSide(color: selected ? DailyReportColors.green700 : Colors.grey.shade300)),
+      labelStyle: TextStyle(color: selected ? Colors.white : Colors.grey.shade700),
       onSelected: (_) => setState(() => _filter = value),
     );
   }
 
   Widget _row(Delivery d) {
     final awaitingFarm = d.isAwaitingFarmAck;
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: awaitingFarm ? DailyReportColors.yellow500 : Colors.grey.shade200),
-      ),
-      child: ListTile(
-        title: Text('${d.farmName} — ${d.formulaName}', style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(
-          '${d.quantity} kg expédiés'
-          '${d.farmReceivedQuantity != null ? " · ${d.farmReceivedQuantity} kg reçus" : ""}'
-          '\n${DateFormat('dd/MM/yyyy').format(d.createdAt)}'
-          '${d.isCancelled ? " · ANNULÉE" : ""}',
+    final accent = d.isCancelled
+        ? Colors.grey.shade400
+        : awaitingFarm
+            ? DailyReportColors.yellow500
+            : DailyReportColors.green600;
+    return DailyReportCard(
+      accentColor: accent,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: accent.withValues(alpha: 0.15), shape: BoxShape.circle),
+            child: Icon(
+              d.isCancelled ? Icons.cancel_outlined : (awaitingFarm ? Icons.local_shipping_outlined : Icons.check_circle_outline),
+              color: accent,
+              size: 19,
+            ),
+          ),
+          title: Text('${d.farmName} — ${d.formulaName}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+          subtitle: Text(
+            '${d.quantity} kg expédiés'
+            '${d.farmReceivedQuantity != null ? " · ${d.farmReceivedQuantity} kg reçus" : ""}'
+            '\n${DateFormat('dd/MM/yyyy').format(d.createdAt)}'
+            '${d.isCancelled ? " · ANNULÉE" : ""}',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+          ),
+          isThreeLine: true,
+          trailing: awaitingFarm
+              ? ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.yellow500, foregroundColor: Colors.black87),
+                  onPressed: () => _openAckDialog(d),
+                  child: const Text('Confirmer'),
+                )
+              : d.farmReceivedAt != null
+                  ? const Icon(Icons.check_circle, color: DailyReportColors.green600)
+                  : null,
         ),
-        isThreeLine: true,
-        trailing: awaitingFarm
-            ? ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.yellow500, foregroundColor: Colors.black87),
-                onPressed: () => _openAckDialog(d),
-                child: const Text('Confirmer'),
-              )
-            : d.farmReceivedAt != null
-                ? const Icon(Icons.check_circle, color: DailyReportColors.green600)
-                : null,
-      ),
+      ],
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_widgets.dart';
 import 'admin_farm_staff_screen.dart';
 import 'admin_feed_receptions_screen.dart';
 import 'admin_lot_headcounts_screen.dart';
@@ -16,31 +17,36 @@ class AdminDailyReportHubScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = [
       (
-        icon: Icons.fact_check_outlined,
+        icon: Icons.fact_check_rounded,
+        color: DailyReportColors.green700,
         title: 'Tableau de suivi',
         subtitle: 'Valider ou renvoyer les rapports du jour',
         builder: (BuildContext c) => ValidatorOverviewScreen(user: MongoService().currentUser!),
       ),
       (
-        icon: Icons.local_shipping_outlined,
+        icon: Icons.local_shipping_rounded,
+        color: DailyReportColors.yellow600,
         title: 'Réceptions — toutes fermes',
-        subtitle: "En attente et historique, tous bâtiments",
+        subtitle: 'En attente et historique, tous bâtiments',
         builder: (BuildContext c) => const AdminFeedReceptionsScreen(),
       ),
       (
-        icon: Icons.groups_outlined,
+        icon: Icons.groups_rounded,
+        color: DailyReportColors.green600,
         title: 'Effectifs de départ',
         subtitle: "Saisir l'effectif initial d'un lot",
         builder: (BuildContext c) => const AdminLotHeadcountsScreen(),
       ),
       (
-        icon: Icons.medical_services_outlined,
+        icon: Icons.medical_services_rounded,
+        color: DailyReportColors.green900,
         title: 'Vaccins & médicaments',
         subtitle: 'Référentiel des traitements',
         builder: (BuildContext c) => const AdminTreatmentReferencesScreen(),
       ),
       (
-        icon: Icons.badge_outlined,
+        icon: Icons.badge_rounded,
+        color: DailyReportColors.green700,
         title: 'Personnel',
         subtitle: 'Personnel affecté par ferme',
         builder: (BuildContext c) => const AdminFarmStaffScreen(),
@@ -49,47 +55,19 @@ class AdminDailyReportHubScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: AppBar(
-        backgroundColor: DailyReportColors.green900,
-        foregroundColor: Colors.white,
-        title: const Text('Rapport Journalier — Admin'),
-      ),
+      appBar: dailyReportAppBar('Rapport Journalier', subtitle: 'Espace administrateur'),
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: entries.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, i) {
           final e = entries[i];
-          return Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: e.builder)),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(e.icon, color: DailyReportColors.green700),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(e.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          Text(e.subtitle, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.chevron_right, color: Colors.grey.shade400),
-                  ],
-                ),
-              ),
-            ),
+          return DailyReportMenuTile(
+            icon: e.icon,
+            color: e.color,
+            title: e.title,
+            subtitle: e.subtitle,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: e.builder)),
           );
         },
       ),

@@ -2442,10 +2442,14 @@ class MongoService {
 
   // ---- Notifications ----
 
-  Future<NotificationListResult> getNotifications(String userId) async {
-    final uri = Uri.parse(
-      '$baseUrl/notifications',
-    ).replace(queryParameters: {'userId': userId});
+  Future<NotificationListResult> getNotifications(
+    String userId, {
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/notifications').replace(
+      queryParameters: {'userId': userId, 'skip': '$skip', 'limit': '$limit'},
+    );
     final response = await http.get(uri);
     if (response.statusCode == 200) {
       return NotificationListResult.fromMap(jsonDecode(response.body));

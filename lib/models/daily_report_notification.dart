@@ -35,13 +35,15 @@ class DailyReportNotification {
 
 class NotificationListResult {
   final int unreadCount;
+  final int totalCount;
   final List<DailyReportNotification> data;
 
-  NotificationListResult({required this.unreadCount, required this.data});
+  NotificationListResult({required this.unreadCount, this.totalCount = 0, required this.data});
 
   factory NotificationListResult.fromMap(Map<String, dynamic> map) {
     return NotificationListResult(
       unreadCount: (map['unreadCount'] as num?)?.toInt() ?? 0,
+      totalCount: (map['totalCount'] as num?)?.toInt() ?? 0,
       data: (map['data'] as List<dynamic>? ?? [])
           .map((n) => DailyReportNotification.fromMap(n as Map<String, dynamic>))
           .toList(),

@@ -4,8 +4,11 @@ import '../models/farm_daily_report.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_widgets.dart';
 import 'login_screen.dart';
 import 'validator_report_detail_screen.dart';
+
+enum _SortMode { alpha, status }
 
 /// Tableau de suivi du validateur (maquette écran 09) : synthèse du jour + une ligne par
 /// ferme, mis à jour en temps réel côté serveur (GET /daily-reports?date=).
@@ -23,6 +26,9 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
   FarmReportOverview? _overview;
   bool _isLoading = true;
   DateTime _selectedDate = DateTime.now();
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  _SortMode _sortMode = _SortMode.alpha;
 
   String get _selectedDateStr => DateFormat('yyyy-MM-dd').format(_selectedDate);
   bool get _isToday => _selectedDateStr == DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -32,6 +38,35 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
     super.initState();
     _load();
   }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<FarmReportOverviewItem> get _visibleFarms {
+    var farms = _overview?.farms ?? <FarmReportOverviewItem>[];
+    if (_searchQuery.trim().isNotEmpty) {
+      final q = _searchQuery.trim().toLowerCase();
+      farms = farms.where((f) => f.farmName.toLowerCase().contains(q)).toList();
+    } else {
+      farms = List.of(farms);
+    }
+    farms.sort((a, b) => _sortMode == _SortMode.alpha
+        ? a.farmName.toLowerCase().compareTo(b.farmName.toLowerCase())
+        : _statusPriority(a.status).compareTo(_statusPriority(b.status)));
+    return farms;
+  }
+
+  int _statusPriority(String status) => switch (status) {
+    'en_attente_validation' => 0,
+    'a_corriger' => 1,
+    'brouillon' => 2,
+    'non_fait' => 3,
+    'valide' => 4,
+    _ => 5,
+  };
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
@@ -74,10 +109,11 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
 
   Color _statusPillColor(String status) => switch (status) {
     'valide' => DailyReportColors.green600,
-    'en_attente_validation' => DailyReportColors.yellow500,
-    'a_corriger' => DailyReportColors.yellow500,
-    'brouillon' => DailyReportColors.grey500,
-    _ => DailyReportColors.green900,
+    'en_attente_validation' => DailyReportColors.yellow600,
+    'a_corriger' => DailyReportColors.yellow600,
+    'brouillon' => DailyReportColors.green700,
+    'non_fait' => Colors.grey.shade500,
+    _ => Colors.grey.shade500,
   };
 
   String _actionLabel(String status) => switch (status) {
@@ -97,10 +133,8 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
 
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: AppBar(
-        backgroundColor: DailyReportColors.green900,
-        foregroundColor: Colors.white,
-        title: const Text('Suivi des rapports'),
+      appBar: dailyReportAppBar(
+        'Suivi des rapports',
         actions: [
           IconButton(icon: const Icon(Icons.calendar_today, size: 20), onPressed: _pickDate, tooltip: 'Choisir une date'),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout, tooltip: 'Déconnexion'),
@@ -115,9 +149,11 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
                 children: [
                   Row(
                     children: [
+                      Icon(Icons.event_note_rounded, size: 15, color: Colors.grey.shade500),
+                      const SizedBox(width: 6),
                       Text(
                         '${DateFormat('dd/MM/yyyy').format(_selectedDate)}${_isToday ? " (aujourd'hui)" : ""} · ${overview?.farms.length ?? 0} fermes',
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                       const Spacer(),
                       if (!_isToday)
@@ -130,71 +166,124 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   Row(
                     children: [
-                      Expanded(child: _statBox('$aValider', 'À valider', DailyReportColors.yellow600)),
-                      const SizedBox(width: 8),
-                      Expanded(child: _statBox('$nonFait', 'Non fait', Colors.grey.shade600)),
-                      const SizedBox(width: 8),
-                      Expanded(child: _statBox('$valides', 'Validés', DailyReportColors.green700)),
+                      Expanded(
+                        child: DailyReportStatTile(
+                          value: '$aValider',
+                          label: 'À valider',
+                          color: DailyReportColors.yellow600,
+                          icon: Icons.hourglass_top_rounded,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: DailyReportStatTile(
+                          value: '$nonFait',
+                          label: 'Non fait',
+                          color: Colors.grey.shade500,
+                          icon: Icons.remove_circle_outline,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: DailyReportStatTile(
+                          value: '$valides',
+                          label: 'Validés',
+                          color: DailyReportColors.green700,
+                          icon: Icons.check_circle_outline,
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  for (final f in overview?.farms ?? []) _farmRow(f),
+                  const SizedBox(height: 22),
+                  const DailyReportSectionLabel('Par bâtiment'),
+                  DailySearchSortBar<_SortMode>(
+                    controller: _searchController,
+                    hintText: 'Rechercher un bâtiment…',
+                    onSearchChanged: (v) => setState(() => _searchQuery = v),
+                    sortValue: _sortMode,
+                    onSortChanged: (v) => setState(() => _sortMode = v),
+                    sortOptions: const [
+                      DailySortOption(_SortMode.alpha, 'Alphabétique (A→Z)'),
+                      DailySortOption(_SortMode.status, 'Statut (urgence)'),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  if (_visibleFarms.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 30),
+                      child: Center(
+                        child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500)),
+                      ),
+                    )
+                  else
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1.2,
+                      children: [for (final f in _visibleFarms) _farmCard(f)],
+                    ),
                 ],
               ),
             ),
     );
   }
 
-  Widget _statBox(String value, String label, Color color) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Column(
-          children: [
-            Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: color)),
-            const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 9.5, color: Colors.grey.shade500, fontWeight: FontWeight.w700)),
-          ],
-        ),
-      );
-
-  Widget _farmRow(FarmReportOverviewItem f) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-      child: ListTile(
-        onTap: () => _openFarm(f),
-        title: Text(f.farmName, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text('Lot ${f.lotNumber ?? "—"}', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: _statusPillColor(f.status).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(999),
+  Widget _farmCard(FarmReportOverviewItem f) {
+    final color = _statusPillColor(f.status);
+    final enabled = f.status != 'non_fait';
+    return DailyReportCard(
+      accentColor: color,
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      children: [
+        InkWell(
+          onTap: enabled ? () => _openFarm(f) : null,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                f.farmName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
               ),
-              child: Text(
-                f.statusLabel.toUpperCase(),
-                style: TextStyle(color: _statusPillColor(f.status), fontWeight: FontWeight.w800, fontSize: 10),
+              const SizedBox(height: 2),
+              Text(
+                'Lot ${f.lotNumber ?? "—"}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              _actionLabel(f.status),
-              style: const TextStyle(color: DailyReportColors.green700, fontWeight: FontWeight.w800, fontSize: 11),
-            ),
-          ],
+              const SizedBox(height: 6),
+              DailyReportStatusBadge(label: f.statusLabel.toUpperCase(), color: color),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 32,
+                child: ElevatedButton(
+                  onPressed: enabled ? () => _openFarm(f) : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: enabled ? color : Colors.grey.shade200,
+                    disabledBackgroundColor: Colors.grey.shade200,
+                    foregroundColor: enabled ? Colors.white : Colors.grey.shade500,
+                    padding: EdgeInsets.zero,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                  ),
+                  child: Text(_actionLabel(f.status), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

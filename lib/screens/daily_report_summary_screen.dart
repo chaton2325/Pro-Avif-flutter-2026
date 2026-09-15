@@ -3,6 +3,7 @@ import '../models/farm_daily_report.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_widgets.dart';
 
 /// Récapitulatif & envoi (maquette écran 07) : tout ce qui est affiché ici vient du serveur
 /// (calculs jamais retapés) ; "Envoyer au validateur" déclenche la soumission (avec les
@@ -62,32 +63,42 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
 
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: AppBar(
-        backgroundColor: DailyReportColors.green900,
-        foregroundColor: Colors.white,
-        title: const Text('Récapitulatif'),
-      ),
+      appBar: dailyReportAppBar('Récapitulatif'),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Row(
             children: [
-              Expanded(child: _statBox('$totalFemaleProd', 'Prod. totale')),
-              const SizedBox(width: 8),
-              Expanded(child: _statBox('$totalFemaleEnd', 'Eff. restant F')),
-              const SizedBox(width: 8),
               Expanded(
-                child: _statBox(
-                  _report.aliment.securityStockDays != null
-                      ? '${_report.aliment.securityStockDays!.round()} j'
-                      : '—',
-                  'Sécurité aliment',
+                child: DailyReportStatTile(
+                  value: '$totalFemaleProd',
+                  label: 'Prod. totale',
+                  color: DailyReportColors.green700,
+                  icon: Icons.egg_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DailyReportStatTile(
+                  value: '$totalFemaleEnd',
+                  label: 'Eff. restant F',
+                  color: DailyReportColors.green600,
+                  icon: Icons.groups_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DailyReportStatTile(
+                  value: _report.aliment.securityStockDays != null ? '${_report.aliment.securityStockDays!.round()} j' : '—',
+                  label: 'Sécurité aliment',
+                  color: DailyReportColors.yellow600,
+                  icon: Icons.inventory_2_outlined,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _card([
+          const SizedBox(height: 18),
+          DailyReportCard(children: [
             _row('Mortalité du jour · cumul F/M',
                 '${_report.mortality.totalFemale + _report.mortality.totalMale} · '
                     '${_report.mortality.cumulativeFemale}/${_report.mortality.cumulativeMale}'),
@@ -96,16 +107,24 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
             const Divider(),
             _row('Stock aliment', '${_report.aliment.stockAfterKg} kg'),
           ]),
-          const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(10),
+              color: DailyReportColors.green100,
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: const Text(
-              "Ce récapitulatif part chez le validateur — rien n'est diffusé avant sa validation.",
-              style: TextStyle(fontSize: 12.5, color: Colors.black87),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.shield_outlined, color: DailyReportColors.green700, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    "Ce récapitulatif part chez le validateur — rien n'est diffusé avant sa validation.",
+                    style: TextStyle(fontSize: 12.5, color: DailyReportColors.green900),
+                  ),
+                ),
+              ],
             ),
           ),
           if (_error != null) ...[
@@ -118,51 +137,37 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
           ],
           const SizedBox(height: 20),
           if (!widget.readOnly)
-            SizedBox(
+            Container(
               width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _submitting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: DailyReportColors.green700,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              height: 54,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: const LinearGradient(colors: [DailyReportColors.green700, DailyReportColors.green600]),
+                boxShadow: [
+                  BoxShadow(color: DailyReportColors.green700.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 6)),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: _submitting ? null : _submit,
+                  child: Center(
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Envoyer au validateur', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 15)),
+                  ),
                 ),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('Envoyer au validateur', style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
         ],
       ),
     );
   }
-
-  Widget _statBox(String value, String label) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Column(
-          children: [
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-            const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 9.5, color: Colors.grey.shade500, fontWeight: FontWeight.w700)),
-          ],
-        ),
-      );
-
-  Widget _card(List<Widget> children) => Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-        child: Padding(padding: const EdgeInsets.all(14), child: Column(children: children)),
-      );
 
   Widget _row(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),

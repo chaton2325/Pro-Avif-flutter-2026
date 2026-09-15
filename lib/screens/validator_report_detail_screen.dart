@@ -3,6 +3,7 @@ import '../models/farm_daily_report.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_widgets.dart';
 
 const List<String> kRejectReasonChips = [
   'Chiffre incohérent',
@@ -81,11 +82,7 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: AppBar(
-        backgroundColor: DailyReportColors.green900,
-        foregroundColor: Colors.white,
-        title: Text('${_report.farmName} — Lot ${_report.lotNumber ?? "—"}'),
-      ),
+      appBar: dailyReportAppBar('${_report.farmName} — Lot ${_report.lotNumber ?? "—"}'),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -108,8 +105,7 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
             const SizedBox(height: 16),
           ],
           if (_canAct) ...[
-            Text('RENVOYER — MOTIF', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.grey.shade600)),
-            const SizedBox(height: 8),
+            const DailyReportSectionLabel('Renvoyer — motif', icon: Icons.reply_rounded),
             Wrap(
               spacing: 6,
               runSpacing: 6,
@@ -139,43 +135,70 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: DailyReportColors.yellow600,
-                      side: const BorderSide(color: DailyReportColors.yellow500),
+                  child: SizedBox(
+                    height: 50,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: DailyReportColors.yellow600,
+                        side: const BorderSide(color: DailyReportColors.yellow500, width: 1.4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _busy ? null : _reject,
+                      child: const Text('Renvoyer', style: TextStyle(fontWeight: FontWeight.w700)),
                     ),
-                    onPressed: _busy ? null : _reject,
-                    child: const Text('Renvoyer'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.green700, foregroundColor: Colors.white),
-                    onPressed: _busy ? null : _validate,
-                    child: _busy
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Valider'),
+                  child: Container(
+                    height: 50,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: const LinearGradient(colors: [DailyReportColors.green700, DailyReportColors.green600]),
+                      boxShadow: [
+                        BoxShadow(color: DailyReportColors.green700.withValues(alpha: 0.32), blurRadius: 10, offset: const Offset(0, 4)),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _busy ? null : _validate,
+                        child: Center(
+                          child: _busy
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Text('Valider', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ] else
             Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
-              child: Text('Statut : ${_report.statusLabel}', style: const TextStyle(fontWeight: FontWeight.w700)),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: DailyReportColors.green100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: DailyReportColors.green700, size: 18),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Statut : ${_report.statusLabel}',
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: DailyReportColors.green900),
+                  ),
+                ],
+              ),
             ),
         ],
       ),
     );
   }
 
-  Widget _card(List<Widget> children) => Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-        child: Padding(padding: const EdgeInsets.all(14), child: Column(children: children)),
-      );
+  Widget _card(List<Widget> children) => DailyReportCard(children: children);
 
   Widget _row(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),

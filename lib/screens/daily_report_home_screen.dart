@@ -5,6 +5,7 @@ import '../models/farm_daily_report.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_widgets.dart';
 import 'daily_report_form_screen.dart';
 import 'daily_report_notifications_screen.dart';
 import 'daily_report_summary_screen.dart';
@@ -101,11 +102,11 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
     _ => Colors.grey.shade600,
   };
 
-  Color _statusBg(String status) => switch (status) {
-    'valide' => DailyReportColors.green100,
-    'a_corriger' => DailyReportColors.yellow100,
-    'en_attente_validation' => DailyReportColors.yellow100,
-    _ => Colors.grey.shade100,
+  IconData _statusIcon(String status) => switch (status) {
+    'valide' => Icons.check_circle_rounded,
+    'a_corriger' => Icons.error_outline_rounded,
+    'en_attente_validation' => Icons.hourglass_top_rounded,
+    _ => Icons.edit_note_rounded,
   };
 
   String _primaryLabel(String status) => switch (status) {
@@ -119,10 +120,9 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: AppBar(
-        backgroundColor: DailyReportColors.green900,
-        foregroundColor: Colors.white,
-        title: const Text('Rapport Journalier'),
+      appBar: dailyReportAppBar(
+        'Rapport Journalier',
+        subtitle: _farm?.name,
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
@@ -142,58 +142,26 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      _InfoCard(farm: _farm!, report: _report!),
-                      const SizedBox(height: 16),
-                      Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          side: BorderSide(color: Colors.grey.shade200),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                decoration: BoxDecoration(
-                                  color: _statusBg(_report!.status),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  _report!.statusLabel.toUpperCase(),
-                                  style: TextStyle(
-                                    color: _statusColor(_report!.status),
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              if (_report!.submittedAt != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Soumis le ${DateFormat('dd/MM à HH:mm').format(_report!.submittedAt!)}',
-                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
+                      _HeroStatusCard(
+                        farm: _farm!,
+                        report: _report!,
+                        statusColor: _statusColor(_report!.status),
+                        statusIcon: _statusIcon(_report!.status),
                       ),
                       if (_report!.status == 'a_corriger' && _report!.rejectionReason != null) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
                             color: DailyReportColors.yellow100,
-                            border: Border.all(color: DailyReportColors.yellow500),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border(left: BorderSide(color: DailyReportColors.yellow500, width: 4)),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.info_outline, color: DailyReportColors.yellow600, size: 18),
-                              const SizedBox(width: 8),
+                              const Icon(Icons.priority_high_rounded, color: DailyReportColors.yellow600, size: 20),
+                              const SizedBox(width: 10),
                               Expanded(
                                 child: RichText(
                                   text: TextSpan(
@@ -201,7 +169,7 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                                     children: [
                                       const TextSpan(
                                         text: 'Motif du validateur : ',
-                                        style: TextStyle(fontWeight: FontWeight.w700),
+                                        style: TextStyle(fontWeight: FontWeight.w800),
                                       ),
                                       TextSpan(text: '« ${_report!.rejectionReason} »'),
                                     ],
@@ -212,25 +180,37 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 20),
-                      SizedBox(
+                      const SizedBox(height: 22),
+                      Container(
                         width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: _openReport,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: DailyReportColors.green700,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        height: 54,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          gradient: const LinearGradient(colors: [DailyReportColors.green700, DailyReportColors.green600]),
+                          boxShadow: [
+                            BoxShadow(color: DailyReportColors.green700.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 6)),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: _openReport,
+                            child: Center(
+                              child: Text(
+                                _primaryLabel(_report!.status),
+                                style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 15),
+                              ),
+                            ),
                           ),
-                          child: Text(_primaryLabel(_report!.status), style: const TextStyle(fontWeight: FontWeight.w700)),
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      _NavCard(
+                      const SizedBox(height: 26),
+                      DailyReportMenuTile(
                         icon: Icons.local_shipping_outlined,
-                        title: 'Réception d\'aliments',
-                        subtitle: 'Livraisons de l\'usine à confirmer',
+                        color: DailyReportColors.yellow600,
+                        title: "Réception d'aliments",
+                        subtitle: "Livraisons de l'usine à confirmer",
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -245,94 +225,76 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
   }
 }
 
-class _InfoCard extends StatelessWidget {
+class _HeroStatusCard extends StatelessWidget {
   final Farm farm;
   final FarmDailyReport report;
+  final Color statusColor;
+  final IconData statusIcon;
 
-  const _InfoCard({required this.farm, required this.report});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _row('Bâtiment · Lot', '${farm.name} · ${report.lotNumber ?? "—"}'),
-            const Divider(height: 20),
-            _row(
-              'Date · Âge',
-              '${DateFormat('dd/MM/yyyy').format(DateTime.parse(report.date))}'
-                  '${report.ageDays != null ? " · ${report.ageDays} j / ${report.ageWeeks} sem" : ""}',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _row(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 3),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-      ],
-    );
-  }
-}
-
-class _NavCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _NavCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
+  const _HeroStatusCard({
+    required this.farm,
+    required this.report,
+    required this.statusColor,
+    required this.statusIcon,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Row(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: dailyReportHeaderGradient,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(color: DailyReportColors.green900.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 10)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Icon(icon, color: DailyReportColors.green700),
-              const SizedBox(width: 12),
+              const Icon(Icons.home_work_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text(subtitle, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-                  ],
+                child: Text(
+                  '${farm.name} · Lot ${report.lotNumber ?? "—"}',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white),
                 ),
               ),
-              Icon(Icons.chevron_right, color: Colors.grey.shade400),
             ],
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            '${DateFormat('dd/MM/yyyy').format(DateTime.parse(report.date))}'
+            '${report.ageDays != null ? " · ${report.ageDays} j / ${report.ageWeeks} sem" : ""}',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 12.5),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(statusIcon, size: 14, color: statusColor),
+                const SizedBox(width: 6),
+                Text(
+                  report.statusLabel.toUpperCase(),
+                  style: TextStyle(color: statusColor, fontWeight: FontWeight.w800, fontSize: 11.5, letterSpacing: 0.3),
+                ),
+              ],
+            ),
+          ),
+          if (report.submittedAt != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Soumis le ${DateFormat('dd/MM à HH:mm').format(report.submittedAt!)}',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11.5),
+            ),
+          ],
+        ],
       ),
     );
   }
