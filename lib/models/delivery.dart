@@ -46,6 +46,12 @@ class Delivery {
   final DateTime? cancelledAt;
   final String? cancelledBy;
   final String? cancelReason;
+  // --- Réception physique côté ferme (module Rapport Journalier) ---
+  final bool farmAckRequired;
+  final double? farmReceivedQuantity;
+  final DateTime? farmReceivedAt;
+  final String? farmReceivedBy;
+  final String? farmNote;
 
   Delivery({
     required this.id,
@@ -69,11 +75,18 @@ class Delivery {
     this.cancelledAt,
     this.cancelledBy,
     this.cancelReason,
+    this.farmAckRequired = true,
+    this.farmReceivedQuantity,
+    this.farmReceivedAt,
+    this.farmReceivedBy,
+    this.farmNote,
   });
 
   String get lotsLabel => batchesUsed.map((b) => b.lotNumber).join('+');
   bool get isCancelled => status == 'annulee';
   bool get isPending => status == 'en_attente';
+  bool get isAwaitingFarmAck =>
+      farmAckRequired && farmReceivedAt == null && !isCancelled;
   // On livre à la ferme, jamais à une salle précise ; roomName ne subsiste que sur les
   // livraisons créées avant ce changement.
   String get destinationLabel => (roomName == null || roomName!.isEmpty)
@@ -105,6 +118,11 @@ class Delivery {
       cancelledAt: parseCameroonTime(map['cancelledAt']?.toString()),
       cancelledBy: map['cancelledBy'] as String?,
       cancelReason: map['cancelReason'] as String?,
+      farmAckRequired: map['farmAckRequired'] as bool? ?? true,
+      farmReceivedQuantity: (map['farmReceivedQuantity'] as num?)?.toDouble(),
+      farmReceivedAt: parseCameroonTime(map['farmReceivedAt']?.toString()),
+      farmReceivedBy: map['farmReceivedBy'] as String?,
+      farmNote: map['farmNote'] as String?,
     );
   }
 }

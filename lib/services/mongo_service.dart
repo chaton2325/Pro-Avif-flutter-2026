@@ -29,6 +29,11 @@ import '../models/usine_stats.dart';
 import '../models/daily_report.dart';
 import '../models/inventory_session.dart';
 import '../models/stock_movement.dart';
+import '../models/lot_headcount.dart';
+import '../models/farm_daily_report.dart';
+import '../models/treatment_reference.dart';
+import '../models/farm_staff.dart';
+import '../models/daily_report_notification.dart';
 import './session_storage.dart';
 
 /// Une ligne de comptage d'inventaire : [batchId] null = comptage global d'une matière,
@@ -46,7 +51,7 @@ class LicenseBlockedException implements Exception {
   String toString() => reason;
 }
 
-//Base en production : "https://proavif.mirhosty.com"
+//Base en local : "http://192.168.1.187:8010"
 class MongoService {
   static final MongoService _instance = MongoService._internal();
   final String baseUrl = "http://192.168.1.187:8010";
@@ -2123,6 +2128,333 @@ class MongoService {
       rethrow;
     }
     return null;
+  }
+
+  // ============================================================================
+  // Module Rapport Journalier (côté ferme) : réception d'aliments, effectifs de
+  // départ, rapport quotidien (rédacteur/validateur), référentiels, notifications.
+  // Même style que les sections Usine Aliment ci-dessus, mais "performedBy" reprend
+  // ici le compte ferme connecté (_performedBy plus haut est réservé à currentUsineUser).
+  // ============================================================================
+
+  String get _redacteurName => currentUser?.name ?? 'Utilisateur';
+
+  // ---- Réception d'aliments (prolonge /deliveries) ----
+
+  Future<List<Delivery>> getFarmPendingDeliveries(String farmName) async {
+    final uri = Uri.parse(
+      '$baseUrl/deliveries/farm-pending',
+    ).replace(queryParameters: {'farmName': farmName});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List<dynamic>)
+          .map((d) => Delivery.fromMap(d as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<List<Delivery>> getFarmAckHistory(String farmName) async {
+    final uri = Uri.parse(
+      '$baseUrl/deliveries/farm-history',
+    ).replace(queryParameters: {'farmName': farmName});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List<dynamic>)
+          .map((d) => Delivery.fromMap(d as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<({Delivery? delivery, String? error})> acknowledgeDeliveryReceipt(
+    String id, {
+    double? receivedQuantity,
+    String? note,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/deliveries/$id/farm-ack'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'receivedQuantity': receivedQuantity,
+        'note': note,
+        'performedBy': _redacteurName,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return (delivery: Delivery.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (
+        delivery: null,
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (delivery: null, error: 'Erreur inconnue');
+    }
+  }
+
+  // ---- Effectifs de départ d'un lot (admin) ----
+
+  Future<LotHeadcount?> getLotHeadcount(String farmName, String lotNumber) async {
+    final uri = Uri.parse('$baseUrl/lot-headcounts').replace(
+      queryParameters: {'farmName': farmName, 'lotNumber': lotNumber},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200 && response.body != 'null') {
+      final data = jsonDecode(response.body);
+      if (data == null) return null;
+      return LotHeadcount.fromMap(data);
+    }
+    return null;
+  }
+
+  Future<({LotHeadcount? headcount, String? error})> upsertLotHeadcount(
+    LotHeadcount headcount,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/lot-headcounts'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(headcount.toCreateMap(performedBy: _redacteurName)),
+    );
+    if (response.statusCode == 200) {
+      return (headcount: LotHeadcount.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (
+        headcount: null,
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (headcount: null, error: 'Erreur inconnue');
+    }
+  }
+
+  // ---- Rapport journalier (rédacteur/validateur) ----
+
+  Future<FarmDailyReport?> getOrCreateTodayReport({
+    required String farmId,
+    required String date,
+  }) async {
+    final uri = Uri.parse('$baseUrl/daily-reports/today').replace(
+      queryParameters: {'farmId': farmId, 'date': date},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return FarmDailyReport.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<({FarmDailyReport? report, String? error})> patchDailyReport(
+    String id, {
+    List<RoomConsumptionEntry>? consumptionByRoom,
+    List<RoomHeadcount>? mortalityByRoom,
+    SexCount? clinicMortality,
+    List<RoomProduction>? production,
+    double? waterLiters,
+    List<TreatmentEntry>? treatments,
+    List<StaffStatusEntry>? staffStatuses,
+    String? observation,
+  }) async {
+    final body = <String, dynamic>{'performedBy': _redacteurName};
+    if (consumptionByRoom != null) {
+      body['consumptionByRoom'] = consumptionByRoom.map((c) => c.toMap()).toList();
+    }
+    if (mortalityByRoom != null) {
+      body['mortalityByRoom'] = mortalityByRoom.map((m) => m.toMap()).toList();
+    }
+    if (clinicMortality != null) body['clinicMortality'] = clinicMortality.toMap();
+    if (production != null) body['production'] = production.map((p) => p.toMap()).toList();
+    if (waterLiters != null) body['waterLiters'] = waterLiters;
+    if (treatments != null) body['treatments'] = treatments.map((t) => t.toMap()).toList();
+    if (staffStatuses != null) {
+      body['staffStatuses'] = staffStatuses.map((s) => s.toMap()).toList();
+    }
+    if (observation != null) body['observation'] = observation;
+
+    final response = await http.patch(
+      Uri.parse('$baseUrl/daily-reports/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    if (response.statusCode == 200) {
+      return (report: FarmDailyReport.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (
+        report: null,
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (report: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<({FarmDailyReport? report, String? error})> submitDailyReport(String id) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/daily-reports/$id/submit'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'performedBy': _redacteurName}),
+    );
+    if (response.statusCode == 200) {
+      return (report: FarmDailyReport.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (
+        report: null,
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (report: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<FarmReportOverview> getDailyReportsOverview(String date) async {
+    final uri = Uri.parse(
+      '$baseUrl/daily-reports',
+    ).replace(queryParameters: {'date': date});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return FarmReportOverview.fromMap(jsonDecode(response.body));
+    }
+    return FarmReportOverview(date: date, farms: []);
+  }
+
+  Future<({FarmDailyReport? report, String? error})> validateDailyReport(String id) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/daily-reports/$id/validate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'performedBy': _redacteurName}),
+    );
+    if (response.statusCode == 200) {
+      return (report: FarmDailyReport.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (
+        report: null,
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (report: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<({FarmDailyReport? report, String? error})> rejectDailyReport(
+    String id,
+    String reason,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/daily-reports/$id/reject'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'reason': reason, 'performedBy': _redacteurName}),
+    );
+    if (response.statusCode == 200) {
+      return (report: FarmDailyReport.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (
+        report: null,
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (report: null, error: 'Erreur inconnue');
+    }
+  }
+
+  // ---- Référentiels admin : traitements (vaccins/médicaments) ----
+
+  Future<List<TreatmentReference>> getTreatmentReferences({String? type}) async {
+    final uri = Uri.parse('$baseUrl/treatment-references').replace(
+      queryParameters: type != null ? {'type': type} : null,
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List<dynamic>)
+          .map((t) => TreatmentReference.fromMap(t as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<TreatmentReference?> createTreatmentReference(TreatmentReference ref) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/treatment-references'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(ref.toMap()),
+    );
+    if (response.statusCode == 201) {
+      return TreatmentReference.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<void> updateTreatmentReference(TreatmentReference ref) async {
+    await http.put(
+      Uri.parse('$baseUrl/treatment-references/${ref.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(ref.toMap()),
+    );
+  }
+
+  Future<void> deleteTreatmentReference(String id) async {
+    await http.delete(Uri.parse('$baseUrl/treatment-references/$id'));
+  }
+
+  // ---- Référentiels admin : personnel affecté à une ferme ----
+
+  Future<List<FarmStaff>> getFarmStaff(String farmId) async {
+    final uri = Uri.parse(
+      '$baseUrl/farm-staff',
+    ).replace(queryParameters: {'farmId': farmId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List<dynamic>)
+          .map((s) => FarmStaff.fromMap(s as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<FarmStaff?> createFarmStaff(FarmStaff staff) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/farm-staff'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(staff.toMap()),
+    );
+    if (response.statusCode == 201) {
+      return FarmStaff.fromMap(jsonDecode(response.body));
+    }
+    return null;
+  }
+
+  Future<void> updateFarmStaff(FarmStaff staff) async {
+    await http.put(
+      Uri.parse('$baseUrl/farm-staff/${staff.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(staff.toMap()),
+    );
+  }
+
+  Future<void> deleteFarmStaff(String id) async {
+    await http.delete(Uri.parse('$baseUrl/farm-staff/$id'));
+  }
+
+  // ---- Notifications ----
+
+  Future<NotificationListResult> getNotifications(String userId) async {
+    final uri = Uri.parse(
+      '$baseUrl/notifications',
+    ).replace(queryParameters: {'userId': userId});
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return NotificationListResult.fromMap(jsonDecode(response.body));
+    }
+    return NotificationListResult(unreadCount: 0, data: []);
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    await http.post(Uri.parse('$baseUrl/notifications/$id/read'));
   }
 
   void logout() {

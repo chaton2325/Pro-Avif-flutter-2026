@@ -177,6 +177,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       child: Text('Simple Utilisateur'),
                     ),
                     DropdownMenuItem(
+                      value: 'validateur',
+                      child: Text('Validateur (Rapport Journalier)'),
+                    ),
+                    DropdownMenuItem(
                       value: 'admin',
                       child: Text('Administrateur'),
                     ),
@@ -290,6 +294,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     DropdownMenuItem(
                       value: 'user',
                       child: Text('Simple Utilisateur'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'validateur',
+                      child: Text('Validateur (Rapport Journalier)'),
                     ),
                     DropdownMenuItem(
                       value: 'admin',

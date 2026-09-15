@@ -3,8 +3,9 @@ import '../models/usine.dart';
 import '../services/mongo_service.dart';
 import 'admin_mode_selector_screen.dart';
 import 'blocked_screen.dart';
-import 'user_dashboard.dart';
+import 'module_choice_screen.dart';
 import 'usine_home_screen.dart';
+import 'validator_overview_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -73,10 +74,17 @@ class _LoginScreenState extends State<LoginScreen> {
             context,
             MaterialPageRoute(builder: (_) => const AdminModeSelectorScreen()),
           );
+        } else if (user.role == 'validateur') {
+          // Le validateur n'a pas de choix de module : il accède directement à son
+          // tableau de suivi (cahier des charges section 4).
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => ValidatorOverviewScreen(user: user)),
+          );
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => UserDashboard(user: user)),
+            MaterialPageRoute(builder: (_) => ModuleChoiceScreen(user: user)),
           );
         }
       } else if (accountType == 'usine_user') {
