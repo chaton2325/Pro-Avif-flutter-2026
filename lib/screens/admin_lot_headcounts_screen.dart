@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/farm.dart';
 import '../models/lot_headcount.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
+import 'lot_headcount_history_screen.dart';
 
 enum _HcSort { alpha, status }
 
@@ -226,6 +228,7 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
   bool _saving = false;
   String? _message;
   bool _success = false;
+  LotHeadcount? _existingHeadcount;
 
   int get _totalFemale =>
       widget.farm.rooms.fold<int>(0, (a, r) => a + (int.tryParse(_femaleControllers[r]?.text ?? '0') ?? 0)) +
@@ -291,6 +294,7 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
       _clinicFemaleController.text = '0';
       _clinicMaleController.text = '0';
       _message = null;
+      _existingHeadcount = null;
     });
     await _loadExisting();
   }
@@ -331,6 +335,7 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
       }
       _clinicFemaleController.text = '0';
       _clinicMaleController.text = '0';
+      _existingHeadcount = null;
       _message = "Nouveau lot — saisissez les effectifs de départ.";
     });
   }
@@ -340,10 +345,14 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
     final existing = await _mongoService.getLotHeadcount(widget.farm.name, _selectedLot!.trim());
     if (!mounted) return;
     if (existing == null) {
-      setState(() => _message = "Aucun effectif déjà enregistré pour ce lot — c'est une première saisie.");
+      setState(() {
+        _existingHeadcount = null;
+        _message = "Aucun effectif déjà enregistré pour ce lot — c'est une première saisie.";
+      });
       return;
     }
     setState(() {
+      _existingHeadcount = existing;
       for (final r in existing.rooms) {
         _femaleControllers[r.roomName]?.text = r.femaleCount.toString();
         _maleControllers[r.roomName]?.text = r.maleCount.toString();
@@ -354,6 +363,46 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
     });
   }
 
+  /// Une resaisie écrase la valeur courante (l'historique la conserve côté backend, voir
+  /// PUT /lot-headcounts) : on le fait savoir explicitement avant d'enregistrer plutôt que de
+  /// remplacer silencieusement un effectif déjà en place.
+  Future<bool> _confirmOverwriteIfNeeded() async {
+    final existing = _existingHeadcount;
+    if (existing == null) return true;
+    final dateStr = existing.updatedAt != null
+        ? DateFormat('dd/MM/yyyy à HH:mm').format(existing.updatedAt!)
+        : null;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 10),
+            Expanded(child: Text('Remplacer l\'effectif existant ?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+          ],
+        ),
+        content: Text(
+          'Un effectif est déjà enregistré pour ${widget.farm.name} / ${_selectedLot!.trim()}'
+          '${dateStr != null ? ' (saisi le $dateStr${existing.performedBy != null ? ' par ${existing.performedBy}' : ''})' : ''} '
+          ': ${existing.totalFemale} F / ${existing.totalMale} M.\n\n'
+          'Enregistrer va le remplacer par cette nouvelle saisie. L\'ancienne valeur restera consultable dans l\'historique.',
+          style: const TextStyle(fontSize: 13.5),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ANNULER')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.green700, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('REMPLACER'),
+          ),
+        ],
+      ),
+    );
+    return confirm == true;
+  }
+
   Future<void> _save() async {
     if (_selectedLot == null || _selectedLot!.trim().isEmpty) {
       setState(() {
@@ -362,6 +411,8 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
       });
       return;
     }
+    if (!await _confirmOverwriteIfNeeded()) return;
+    if (!mounted) return;
     setState(() {
       _saving = true;
       _message = null;
@@ -385,6 +436,7 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
       _saving = false;
       _success = result.error == null;
       _message = result.error ?? 'Enregistré : ${result.headcount!.totalFemale} F / ${result.headcount!.totalMale} M';
+      if (result.headcount != null) _existingHeadcount = result.headcount;
     });
   }
 
@@ -423,7 +475,13 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
                     onChanged: _onLotSelected,
                   ),
           ]),
+          if (_existingHeadcount != null) ...[
+            const SizedBox(height: 12),
+            _existingHeadcountCard(_existingHeadcount!),
+            _historyButton(),
+          ],
           const SizedBox(height: 4),
+          const DailyReportSectionLabel('Nouvelle saisie', icon: Icons.edit_note_rounded),
           Row(
             children: [
               Expanded(
@@ -504,6 +562,88 @@ class _AdminLotHeadcountEditScreenState extends State<AdminLotHeadcountEditScree
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Détail de l'effectif déjà en base pour ce lot — affiché avant toute saisie (jamais
+  /// deviné à partir des champs pré-remplis) : ce que l'admin s'apprête à écraser doit être
+  /// visible avant qu'il ne le fasse.
+  Widget _existingHeadcountCard(LotHeadcount existing) {
+    final dateStr = existing.updatedAt != null
+        ? DateFormat('dd/MM/yyyy à HH:mm').format(existing.updatedAt!)
+        : null;
+    return DailyReportCard(
+      accentColor: DailyReportColors.green700,
+      margin: const EdgeInsets.only(bottom: 4),
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.fact_check_rounded, size: 18, color: DailyReportColors.green700),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Effectif actuellement enregistré', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            ),
+          ],
+        ),
+        if (dateStr != null || existing.performedBy != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            'Saisi le ${dateStr ?? '—'}${existing.performedBy != null ? ' par ${existing.performedBy}' : ''}',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+          ),
+        ],
+        const SizedBox(height: 10),
+        for (final r in existing.rooms)
+          if (r.femaleCount > 0 || r.maleCount > 0) _existingRow(r.roomName, r.femaleCount, r.maleCount),
+        if (existing.clinicFemaleCount > 0 || existing.clinicMaleCount > 0)
+          _existingRow('Clinique', existing.clinicFemaleCount, existing.clinicMaleCount),
+        const Divider(height: 18),
+        Row(
+          children: [
+            const Expanded(child: Text('Total', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
+            Text(
+              '${existing.totalFemale} F · ${existing.totalMale} M',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: DailyReportColors.green700),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Un simple bouton vers la page dédiée (paginée) de l'historique — jamais chargé ici, ni
+  /// même son total : cette fenêtre ne montre que l'effectif actuellement enregistré.
+  Widget _historyButton() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: OutlinedButton.icon(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LotHeadcountHistoryScreen(farmName: widget.farm.name, lotNumber: _selectedLot!.trim()),
+          ),
+        ),
+        icon: const Icon(Icons.history_rounded, size: 18),
+        label: const Text("Voir l'historique des effectifs de départ"),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: DailyReportColors.green700,
+          side: const BorderSide(color: DailyReportColors.green600),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          minimumSize: const Size(double.infinity, 42),
+        ),
+      ),
+    );
+  }
+
+  Widget _existingRow(String label, int female, int male) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+          Text('$female F · $male M', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
         ],
       ),
     );

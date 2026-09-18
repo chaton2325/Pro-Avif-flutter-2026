@@ -2230,6 +2230,22 @@ class MongoService {
     }
   }
 
+  Future<LotHeadcountHistoryPagedResult> getLotHeadcountHistory(
+    String farmName,
+    String lotNumber, {
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/lot-headcounts/history').replace(
+      queryParameters: {'farmName': farmName, 'lotNumber': lotNumber, 'skip': '$skip', 'limit': '$limit'},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return LotHeadcountHistoryPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return LotHeadcountHistoryPagedResult(data: []);
+  }
+
   // ---- Rapport journalier (rédacteur/validateur) ----
 
   Future<FarmDailyReport?> getOrCreateTodayReport({
