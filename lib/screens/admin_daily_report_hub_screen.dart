@@ -4,6 +4,7 @@ import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
 import 'admin_farm_staff_screen.dart';
 import 'admin_feed_receptions_screen.dart';
+import 'admin_farm_feed_stocks_screen.dart';
 import 'admin_lot_headcounts_screen.dart';
 import 'admin_treatment_references_screen.dart';
 import 'validator_overview_screen.dart';
@@ -36,6 +37,13 @@ class AdminDailyReportHubScreen extends StatelessWidget {
         title: 'Effectifs de départ',
         subtitle: "Saisir l'effectif initial d'un lot",
         builder: (BuildContext c) => const AdminLotHeadcountsScreen(),
+      ),
+      (
+        icon: Icons.grain_rounded,
+        color: DailyReportColors.yellow500,
+        title: 'Aliments de départ',
+        subtitle: "Saisir le stock d'aliment initial d'une ferme",
+        builder: (BuildContext c) => const AdminFarmFeedStocksScreen(),
       ),
       (
         icon: Icons.medical_services_rounded,

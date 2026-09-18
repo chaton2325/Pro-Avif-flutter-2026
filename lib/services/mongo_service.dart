@@ -30,6 +30,7 @@ import '../models/daily_report.dart';
 import '../models/inventory_session.dart';
 import '../models/stock_movement.dart';
 import '../models/lot_headcount.dart';
+import '../models/farm_feed_stock.dart';
 import '../models/farm_daily_report.dart';
 import '../models/treatment_reference.dart';
 import '../models/farm_staff.dart';
@@ -539,6 +540,18 @@ class MongoService {
       '$baseUrl/formulas',
     ).replace(queryParameters: {'usineId': usineId});
     final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((f) => Formula.fromMap(f)).toList();
+    }
+    return [];
+  }
+
+  /// Tous les aliments de l'application, toutes usines confondues — une ferme (module Rapport
+  /// Journalier) n'appartient à aucune usine en particulier, contrairement aux écrans usine
+  /// qui filtrent toujours par usineId.
+  Future<List<Formula>> getAllFormulas() async {
+    final response = await http.get(Uri.parse('$baseUrl/formulas'));
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((f) => Formula.fromMap(f)).toList();
@@ -2244,6 +2257,57 @@ class MongoService {
       return LotHeadcountHistoryPagedResult.fromMap(jsonDecode(response.body));
     }
     return LotHeadcountHistoryPagedResult(data: []);
+  }
+
+  // ---- Aliments de départ d'une ferme (admin) — jamais lié à un lot de sujets ----
+
+  Future<FarmFeedStock?> getFarmFeedStock(String farmName) async {
+    final uri = Uri.parse('$baseUrl/farm-feed-stocks').replace(
+      queryParameters: {'farmName': farmName},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200 && response.body != 'null') {
+      final data = jsonDecode(response.body);
+      if (data == null) return null;
+      return FarmFeedStock.fromMap(data);
+    }
+    return null;
+  }
+
+  Future<({FarmFeedStock? feedStock, String? error})> upsertFarmFeedStock(
+    FarmFeedStock feedStock,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/farm-feed-stocks'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(feedStock.toCreateMap(performedBy: _redacteurName)),
+    );
+    if (response.statusCode == 200) {
+      return (feedStock: FarmFeedStock.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (
+        feedStock: null,
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (feedStock: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<FarmFeedStockHistoryPagedResult> getFarmFeedStockHistory(
+    String farmName, {
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/farm-feed-stocks/history').replace(
+      queryParameters: {'farmName': farmName, 'skip': '$skip', 'limit': '$limit'},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return FarmFeedStockHistoryPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return FarmFeedStockHistoryPagedResult(data: []);
   }
 
   // ---- Rapport journalier (rédacteur/validateur) ----
