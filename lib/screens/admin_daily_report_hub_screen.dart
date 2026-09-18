@@ -7,6 +7,7 @@ import 'admin_feed_receptions_screen.dart';
 import 'admin_farm_feed_stocks_screen.dart';
 import 'admin_lot_headcounts_screen.dart';
 import 'admin_treatment_references_screen.dart';
+import 'building_tracking_screen.dart';
 import 'validator_overview_screen.dart';
 
 /// Point d'entrée admin du module Rapport Journalier : l'administrateur a accès complet aux
@@ -23,6 +24,13 @@ class AdminDailyReportHubScreen extends StatelessWidget {
         title: 'Tableau de suivi',
         subtitle: 'Valider ou renvoyer les rapports du jour',
         builder: (BuildContext c) => ValidatorOverviewScreen(user: MongoService().currentUser!),
+      ),
+      (
+        icon: Icons.insights_rounded,
+        color: DailyReportColors.green900,
+        title: 'Suivi bâtiment',
+        subtitle: 'Effectifs & aliments : ce qui reste, par ferme',
+        builder: (BuildContext c) => const BuildingTrackingScreen(),
       ),
       (
         icon: Icons.local_shipping_rounded,

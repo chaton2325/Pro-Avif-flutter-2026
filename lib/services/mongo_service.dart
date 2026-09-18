@@ -31,6 +31,7 @@ import '../models/inventory_session.dart';
 import '../models/stock_movement.dart';
 import '../models/lot_headcount.dart';
 import '../models/farm_feed_stock.dart';
+import '../models/building_tracking.dart';
 import '../models/farm_daily_report.dart';
 import '../models/treatment_reference.dart';
 import '../models/farm_staff.dart';
@@ -2440,6 +2441,62 @@ class MongoService {
     } catch (_) {
       return (report: null, error: 'Erreur inconnue');
     }
+  }
+
+  // ---- Suivi bâtiment (effectifs + aliments, ferme par ferme) ----
+
+  Future<List<BuildingTrackingItem>> getBuildingTracking() async {
+    final response = await http.get(Uri.parse('$baseUrl/daily-reports/building-tracking'));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['items'] as List<dynamic>? ?? [])
+          .map((i) => BuildingTrackingItem.fromMap(i as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<({int totalCount, List<FarmDailyReport> data})> getBuildingTrackingHistory(
+    String farmId, {
+    String? lotNumber,
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/daily-reports/building-tracking/$farmId/history').replace(
+      queryParameters: {
+        if (lotNumber != null) 'lotNumber': lotNumber,
+        'skip': '$skip',
+        'limit': '$limit',
+      },
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (
+        totalCount: (data['totalCount'] as num?)?.toInt() ?? 0,
+        data: (data['data'] as List<dynamic>? ?? [])
+            .map((r) => FarmDailyReport.fromMap(r as Map<String, dynamic>))
+            .toList(),
+      );
+    }
+    return (totalCount: 0, data: <FarmDailyReport>[]);
+  }
+
+  Future<List<WeeklyTrackingPoint>> getBuildingTrackingWeeklyChart(
+    String farmId, {
+    String? lotNumber,
+  }) async {
+    final uri = Uri.parse('$baseUrl/daily-reports/building-tracking/$farmId/weekly-chart').replace(
+      queryParameters: lotNumber != null ? {'lotNumber': lotNumber} : null,
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['points'] as List<dynamic>? ?? [])
+          .map((p) => WeeklyTrackingPoint.fromMap(p as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
   }
 
   // ---- Référentiels admin : traitements (vaccins/médicaments) ----
