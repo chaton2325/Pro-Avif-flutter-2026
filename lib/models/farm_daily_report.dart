@@ -43,24 +43,32 @@ class DailyReportFeedReceivedItem {
 
 class RoomConsumptionEntry {
   final String roomName;
+  final String? formulaId;
+  final String? formulaName;
   final double quantityKg;
 
-  RoomConsumptionEntry({required this.roomName, this.quantityKg = 0});
+  RoomConsumptionEntry({required this.roomName, this.formulaId, this.formulaName, this.quantityKg = 0});
 
   Map<String, dynamic> toMap() => {
     'roomName': roomName,
+    'formulaId': formulaId,
+    'formulaName': formulaName,
     'quantityKg': quantityKg,
   };
 
   factory RoomConsumptionEntry.fromMap(Map<String, dynamic> map) {
     return RoomConsumptionEntry(
       roomName: map['roomName'] as String? ?? '',
+      formulaId: map['formulaId'] as String?,
+      formulaName: map['formulaName'] as String?,
       quantityKg: (map['quantityKg'] as num?)?.toDouble() ?? 0,
     );
   }
 
-  RoomConsumptionEntry copyWith({double? quantityKg}) => RoomConsumptionEntry(
+  RoomConsumptionEntry copyWith({String? formulaId, String? formulaName, double? quantityKg}) => RoomConsumptionEntry(
     roomName: roomName,
+    formulaId: formulaId ?? this.formulaId,
+    formulaName: formulaName ?? this.formulaName,
     quantityKg: quantityKg ?? this.quantityKg,
   );
 }

@@ -9,6 +9,8 @@ import '../widgets/daily_report_widgets.dart';
 import 'daily_report_form_screen.dart';
 import 'daily_report_notifications_screen.dart';
 import 'daily_report_summary_screen.dart';
+import 'current_headcount_screen.dart';
+import 'farm_feed_stock_view_screen.dart';
 import 'feed_reception_screen.dart';
 
 /// Accueil du rapport du jour (maquette écran 02) : statut, motif de renvoi éventuel, bouton
@@ -215,6 +217,32 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (_) => FeedReceptionScreen(farmName: _farm!.name),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DailyReportMenuTile(
+                        icon: Icons.inventory_2_outlined,
+                        color: DailyReportColors.yellow500,
+                        title: 'Stock aliments',
+                        subtitle: 'Ce qui reste, par aliment',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FarmFeedStockViewScreen(farmName: _farm!.name),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DailyReportMenuTile(
+                        icon: Icons.groups_outlined,
+                        color: DailyReportColors.green600,
+                        title: 'Effectifs en cours',
+                        subtitle: 'Effectif actuel, par salle',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CurrentHeadcountScreen(farmName: _farm!.name),
                           ),
                         ),
                       ),

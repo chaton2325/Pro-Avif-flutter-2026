@@ -32,6 +32,7 @@ import '../models/stock_movement.dart';
 import '../models/lot_headcount.dart';
 import '../models/farm_feed_stock.dart';
 import '../models/building_tracking.dart';
+import '../models/current_headcount.dart';
 import '../models/farm_daily_report.dart';
 import '../models/treatment_reference.dart';
 import '../models/farm_staff.dart';
@@ -2400,6 +2401,17 @@ class MongoService {
       return FarmReportOverview.fromMap(jsonDecode(response.body));
     }
     return FarmReportOverview(date: date, farms: []);
+  }
+
+  Future<CurrentHeadcount> getCurrentHeadcount(String farmName) async {
+    final uri = Uri.parse('$baseUrl/daily-reports/current-headcount').replace(
+      queryParameters: {'farmName': farmName},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return CurrentHeadcount.fromMap(jsonDecode(response.body));
+    }
+    return CurrentHeadcount(farmName: farmName);
   }
 
   Future<({FarmDailyReport? report, String? error})> validateDailyReport(String id) async {

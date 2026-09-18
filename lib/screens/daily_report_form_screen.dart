@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/farm_daily_report.dart';
+import '../models/formula.dart';
 import '../models/lot_headcount.dart';
 import '../models/treatment_reference.dart';
 import '../models/user.dart';
@@ -48,6 +49,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   String? _observation;
 
   List<TreatmentReference> _references = [];
+  List<Formula> _formulas = [];
   bool _loadingRefs = true;
 
   static const _stepTitles = [
@@ -90,9 +92,13 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   Future<void> _loadReferentials() async {
     final refs = await _mongoService.getTreatmentReferences();
     final staff = await _mongoService.getFarmStaff(_report.farmId);
+    final formulas = List.of(await _mongoService.getAllFormulas())
+      ..retainWhere((f) => f.isActive)
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     if (!mounted) return;
     setState(() {
       _references = refs;
+      _formulas = formulas;
       for (final s in staff.where((s) => s.isActive)) {
         if (!_staffStatuses.any((e) => e.staffId == s.id)) {
           _staffStatuses.add(StaffStatusEntry(staffId: s.id!, name: s.name, status: 'present'));
@@ -103,6 +109,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   }
 
   Future<void> _saveStepAndAdvance() async {
+    if (_step == 1 && _consumption.any((c) => c.quantityKg > 0 && c.formulaId == null)) {
+      setState(() => _error = "Choisissez l'aliment consommé pour chaque salle ayant une quantité saisie.");
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -320,15 +330,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
               ),
             ),
           const Divider(),
-          for (var i = 0; i < _consumption.length; i++)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: _numberField(
-                label: 'Consommé — ${_consumption[i].roomName}',
-                value: _consumption[i].quantityKg,
-                onChanged: (v) => setState(() => _consumption[i] = _consumption[i].copyWith(quantityKg: v)),
-              ),
-            ),
+          for (var i = 0; i < _consumption.length; i++) _consumptionRow(i),
           const Divider(),
           _readonlyRow('Stock avant', '${_report.aliment.stockBeforeKg} kg'),
         ]),
@@ -630,6 +632,53 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),
       onChanged: (v) => onChanged(double.tryParse(v.replaceAll(',', '.'))),
+    );
+  }
+
+  /// Salle + aliment consommé (référentiel Usine Aliment) + quantité — l'aliment est
+  /// nécessaire pour que le stock de la ferme (farm_feed_stocks) puisse être débité du bon
+  /// aliment à la validation du rapport (routers/daily_reports.py).
+  Widget _consumptionRow(int i) {
+    final entry = _consumption[i];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(entry.roomName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: DropdownButtonFormField<String>(
+                  initialValue: entry.formulaId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Aliment', isDense: true, border: OutlineInputBorder()),
+                  hint: const Text('Choisir'),
+                  items: _formulas
+                      .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name, overflow: TextOverflow.ellipsis)))
+                      .toList(),
+                  onChanged: (formulaId) => setState(() {
+                    final formula = _formulas.firstWhere((f) => f.id == formulaId);
+                    _consumption[i] = entry.copyWith(formulaId: formula.id, formulaName: formula.name);
+                  }),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: _numberField(
+                  label: 'Kg',
+                  value: entry.quantityKg,
+                  onChanged: (v) => setState(() => _consumption[i] = _consumption[i].copyWith(quantityKg: v)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
