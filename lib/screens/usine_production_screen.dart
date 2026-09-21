@@ -10,6 +10,7 @@ import '../utils/quantity_format.dart';
 import '../utils/whatsapp.dart';
 import '../widgets/blocking_loader.dart';
 import 'usine_simulation_screen.dart';
+import 'validate_production_screen.dart';
 
 /// Parcours 02 — Production & coût de revient (maquette écrans 14-19), condensé en un
 /// écran à 2 onglets : lancement d'une fabrication (avec répartition FIFO automatique
@@ -885,6 +886,24 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
 
   // -------------------------------------------------------- Validation comptable
 
+  /// Validation comptable : écran dédié (pas une modale), avec sa propre confirmation et
+  /// son propre accusé de succès. Le "Renvoyer" de cet écran délègue à _showRejectDialog
+  /// (modale simple, déjà protégée par runBlocking et déjà munie de son propre accusé).
+  Future<void> _openValidateScreen(ProductionBatch batch) async {
+    final validated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ValidateProductionScreen(
+          batch: batch,
+          onReject: () => _showRejectDialog(batch),
+        ),
+      ),
+    );
+    if (validated == true) {
+      await _refreshData();
+    }
+  }
+
   void _showRejectDialog(ProductionBatch batch) {
     final reasonController = TextEditingController();
     String? error;
@@ -948,168 +967,6 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showValidateDialog(ProductionBatch batch) {
-    final adjustmentController = TextEditingController(text: '0');
-    final reasonController = TextEditingController();
-    String? error;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final adjustment = double.tryParse(adjustmentController.text) ?? 0;
-          final previewTotal = batch.totalCost + adjustment;
-          final previewPerUnit = batch.actualQuantityProduced > 0
-              ? previewTotal / batch.actualQuantityProduced
-              : 0;
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Text(
-              '${batch.lotNumber} — Validation',
-              style: const TextStyle(
-                color: Colors.orange,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: SizedBox(
-              width: 420,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ...batch.consumption.map(
-                      (c) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${c.materialName} · ${formatQty(c.quantityConsumed)} kg × ${formatQty(c.unitCost)} F',
-                              ),
-                            ),
-                            Text(
-                              formatQty(c.lineCost),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Coûts estimés au lancement — le stock n\'est réellement prélevé '
-                        'et le coût figé qu\'en validant ci-dessous ; ils peuvent différer '
-                        'légèrement si le stock a changé depuis.',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                    ),
-                    const Divider(),
-                    TextField(
-                      controller: adjustmentController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^-?\d*\.?\d*$'),
-                        ),
-                      ],
-                      decoration: InputDecoration(
-                        labelText: 'Ajustement (charges indirectes, FCFA)',
-                        errorText: error,
-                      ),
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: reasonController,
-                      decoration: const InputDecoration(
-                        labelText: 'Motif (si ajustement non nul)',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Coût de revient définitif',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '${formatQty(previewPerUnit)} F/kg',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: previewPerUnit <= 0
-                                ? Colors.red
-                                : Colors.green.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'Annuler',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showRejectDialog(batch);
-                },
-                child: const Text(
-                  'Renvoyer',
-                  style: TextStyle(color: Colors.redAccent),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  if (adjustment != 0 && reasonController.text.trim().isEmpty) {
-                    setDialogState(
-                      () => error = 'Motif requis pour un ajustement non nul',
-                    );
-                    return;
-                  }
-                  final err = await runBlocking(
-                    context,
-                    () => _mongoService.validateProduction(
-                      batch.id!,
-                      adjustment: adjustment,
-                      adjustmentReason: reasonController.text.trim().isEmpty
-                          ? null
-                          : reasonController.text.trim(),
-                    ),
-                  );
-                  if (err != null) {
-                    setDialogState(() => error = err);
-                    return;
-                  }
-                  await _refreshData();
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
-                },
-                child: const Text('Valider le coût'),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
@@ -1281,7 +1138,7 @@ class _UsineProductionScreenState extends State<UsineProductionScreen>
                           } else if (b.isDraft) {
                             _showCloseDialog(b);
                           } else {
-                            _showValidateDialog(b);
+                            _openValidateScreen(b);
                           }
                         },
                         leading: CircleAvatar(
