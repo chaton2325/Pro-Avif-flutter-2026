@@ -2459,6 +2459,20 @@ class MongoService {
     return FarmReportOverview(date: date, farms: []);
   }
 
+  /// Rappel manuel ciblé sur une ferme (bouton "Relancer" du tableau de suivi validateur).
+  Future<String?> remindFarm(String farmId, {String? date}) async {
+    final uri = Uri.parse('$baseUrl/daily-reports/$farmId/remind').replace(
+      queryParameters: date != null ? {'date': date} : null,
+    );
+    final response = await http.post(uri);
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
   Future<CurrentHeadcount> getCurrentHeadcount(String farmName) async {
     final uri = Uri.parse('$baseUrl/daily-reports/current-headcount').replace(
       queryParameters: {'farmName': farmName},

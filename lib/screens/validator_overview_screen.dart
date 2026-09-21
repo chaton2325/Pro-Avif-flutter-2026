@@ -1,14 +1,66 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/farm_daily_report.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/blocking_loader.dart';
 import '../widgets/daily_report_widgets.dart';
 import 'login_screen.dart';
 import 'validator_report_detail_screen.dart';
 
 enum _SortMode { alpha, status }
+
+/// Petit tremblement d'attention, rejoué toutes les [period] — pour attirer l'œil sur un
+/// bouton "Relancer" sans clignoter en continu (juste un rappel discret et périodique).
+class _ShakeOnLoop extends StatefulWidget {
+  final Widget child;
+  final Duration period;
+
+  const _ShakeOnLoop({required this.child, this.period = const Duration(seconds: 2)});
+
+  @override
+  State<_ShakeOnLoop> createState() => _ShakeOnLoopState();
+}
+
+class _ShakeOnLoopState extends State<_ShakeOnLoop> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+    _loop();
+  }
+
+  Future<void> _loop() async {
+    while (mounted) {
+      await Future.delayed(widget.period);
+      if (!mounted) return;
+      await _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        final offset = sin(t * pi * 6) * (1 - t) * 5;
+        return Transform.translate(offset: Offset(offset, 0), child: child);
+      },
+      child: widget.child,
+    );
+  }
+}
 
 /// Tableau de suivi du validateur (maquette écran 09) : synthèse du jour + une ligne par
 /// ferme, mis à jour en temps réel côté serveur (GET /daily-reports?date=).
@@ -105,6 +157,17 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
       MaterialPageRoute(builder: (_) => ValidatorReportDetailScreen(user: widget.user, report: report)),
     );
     _load();
+  }
+
+  /// Rappel manuel ciblé (bouton "Relancer" sur une ligne "NON FAIT", cahier des charges
+  /// §2) — jamais désactivé : c'est justement le seul cas où il y a quelque chose à faire
+  /// (aucun rapport n'existe encore pour cette ferme, rien à ouvrir).
+  Future<void> _remindFarm(FarmReportOverviewItem item) async {
+    final err = await runBlocking(context, () => _mongoService.remindFarm(item.farmId, date: _selectedDateStr));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(err ?? 'Rappel envoyé à ${item.farmName}.')),
+    );
   }
 
   Color _statusPillColor(String status) => switch (status) {
@@ -236,7 +299,10 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
 
   Widget _farmCard(FarmReportOverviewItem f) {
     final color = _statusPillColor(f.status);
-    final enabled = f.status != 'non_fait';
+    final isNonFait = f.status == 'non_fait';
+    // "non_fait" : aucun rapport à ouvrir, mais le bouton reste actif — c'est justement le
+    // seul statut où l'action "Relancer" (rappel) a un sens (cahier des charges §2).
+    final enabled = !isNonFait;
     return DailyReportCard(
       accentColor: color,
       margin: EdgeInsets.zero,
@@ -264,26 +330,34 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
               const SizedBox(height: 6),
               DailyReportStatusBadge(label: f.statusLabel.toUpperCase(), color: color),
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                height: 32,
-                child: ElevatedButton(
-                  onPressed: enabled ? () => _openFarm(f) : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: enabled ? color : Colors.grey.shade200,
-                    disabledBackgroundColor: Colors.grey.shade200,
-                    foregroundColor: enabled ? Colors.white : Colors.grey.shade500,
-                    padding: EdgeInsets.zero,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-                  ),
-                  child: Text(_actionLabel(f.status), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-                ),
-              ),
+              _actionButton(f, isNonFait: isNonFait, enabled: enabled, statusColor: color),
             ],
           ),
         ),
       ],
     );
+  }
+
+  /// Le bouton "Relancer" (rappel) est toujours jaune et tremble doucement toutes les 2
+  /// secondes, quel que soit le statut d'où on relance — pour attirer l'œil sur ce qui
+  /// attend une action, sans clignoter en continu.
+  Widget _actionButton(FarmReportOverviewItem f, {required bool isNonFait, required bool enabled, required Color statusColor}) {
+    final isRelance = _actionLabel(f.status) == 'Relancer';
+    final button = SizedBox(
+      width: double.infinity,
+      height: 32,
+      child: ElevatedButton(
+        onPressed: isNonFait ? () => _remindFarm(f) : (enabled ? () => _openFarm(f) : null),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isRelance ? DailyReportColors.yellow600 : statusColor,
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.zero,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+        ),
+        child: Text(_actionLabel(f.status), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+      ),
+    );
+    return isRelance ? _ShakeOnLoop(child: button) : button;
   }
 }
