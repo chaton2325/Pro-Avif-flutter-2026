@@ -15,6 +15,7 @@ import '../models/material_delivery.dart';
 import '../services/mongo_service.dart';
 import '../utils/quantity_format.dart';
 import '../widgets/blocking_loader.dart';
+import 'new_delivery_screen.dart';
 
 /// Parcours 04 — Livraisons (le stock d'aliment produit se consulte désormais depuis
 /// « Stock & Inventaire ») : création d'une livraison (attribution automatique du lot
@@ -216,22 +217,34 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  List<MapEntry<String, double>> _previewFifo(
-    List<FeedStockBatch> batches,
-    double qty,
-  ) {
-    double remaining = qty;
-    final result = <MapEntry<String, double>>[];
-    for (final b in batches) {
-      if (remaining <= 0) break;
-      final take = remaining < b.remainingQuantity
-          ? remaining
-          : b.remainingQuantity;
-      if (take <= 0) continue;
-      result.add(MapEntry(b.lotNumber, take));
-      remaining -= take;
+  /// Nouvelle livraison : écran dédié (pas une modale) — plusieurs aliments possibles à la
+  /// fois. Le résultat renvoyé (String? message) vient du succès de la création ; null si
+  /// l'utilisateur a juste quitté l'écran sans rien créer.
+  Future<void> _openNewDeliveryScreen() async {
+    if (_stock.isEmpty || _farms.isEmpty) {
+      _snack(
+        _farms.isEmpty
+            ? "Aucune ferme enregistrée dans l'application."
+            : 'Aucune formule / référence configurée.',
+      );
+      return;
     }
-    return result;
+    final message = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NewDeliveryScreen(
+          usine: widget.usine,
+          stock: _stock,
+          farms: _farms,
+          drivers: _drivers,
+          vehicles: _vehicles,
+        ),
+      ),
+    );
+    if (message == null) return;
+    await _refreshAll();
+    if (!mounted) return;
+    _snack(message);
   }
 
   List<MapEntry<String, double>> _previewFifoMaterial(
@@ -252,125 +265,8 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     return result;
   }
 
-  /// Sélecteur de ferme en feuille modale scrollable + recherche : contrairement à un
-  /// DropdownButtonFormField classique (menu qui peut déborder l'écran et devenir
-  /// inatteignable dès que la liste des fermes s'allonge), cette feuille reste toujours
-  /// pleinement navigable — au clavier via la recherche, ou au doigt via le scroll.
-  Future<Farm?> _pickFarm(BuildContext context) async {
-    final searchController = TextEditingController();
-    return showModalBottomSheet<Farm>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        List<Farm> filtered = List.of(_farms);
-        return StatefulBuilder(
-          builder: (sheetContext, setSheetState) {
-            return SizedBox(
-              height: MediaQuery.of(sheetContext).size.height * 0.75,
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 10),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-                    child: Text(
-                      'Choisir une ferme',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey.shade800,
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: TextField(
-                      controller: searchController,
-                      autofocus: false,
-                      decoration: InputDecoration(
-                        hintText: 'Rechercher une ferme...',
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          color: Colors.orange,
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onChanged: (query) {
-                        final q = query.toLowerCase();
-                        setSheetState(() {
-                          filtered = _farms
-                              .where((f) => f.name.toLowerCase().contains(q))
-                              .toList();
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: filtered.isEmpty
-                        ? Center(
-                            child: Text(
-                              'Aucune ferme trouvée',
-                              style: TextStyle(color: Colors.grey.shade500),
-                            ),
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            itemCount: filtered.length,
-                            separatorBuilder: (_, __) =>
-                                Divider(height: 1, color: Colors.grey.shade200),
-                            itemBuilder: (_, i) {
-                              final farm = filtered[i];
-                              return ListTile(
-                                leading: const CircleAvatar(
-                                  backgroundColor: Color(0xFFFFF3E0),
-                                  child: Icon(
-                                    Icons.agriculture_rounded,
-                                    color: Colors.orange,
-                                    size: 20,
-                                  ),
-                                ),
-                                title: Text(
-                                  farm.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  '${farm.rooms.length} bâtiment${farm.rooms.length > 1 ? 's' : ''}',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                onTap: () => Navigator.pop(sheetContext, farm),
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// Même principe que _pickFarm, mais pour choisir un client (livraison de matière
-  /// première) dans la liste tenue par la logistique.
+  /// Sélecteur en feuille modale scrollable + recherche, pour choisir un client (livraison
+  /// de matière première) dans la liste tenue par la logistique.
   Future<Client?> _pickClient(BuildContext context) async {
     final searchController = TextEditingController();
     final activeClients = _clients.where((c) => c.isActive).toList();
@@ -869,424 +765,6 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
     );
   }
 
-  void _showDeliveryDialog() {
-    if (_stock.isEmpty || _farms.isEmpty) {
-      _snack(
-        _farms.isEmpty
-            ? "Aucune ferme enregistrée dans l'application."
-            : 'Aucune formule / référence configurée.',
-      );
-      return;
-    }
-    Farm? selectedFarm;
-    String? currentLotSujets;
-    bool lotLoading = false;
-    String? selectedFormulaId = _stock
-        .firstWhere((s) => s.totalStock > 0, orElse: () => _stock.first)
-        .formulaId;
-    final quantityController = TextEditingController();
-    String? selectedDriverName;
-    String? selectedVehicleName;
-    String? error;
-    bool isBusy = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final stockEntry = _stock
-              .where((s) => s.formulaId == selectedFormulaId)
-              .toList();
-          final available = stockEntry.isNotEmpty
-              ? stockEntry.first.totalStock
-              : 0.0;
-          final batches = stockEntry.isNotEmpty
-              ? stockEntry.first.batches
-              : <FeedStockBatch>[];
-          final qty = parseQty(quantityController.text) ?? 0;
-          final preview = _previewFifo(batches, qty);
-          final remainAfter = (available - qty).clamp(0, double.infinity);
-
-          Future<void> fetchLot() async {
-            if (selectedFarm == null) return;
-            setDialogState(() => lotLoading = true);
-            final lot = await _mongoService.getCurrentLotForFarm(
-              selectedFarm!.name,
-            );
-            setDialogState(() {
-              currentLotSujets = lot;
-              lotLoading = false;
-            });
-          }
-
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: const Text(
-              'Nouvelle livraison',
-              style: TextStyle(
-                color: Colors.orange,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: SizedBox(
-              width: 440,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () async {
-                        final picked = await _pickFarm(context);
-                        if (picked == null) return;
-                        setDialogState(() {
-                          selectedFarm = picked;
-                          currentLotSujets = null;
-                        });
-                        fetchLot();
-                      },
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Ferme',
-                          suffixIcon: Icon(Icons.arrow_drop_down),
-                        ),
-                        child: Text(
-                          selectedFarm?.name ?? 'Choisir une ferme',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: selectedFarm == null
-                                ? Colors.grey.shade600
-                                : Colors.black87,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Text(
-                            'Lot de sujets en cours',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const Spacer(),
-                          if (lotLoading)
-                            const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.orange,
-                              ),
-                            )
-                          else
-                            Text(
-                              currentLotSujets ??
-                                  (selectedFarm == null
-                                      ? '—'
-                                      : 'Aucun lot actif'),
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12.5,
-                                color:
-                                    currentLotSujets == null &&
-                                        selectedFarm != null
-                                    ? Colors.orange.shade800
-                                    : Colors.black87,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: selectedFormulaId,
-                      decoration: const InputDecoration(labelText: 'Aliment'),
-                      items: _stock
-                          .map(
-                            (s) => DropdownMenuItem(
-                              value: s.formulaId,
-                              child: Text(
-                                '${s.formulaName} · ${formatQty(s.totalStock)} kg dispo',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) =>
-                          setDialogState(() => selectedFormulaId = v),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Text(
-                            'Stock disponible',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${formatQty(available)} kg',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: quantityController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          // Point OU virgule comme séparateur décimal (clavier numérique
-                          // en français) — jamais les deux à la fois.
-                          RegExp(r'^\d*[.,]?\d*$'),
-                        ),
-                      ],
-                      decoration: InputDecoration(
-                        labelText: 'Quantité à livrer (kg)',
-                        errorText: qty > available
-                            ? 'Dépasse le stock disponible (${formatQty(available)} kg)'
-                            : null,
-                      ),
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: selectedDriverName,
-                      decoration: InputDecoration(
-                        labelText: 'Chauffeur',
-                        helperText: _drivers.where((d) => d.isActive).isEmpty
-                            ? 'Aucun chauffeur configuré'
-                            : null,
-                      ),
-                      items: _drivers
-                          .where((d) => d.isActive)
-                          .map(
-                            (d) => DropdownMenuItem(
-                              value: d.name,
-                              child: Text(
-                                d.name,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) =>
-                          setDialogState(() => selectedDriverName = v),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: selectedVehicleName,
-                      decoration: InputDecoration(
-                        labelText: 'Véhicule',
-                        helperText: _vehicles.where((v) => v.isActive).isEmpty
-                            ? 'Aucun véhicule configuré'
-                            : null,
-                      ),
-                      items: _vehicles
-                          .where((v) => v.isActive)
-                          .map(
-                            (v) => DropdownMenuItem(
-                              value: v.name,
-                              child: Text(
-                                v.name,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) =>
-                          setDialogState(() => selectedVehicleName = v),
-                    ),
-                    if (preview.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          border: Border.all(color: Colors.green.shade300),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Lot(s) d'aliment attribué(s) (AUTO)",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: preview
-                                  .map(
-                                    (p) => Chip(
-                                      visualDensity: VisualDensity.compact,
-                                      label: Text(
-                                        '${p.key} · ${formatQty(p.value)} kg',
-                                        style: const TextStyle(fontSize: 11),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Text(
-                            'Stock restant après livraison',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${formatQty(remainAfter)} kg',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.only(top: 12),
-                      child: Text(
-                        'Créée en attente : le stock ne sera déduit qu\'à la validation.',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                    ),
-                    if (error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Text(
-                          error!,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    if (isBusy)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 16),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: isBusy ? null : () => Navigator.pop(context),
-                child: const Text(
-                  'Annuler',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: (isBusy || qty <= 0 || qty > available)
-                    ? null
-                    : () async {
-                        if (selectedFarm == null) {
-                          setDialogState(
-                            () => error = 'Choisissez la ferme destinataire.',
-                          );
-                          return;
-                        }
-                        if (selectedFormulaId == null) {
-                          setDialogState(
-                            () => error = "Choisissez l'aliment à livrer.",
-                          );
-                          return;
-                        }
-                        if (qty <= 0) {
-                          setDialogState(() => error = 'Quantité invalide.');
-                          return;
-                        }
-                        if (qty > available) {
-                          setDialogState(
-                            () => error =
-                                'La quantité dépasse le stock disponible.',
-                          );
-                          return;
-                        }
-                        setDialogState(() {
-                          isBusy = true;
-                          error = null;
-                        });
-                        final result = await runBlocking(
-                          context,
-                          () => _mongoService.createDelivery(
-                            usineId: widget.usine.id!,
-                            formulaId: selectedFormulaId!,
-                            farmName: selectedFarm!.name,
-                            quantity: qty,
-                            driverName: selectedDriverName,
-                            vehicle: selectedVehicleName,
-                          ),
-                        );
-                        if (result.error != null) {
-                          setDialogState(() {
-                            error = result.error;
-                            isBusy = false;
-                          });
-                          return;
-                        }
-                        await _refreshAll();
-                        if (!context.mounted) return;
-                        Navigator.pop(context);
-                        _snack(
-                          'Livraison créée : ${formatQty(qty)} kg vers ${selectedFarm!.name} — en attente de validation.',
-                        );
-                      },
-                child: const Text('Créer la livraison'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   /// Détail d'une livraison + action d'annulation : la quantité prélevée revient sur les
   /// lots d'aliment d'où elle venait (jamais un simple retrait de l'historique — la
   /// livraison reste visible, marquée « annulée » avec son motif).
@@ -1367,6 +845,8 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                   'Aliment',
                   '${d.formulaName} · ${formatQty(d.quantity)} kg',
                 ),
+                if (d.deliveryGroupId != null)
+                  _detailRow('Livraison groupée', 'Oui — plusieurs aliments livrés ensemble'),
                 _detailRow(
                   'Lot(s) d\'aliment',
                   d.isPending ? 'À attribuer à la validation' : d.lotsLabel,
@@ -1401,6 +881,28 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                 d.isPending ? 'Refuser la livraison' : 'Annuler la livraison',
                 style: const TextStyle(color: Colors.redAccent),
               ),
+            ),
+          if (d.isPending && d.deliveryGroupId != null && _perms.validateDelivery)
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.green.shade800),
+              onPressed: () async {
+                final err = await runBlocking(
+                  context,
+                  () => _mongoService.validateDeliveryGroup(d.deliveryGroupId!),
+                );
+                if (err != null) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(err)));
+                  return;
+                }
+                await _refreshAll();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _snack('Livraison groupée validée : le stock a été déduit pour chaque aliment.');
+              },
+              child: const Text('Valider tout le groupe'),
             ),
           if (d.isPending && _perms.validateDelivery)
             ElevatedButton(
@@ -2159,7 +1661,7 @@ class _UsineStockLivraisonScreenState extends State<UsineStockLivraisonScreen>
                 border: Border.all(color: Colors.grey.shade100),
               ),
               child: ListTile(
-                onTap: _showDeliveryDialog,
+                onTap: _openNewDeliveryScreen,
                 leading: CircleAvatar(
                   backgroundColor: Colors.teal.withValues(alpha: 0.1),
                   child: const Icon(

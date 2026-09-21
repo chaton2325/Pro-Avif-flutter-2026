@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/delivery.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/blocking_loader.dart';
 import '../widgets/daily_report_widgets.dart';
 
 /// Réception d'aliments côté ferme : les fermes reçoivent l'aliment produit par l'usine
@@ -25,7 +26,6 @@ class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
   List<Delivery> _history = [];
   final Map<String, TextEditingController> _quantityControllers = {};
   bool _isLoading = true;
-  bool _confirming = false;
   bool _showHistory = false;
 
   @override
@@ -59,24 +59,27 @@ class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
 
   /// Confirme toutes les livraisons en attente d'un coup — une quantité (modifiable) par
   /// aliment — puis affiche un message récapitulatif avant que ça n'entre dans le stock.
+  /// Toute la boucle passe sous runBlocking (superposition modale non cliquable) : un
+  /// double-appui ne doit jamais déclencher deux fois les mêmes accusés de réception.
   Future<void> _confirmAll() async {
-    setState(() => _confirming = true);
-    final confirmed = <(String formulaName, double quantity)>[];
-    final errors = <String>[];
-    for (final d in _pending) {
-      final qty = double.tryParse((_quantityControllers[d.id]?.text ?? '').replaceAll(',', '.'));
-      final result = await _mongoService.acknowledgeDeliveryReceipt(d.id, receivedQuantity: qty);
-      if (result.error != null) {
-        errors.add('${d.formulaName} : ${result.error}');
-      } else {
-        confirmed.add((d.formulaName, qty ?? d.quantity));
+    final result = await runBlocking(context, () async {
+      final confirmed = <(String formulaName, double quantity)>[];
+      final errors = <String>[];
+      for (final d in _pending) {
+        final qty = double.tryParse((_quantityControllers[d.id]?.text ?? '').replaceAll(',', '.'));
+        final ackResult = await _mongoService.acknowledgeDeliveryReceipt(d.id, receivedQuantity: qty);
+        if (ackResult.error != null) {
+          errors.add('${d.formulaName} : ${ackResult.error}');
+        } else {
+          confirmed.add((d.formulaName, qty ?? d.quantity));
+        }
       }
-    }
+      return (confirmed: confirmed, errors: errors);
+    });
     if (!mounted) return;
-    setState(() => _confirming = false);
     await _load();
     if (!mounted) return;
-    await _showConfirmationSummary(confirmed, errors);
+    await _showConfirmationSummary(result.confirmed, result.errors);
   }
 
   Future<void> _showConfirmationSummary(List<(String, double)> confirmed, List<String> errors) async {
@@ -180,15 +183,13 @@ class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          onPressed: _confirming ? null : _confirmAll,
-                          child: _confirming
-                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Text(
-                                  _pending.length > 1
-                                      ? 'Confirmer les ${_pending.length} réceptions'
-                                      : 'Confirmer la réception',
-                                  style: const TextStyle(fontWeight: FontWeight.w800),
-                                ),
+                          onPressed: _confirmAll,
+                          child: Text(
+                            _pending.length > 1
+                                ? 'Confirmer les ${_pending.length} réceptions'
+                                : 'Confirmer la réception',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
                         ),
                       ),
                     ]

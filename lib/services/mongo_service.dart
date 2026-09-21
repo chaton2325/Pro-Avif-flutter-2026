@@ -1211,6 +1211,46 @@ class MongoService {
     }
   }
 
+  /// Plusieurs aliments livrés en même temps (même camion/chauffeur, même ferme) — un
+  /// Delivery par ligne côté serveur, tous rattachés au même deliveryGroupId.
+  Future<({List<Delivery> deliveries, String? error})> createDeliveryBatch({
+    required String usineId,
+    required String farmName,
+    required List<({String formulaId, double quantity})> lines,
+    String? driverName,
+    String? vehicle,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/deliveries/batch'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'usineId': usineId,
+        'farmName': farmName,
+        'driverName': driverName,
+        'vehicle': vehicle,
+        'performedBy': _performedBy,
+        'lines': lines.map((l) => {'formulaId': l.formulaId, 'quantity': l.quantity}).toList(),
+      }),
+    );
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return (
+        deliveries: (data['deliveries'] as List<dynamic>)
+            .map((d) => Delivery.fromMap(d as Map<String, dynamic>))
+            .toList(),
+        error: null,
+      );
+    }
+    try {
+      return (
+        deliveries: <Delivery>[],
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (deliveries: <Delivery>[], error: 'Erreur inconnue');
+    }
+  }
+
   Future<DeliveryPagedResult> getDeliveries({
     required String usineId,
     String? formulaId,
@@ -1256,6 +1296,22 @@ class MongoService {
     try {
       return jsonDecode(response.body)['detail']?.toString() ??
           'Erreur inconnue';
+    } catch (_) {
+      return 'Erreur inconnue';
+    }
+  }
+
+  /// Valide en un geste toutes les livraisons en attente d'un même groupe (plusieurs
+  /// aliments livrés ensemble, voir createDeliveryBatch).
+  Future<String?> validateDeliveryGroup(String groupId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/deliveries/group/$groupId/validate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'performedBy': _performedBy}),
+    );
+    if (response.statusCode == 200) return null;
+    try {
+      return jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue';
     } catch (_) {
       return 'Erreur inconnue';
     }

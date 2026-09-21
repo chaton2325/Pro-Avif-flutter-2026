@@ -52,6 +52,9 @@ class Delivery {
   final DateTime? farmReceivedAt;
   final String? farmReceivedBy;
   final String? farmNote;
+  // Non-null uniquement pour les livraisons créées via /deliveries/batch (plusieurs aliments
+  // livrés ensemble) — absent sur toutes les livraisons créées avant cette fonctionnalité.
+  final String? deliveryGroupId;
 
   Delivery({
     required this.id,
@@ -80,6 +83,7 @@ class Delivery {
     this.farmReceivedAt,
     this.farmReceivedBy,
     this.farmNote,
+    this.deliveryGroupId,
   });
 
   String get lotsLabel => batchesUsed.map((b) => b.lotNumber).join('+');
@@ -123,6 +127,7 @@ class Delivery {
       farmReceivedAt: parseCameroonTime(map['farmReceivedAt']?.toString()),
       farmReceivedBy: map['farmReceivedBy'] as String?,
       farmNote: map['farmNote'] as String?,
+      deliveryGroupId: map['deliveryGroupId'] as String?,
     );
   }
 }

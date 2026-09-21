@@ -4,6 +4,7 @@ import '../models/delivery.dart';
 import '../models/usine.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/blocking_loader.dart';
 import '../widgets/daily_report_widgets.dart';
 
 enum _ReceptionFilter { all, pendingUsine, pendingFarm, received, cancelled }
@@ -143,10 +144,13 @@ class _AdminFeedReceptionsScreenState extends State<AdminFeedReceptionsScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.green700, foregroundColor: Colors.white),
               onPressed: () async {
                 final qty = double.tryParse(quantityController.text.replaceAll(',', '.'));
-                final result = await _mongoService.acknowledgeDeliveryReceipt(
-                  delivery.id,
-                  receivedQuantity: qty,
-                  note: noteController.text.trim().isEmpty ? null : noteController.text.trim(),
+                final result = await runBlocking(
+                  context,
+                  () => _mongoService.acknowledgeDeliveryReceipt(
+                    delivery.id,
+                    receivedQuantity: qty,
+                    note: noteController.text.trim().isEmpty ? null : noteController.text.trim(),
+                  ),
                 );
                 if (result.error != null) {
                   setDialogState(() => error = result.error);
