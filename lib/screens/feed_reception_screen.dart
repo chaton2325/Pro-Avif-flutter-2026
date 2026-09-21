@@ -20,13 +20,19 @@ class FeedReceptionScreen extends StatefulWidget {
   State<FeedReceptionScreen> createState() => _FeedReceptionScreenState();
 }
 
+const _historyPageSize = 30;
+
 class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
   final MongoService _mongoService = MongoService();
   List<Delivery> _pending = [];
   List<Delivery> _history = [];
+  int _historyTotalCount = 0;
+  bool _loadingMoreHistory = false;
   final Map<String, TextEditingController> _quantityControllers = {};
   bool _isLoading = true;
   bool _showHistory = false;
+
+  bool get _hasMoreHistory => _history.length < _historyTotalCount;
 
   @override
   void initState() {
@@ -37,15 +43,28 @@ class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     final pending = await _mongoService.getFarmPendingDeliveries(widget.farmName);
-    final history = await _mongoService.getFarmAckHistory(widget.farmName);
+    final history = await _mongoService.getFarmAckHistory(widget.farmName, skip: 0, limit: _historyPageSize);
     if (!mounted) return;
     for (final d in pending) {
       _quantityControllers.putIfAbsent(d.id, () => TextEditingController(text: d.quantity.toString()));
     }
     setState(() {
       _pending = pending;
-      _history = history;
+      _history = history.data;
+      _historyTotalCount = history.totalCount;
       _isLoading = false;
+    });
+  }
+
+  Future<void> _loadMoreHistory() async {
+    if (_loadingMoreHistory || !_hasMoreHistory) return;
+    setState(() => _loadingMoreHistory = true);
+    final result = await _mongoService.getFarmAckHistory(widget.farmName, skip: _history.length, limit: _historyPageSize);
+    if (!mounted) return;
+    setState(() {
+      _history = [..._history, ...result.data];
+      _historyTotalCount = result.totalCount;
+      _loadingMoreHistory = false;
     });
   }
 
@@ -195,8 +214,26 @@ class _FeedReceptionScreenState extends State<FeedReceptionScreen> {
                     ]
                   else if (_history.isEmpty)
                     _emptyState('Aucune réception confirmée pour le moment.')
-                  else
+                  else ...[
                     for (final d in _history) _historyCard(d),
+                    if (_hasMoreHistory)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Center(
+                          child: _loadingMoreHistory
+                              ? const CircularProgressIndicator(color: DailyReportColors.green700)
+                              : OutlinedButton(
+                                  onPressed: _loadMoreHistory,
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: DailyReportColors.green700,
+                                    side: const BorderSide(color: DailyReportColors.green600),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  child: Text('Charger plus (${_historyTotalCount - _history.length} restantes)'),
+                                ),
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),

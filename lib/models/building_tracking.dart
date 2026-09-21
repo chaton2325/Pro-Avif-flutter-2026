@@ -1,3 +1,6 @@
+import 'farm_daily_report.dart';
+import 'lot_headcount.dart';
+
 /// Suivi bâtiment : effectif et stock d'aliment restants (départ - cumul depuis le dernier
 /// rapport journalier connu), ferme par ferme — vue calculée côté backend, jamais stockée
 /// (voir GET /daily-reports/building-tracking).
@@ -20,6 +23,8 @@ class BuildingTrackingItem {
   final double cumulativeConsumedKg;
   final double? securityStockDays;
   final String? lastReportDate;
+  final List<RoomHeadcount> currentRooms;
+  final SexCount currentClinic;
   final bool hasReports;
 
   BuildingTrackingItem({
@@ -41,8 +46,10 @@ class BuildingTrackingItem {
     this.cumulativeConsumedKg = 0,
     this.securityStockDays,
     this.lastReportDate,
+    this.currentRooms = const [],
+    SexCount? currentClinic,
     this.hasReports = false,
-  });
+  }) : currentClinic = currentClinic ?? SexCount();
 
   int get initialTotal => initialFemale + initialMale;
   int get currentTotal => currentFemale + currentMale;
@@ -77,6 +84,10 @@ class BuildingTrackingItem {
       cumulativeConsumedKg: (map['cumulativeConsumedKg'] as num?)?.toDouble() ?? 0,
       securityStockDays: (map['securityStockDays'] as num?)?.toDouble(),
       lastReportDate: map['lastReportDate'] as String?,
+      currentRooms: (map['currentRooms'] as List<dynamic>? ?? [])
+          .map((r) => RoomHeadcount.fromMap(r as Map<String, dynamic>))
+          .toList(),
+      currentClinic: SexCount.fromMap(map['currentClinic'] as Map<String, dynamic>?),
       hasReports: map['hasReports'] as bool? ?? false,
     );
   }
@@ -142,6 +153,63 @@ class WeeklyTrackingPoint {
       mortalityMale: (map['mortalityMale'] as num?)?.toInt() ?? 0,
       byRoom: (map['byRoom'] as List<dynamic>? ?? [])
           .map((r) => RoomWeeklyValue.fromMap(r as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+/// Une ligne de l'historique des transferts de sujets entre salles — jamais stockée à part,
+/// une simple extraction paginée des rapports journaliers existants (voir GET
+/// .../building-tracking/{farmId}/transfers-history).
+class TransferHistoryEntry {
+  final String date;
+  final String farmId;
+  final String farmName;
+  final String? lotNumber;
+  final String fromRoom;
+  final String toRoom;
+  final int femaleCount;
+  final int maleCount;
+  final String? performedBy;
+
+  TransferHistoryEntry({
+    required this.date,
+    required this.farmId,
+    required this.farmName,
+    this.lotNumber,
+    required this.fromRoom,
+    required this.toRoom,
+    this.femaleCount = 0,
+    this.maleCount = 0,
+    this.performedBy,
+  });
+
+  factory TransferHistoryEntry.fromMap(Map<String, dynamic> map) {
+    return TransferHistoryEntry(
+      date: map['date'] as String? ?? '',
+      farmId: map['farmId'] as String? ?? '',
+      farmName: map['farmName'] as String? ?? '',
+      lotNumber: map['lotNumber'] as String?,
+      fromRoom: map['fromRoom'] as String? ?? '',
+      toRoom: map['toRoom'] as String? ?? '',
+      femaleCount: (map['femaleCount'] as num?)?.toInt() ?? 0,
+      maleCount: (map['maleCount'] as num?)?.toInt() ?? 0,
+      performedBy: map['performedBy'] as String?,
+    );
+  }
+}
+
+class TransferHistoryPagedResult {
+  final int totalCount;
+  final List<TransferHistoryEntry> data;
+
+  TransferHistoryPagedResult({this.totalCount = 0, required this.data});
+
+  factory TransferHistoryPagedResult.fromMap(Map<String, dynamic> map) {
+    return TransferHistoryPagedResult(
+      totalCount: (map['totalCount'] as num?)?.toInt() ?? 0,
+      data: (map['data'] as List<dynamic>? ?? [])
+          .map((t) => TransferHistoryEntry.fromMap(t as Map<String, dynamic>))
           .toList(),
     );
   }

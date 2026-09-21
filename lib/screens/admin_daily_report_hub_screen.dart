@@ -6,6 +6,7 @@ import 'admin_farm_staff_screen.dart';
 import 'admin_feed_receptions_screen.dart';
 import 'admin_farm_feed_stocks_screen.dart';
 import 'admin_lot_headcounts_screen.dart';
+import 'admin_room_transfers_screen.dart';
 import 'admin_treatment_references_screen.dart';
 import 'building_tracking_screen.dart';
 import 'validator_overview_screen.dart';
@@ -52,6 +53,13 @@ class AdminDailyReportHubScreen extends StatelessWidget {
         title: 'Aliments de départ',
         subtitle: "Saisir le stock d'aliment initial d'une ferme",
         builder: (BuildContext c) => const AdminFarmFeedStocksScreen(),
+      ),
+      (
+        icon: Icons.swap_horiz_rounded,
+        color: DailyReportColors.green600,
+        title: 'Transferts de sujets',
+        subtitle: 'Déplacer des sujets entre salles',
+        builder: (BuildContext c) => const AdminRoomTransfersScreen(),
       ),
       (
         icon: Icons.medical_services_rounded,

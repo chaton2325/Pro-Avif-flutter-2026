@@ -148,6 +148,33 @@ class DailyReportMortality {
   }
 }
 
+/// Déplacement de sujets d'une salle à une autre du même bâtiment, le même jour — jamais
+/// entre deux fermes. N'affecte que endCounts (start - mortalité - sorti + entré).
+class RoomTransferEntry {
+  final String fromRoom;
+  final String toRoom;
+  final int femaleCount;
+  final int maleCount;
+
+  RoomTransferEntry({required this.fromRoom, required this.toRoom, this.femaleCount = 0, this.maleCount = 0});
+
+  Map<String, dynamic> toMap() => {
+    'fromRoom': fromRoom,
+    'toRoom': toRoom,
+    'femaleCount': femaleCount,
+    'maleCount': maleCount,
+  };
+
+  factory RoomTransferEntry.fromMap(Map<String, dynamic> map) {
+    return RoomTransferEntry(
+      fromRoom: map['fromRoom'] as String? ?? '',
+      toRoom: map['toRoom'] as String? ?? '',
+      femaleCount: (map['femaleCount'] as num?)?.toInt() ?? 0,
+      maleCount: (map['maleCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class RoomProduction {
   final String roomName;
   final int oac;
@@ -313,6 +340,7 @@ class FarmDailyReport {
   final SexCount clinicStart;
   final DailyReportAliment aliment;
   final DailyReportMortality mortality;
+  final List<RoomTransferEntry> transfers;
   final List<RoomHeadcount> endCounts;
   final SexCount clinicEnd;
   final List<RoomProduction> production;
@@ -341,6 +369,7 @@ class FarmDailyReport {
     SexCount? clinicStart,
     DailyReportAliment? aliment,
     DailyReportMortality? mortality,
+    this.transfers = const [],
     this.endCounts = const [],
     SexCount? clinicEnd,
     this.production = const [],
@@ -386,6 +415,9 @@ class FarmDailyReport {
       clinicStart: SexCount.fromMap(map['clinicStart'] as Map<String, dynamic>?),
       aliment: DailyReportAliment.fromMap(map['aliment'] as Map<String, dynamic>?),
       mortality: DailyReportMortality.fromMap(map['mortality'] as Map<String, dynamic>?),
+      transfers: (map['transfers'] as List<dynamic>? ?? [])
+          .map((t) => RoomTransferEntry.fromMap(t as Map<String, dynamic>))
+          .toList(),
       endCounts: (map['endCounts'] as List<dynamic>? ?? [])
           .map((r) => RoomHeadcount.fromMap(r as Map<String, dynamic>))
           .toList(),

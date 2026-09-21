@@ -6,6 +6,7 @@ import '../models/farm_daily_report.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
+import 'room_transfer_history_screen.dart';
 
 const _pageSize = 20;
 
@@ -131,6 +132,27 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
                   DailyReportSectionLabel('Mortalité par semaine d\'âge', icon: Icons.show_chart_rounded),
                   _mortalityChartCard(),
                   const SizedBox(height: 18),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => RoomTransferHistoryScreen(
+                          farmId: item.farmId,
+                          farmName: item.farmName,
+                          lotNumber: item.lotNumber,
+                        ),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: DailyReportColors.green700,
+                      side: const BorderSide(color: DailyReportColors.green600),
+                      minimumSize: const Size(double.infinity, 44),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                    label: const Text("Voir l'historique des transferts de sujets"),
+                  ),
+                  const SizedBox(height: 18),
                   DailyReportSectionLabel('Jour par jour ($_totalCount)', icon: Icons.event_note_rounded),
                   if (_reports.isEmpty)
                     Padding(
@@ -210,7 +232,28 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
             ),
           ],
         ),
+        if (item.currentRooms.isNotEmpty || item.currentClinic.femaleCount > 0 || item.currentClinic.maleCount > 0) ...[
+          const Divider(height: 24),
+          const Text('Effectif actuel par salle', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+          const SizedBox(height: 6),
+          for (final r in item.currentRooms)
+            if (r.femaleCount > 0 || r.maleCount > 0) _roomHeadcountRow(r.roomName, r.femaleCount, r.maleCount),
+          if (item.currentClinic.femaleCount > 0 || item.currentClinic.maleCount > 0)
+            _roomHeadcountRow('Clinique', item.currentClinic.femaleCount, item.currentClinic.maleCount),
+        ],
       ],
+    );
+  }
+
+  Widget _roomHeadcountRow(String label, int female, int male) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+          Text('$female F · $male M', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        ],
+      ),
     );
   }
 
@@ -452,6 +495,26 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
             ),
           ],
         ),
+        if (r.transfers.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          for (final t in r.transfers)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(
+                children: [
+                  const Icon(Icons.swap_horiz_rounded, size: 14, color: DailyReportColors.green700),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '${t.fromRoom} → ${t.toRoom} · ${t.femaleCount} F · ${t.maleCount} M',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: DailyReportColors.green700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ],
     );
   }

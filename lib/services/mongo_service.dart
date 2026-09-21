@@ -2225,17 +2225,15 @@ class MongoService {
     return [];
   }
 
-  Future<List<Delivery>> getFarmAckHistory(String farmName) async {
+  Future<DeliveryPagedResult> getFarmAckHistory(String farmName, {int skip = 0, int limit = 30}) async {
     final uri = Uri.parse(
       '$baseUrl/deliveries/farm-history',
-    ).replace(queryParameters: {'farmName': farmName});
+    ).replace(queryParameters: {'farmName': farmName, 'skip': '$skip', 'limit': '$limit'});
     final response = await http.get(uri);
     if (response.statusCode == 200) {
-      return (jsonDecode(response.body) as List<dynamic>)
-          .map((d) => Delivery.fromMap(d as Map<String, dynamic>))
-          .toList();
+      return DeliveryPagedResult.fromMap(jsonDecode(response.body));
     }
-    return [];
+    return DeliveryPagedResult(totalCount: 0, data: [], limit: limit, skip: skip);
   }
 
   Future<({Delivery? delivery, String? error})> acknowledgeDeliveryReceipt(
@@ -2389,6 +2387,7 @@ class MongoService {
     List<RoomConsumptionEntry>? consumptionByRoom,
     List<RoomHeadcount>? mortalityByRoom,
     SexCount? clinicMortality,
+    List<RoomTransferEntry>? transfers,
     List<RoomProduction>? production,
     double? waterLiters,
     List<TreatmentEntry>? treatments,
@@ -2403,6 +2402,7 @@ class MongoService {
       body['mortalityByRoom'] = mortalityByRoom.map((m) => m.toMap()).toList();
     }
     if (clinicMortality != null) body['clinicMortality'] = clinicMortality.toMap();
+    if (transfers != null) body['transfers'] = transfers.map((t) => t.toMap()).toList();
     if (production != null) body['production'] = production.map((p) => p.toMap()).toList();
     if (waterLiters != null) body['waterLiters'] = waterLiters;
     if (treatments != null) body['treatments'] = treatments.map((t) => t.toMap()).toList();
@@ -2579,6 +2579,26 @@ class MongoService {
           .toList();
     }
     return [];
+  }
+
+  Future<TransferHistoryPagedResult> getTransfersHistory(
+    String farmId, {
+    String? lotNumber,
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/daily-reports/building-tracking/$farmId/transfers-history').replace(
+      queryParameters: {
+        if (lotNumber != null) 'lotNumber': lotNumber,
+        'skip': '$skip',
+        'limit': '$limit',
+      },
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return TransferHistoryPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return TransferHistoryPagedResult(data: []);
   }
 
   // ---- Référentiels admin : traitements (vaccins/médicaments) ----

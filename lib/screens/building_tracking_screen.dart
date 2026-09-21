@@ -199,6 +199,10 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> {
                         : DailyReportColors.green600,
                 trailing: 'Mortalité ${item.mortalityRatePercent.toStringAsFixed(1)}%',
               ),
+              if (item.currentRooms.isNotEmpty || item.currentClinic.femaleCount > 0 || item.currentClinic.maleCount > 0) ...[
+                const SizedBox(height: 8),
+                _roomBreakdown(item),
+              ],
               const SizedBox(height: 10),
               _metricRow(
                 icon: Icons.grain_rounded,
@@ -219,6 +223,32 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Effectif actuel par salle et par sexe, directement sur la carte — pas seulement le
+  /// total agrégé (important pour repérer où l'effectif se concentre).
+  Widget _roomBreakdown(BuildingTrackingItem item) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final r in item.currentRooms)
+          if (r.femaleCount > 0 || r.maleCount > 0) _roomChip(r.roomName, r.femaleCount, r.maleCount),
+        if (item.currentClinic.femaleCount > 0 || item.currentClinic.maleCount > 0)
+          _roomChip('Clinique', item.currentClinic.femaleCount, item.currentClinic.maleCount),
+      ],
+    );
+  }
+
+  Widget _roomChip(String label, int female, int male) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: DailyReportColors.green100, borderRadius: BorderRadius.circular(8)),
+      child: Text(
+        '$label · $female F · $male M',
+        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: DailyReportColors.green900),
+      ),
     );
   }
 
