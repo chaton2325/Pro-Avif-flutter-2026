@@ -208,12 +208,14 @@ class RoomProduction {
   final int dj;
   final int cas;
   final int sal;
-  final int sol;
   final double tpPercent;
   final double? ecartPercent;
   final double dePercent;
-  final double solPercent;
+  final int cumulativeOac;
   final int cumulativePo;
+  final int cumulativeDj;
+  final int cumulativeCas;
+  final int cumulativeSal;
 
   RoomProduction({
     required this.roomName,
@@ -222,12 +224,14 @@ class RoomProduction {
     this.dj = 0,
     this.cas = 0,
     this.sal = 0,
-    this.sol = 0,
     this.tpPercent = 0,
     this.ecartPercent,
     this.dePercent = 0,
-    this.solPercent = 0,
+    this.cumulativeOac = 0,
     this.cumulativePo = 0,
+    this.cumulativeDj = 0,
+    this.cumulativeCas = 0,
+    this.cumulativeSal = 0,
   });
 
   Map<String, dynamic> toMap() => {
@@ -237,13 +241,15 @@ class RoomProduction {
     'dj': dj,
     'cas': cas,
     'sal': sal,
-    'sol': sol,
     // Champs AUTO tolérés en écriture mais toujours recalculés côté serveur.
     'tpPercent': tpPercent,
     'ecartPercent': ecartPercent,
     'dePercent': dePercent,
-    'solPercent': solPercent,
+    'cumulativeOac': cumulativeOac,
     'cumulativePo': cumulativePo,
+    'cumulativeDj': cumulativeDj,
+    'cumulativeCas': cumulativeCas,
+    'cumulativeSal': cumulativeSal,
   };
 
   factory RoomProduction.fromMap(Map<String, dynamic> map) {
@@ -254,12 +260,14 @@ class RoomProduction {
       dj: (map['dj'] as num?)?.toInt() ?? 0,
       cas: (map['cas'] as num?)?.toInt() ?? 0,
       sal: (map['sal'] as num?)?.toInt() ?? 0,
-      sol: (map['sol'] as num?)?.toInt() ?? 0,
       tpPercent: (map['tpPercent'] as num?)?.toDouble() ?? 0,
       ecartPercent: (map['ecartPercent'] as num?)?.toDouble(),
       dePercent: (map['dePercent'] as num?)?.toDouble() ?? 0,
-      solPercent: (map['solPercent'] as num?)?.toDouble() ?? 0,
+      cumulativeOac: (map['cumulativeOac'] as num?)?.toInt() ?? 0,
       cumulativePo: (map['cumulativePo'] as num?)?.toInt() ?? 0,
+      cumulativeDj: (map['cumulativeDj'] as num?)?.toInt() ?? 0,
+      cumulativeCas: (map['cumulativeCas'] as num?)?.toInt() ?? 0,
+      cumulativeSal: (map['cumulativeSal'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -269,7 +277,6 @@ class RoomProduction {
     int? dj,
     int? cas,
     int? sal,
-    int? sol,
   }) => RoomProduction(
     roomName: roomName,
     oac: oac ?? this.oac,
@@ -277,12 +284,14 @@ class RoomProduction {
     dj: dj ?? this.dj,
     cas: cas ?? this.cas,
     sal: sal ?? this.sal,
-    sol: sol ?? this.sol,
     tpPercent: tpPercent,
     ecartPercent: ecartPercent,
     dePercent: dePercent,
-    solPercent: solPercent,
+    cumulativeOac: cumulativeOac,
     cumulativePo: cumulativePo,
+    cumulativeDj: cumulativeDj,
+    cumulativeCas: cumulativeCas,
+    cumulativeSal: cumulativeSal,
   );
 }
 

@@ -7,8 +7,13 @@ import '../widgets/daily_report_widgets.dart';
 
 enum _StaffSort { alpha, recent }
 
-/// Personnel affecté à un bâtiment (admin uniquement) : le rédacteur ne fait que choisir un
-/// statut chaque jour dans cette liste (cahier des charges section 5, "jamais retapé").
+const _unassignedSentinel = '__unassigned__';
+const _allFarmsSentinel = '__all__';
+
+/// Personnel (admin uniquement) : le rédacteur ne fait que choisir un statut chaque jour dans
+/// la liste de SA ferme (cahier des charges section 5, "jamais retapé"). Ici, une personne se
+/// crée d'abord (nom seul, pas de ferme requise), puis s'affecte à une ferme séparément —
+/// modifiable à tout moment (renommer, changer de ferme, retirer l'affectation, supprimer).
 class AdminFarmStaffScreen extends StatefulWidget {
   const AdminFarmStaffScreen({super.key});
 
@@ -19,15 +24,24 @@ class AdminFarmStaffScreen extends StatefulWidget {
 class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
   final MongoService _mongoService = MongoService();
   List<Farm> _farms = [];
-  Farm? _selectedFarm;
-  List<FarmStaff> _staff = [];
+  List<FarmStaff> _allStaff = [];
   bool _loading = true;
   _StaffSort _sortMode = _StaffSort.alpha;
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  // _allFarmsSentinel = tout le monde, _unassignedSentinel = non affectés uniquement,
+  // sinon un farmId précis.
+  String _filterFarmId = _allFarmsSentinel;
+
+  Map<String, Farm> get _farmsById => {for (final f in _farms) f.id!: f};
 
   List<FarmStaff> get _visible {
-    var list = _staff;
+    var list = _allStaff;
+    if (_filterFarmId == _unassignedSentinel) {
+      list = list.where((s) => s.farmId == null).toList();
+    } else if (_filterFarmId != _allFarmsSentinel) {
+      list = list.where((s) => s.farmId == _filterFarmId).toList();
+    }
     if (_searchQuery.trim().isNotEmpty) {
       final q = _searchQuery.trim().toLowerCase();
       list = list.where((s) => s.name.toLowerCase().contains(q)).toList();
@@ -43,7 +57,7 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFarms();
+    _load();
   }
 
   @override
@@ -52,30 +66,22 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
     super.dispose();
   }
 
-  Future<void> _loadFarms() async {
+  Future<void> _load() async {
+    setState(() => _loading = true);
     final farms = List.of(await _mongoService.getFarms())
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final staff = await _mongoService.getAllFarmStaff();
     if (!mounted) return;
     setState(() {
       _farms = farms;
-      _loading = false;
-    });
-    if (farms.isNotEmpty) _selectFarm(farms.first);
-  }
-
-  Future<void> _selectFarm(Farm farm) async {
-    setState(() {
-      _selectedFarm = farm;
-      _loading = true;
-    });
-    final staff = await _mongoService.getFarmStaff(farm.id!);
-    if (!mounted) return;
-    setState(() {
-      _staff = staff;
+      _allStaff = staff;
       _loading = false;
     });
   }
 
+  /// Étape 1 : créer une personne — juste un nom, aucune ferme requise. L'affectation se fait
+  /// ensuite séparément (bouton "Affecter" sur la carte), pour ne pas bloquer la création d'une
+  /// personne dont la ferme n'est pas encore décidée.
   void _showAddDialog() {
     final nameController = TextEditingController();
     showDialog(
@@ -93,17 +99,72 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.green700, foregroundColor: Colors.white),
             onPressed: () async {
-              if (nameController.text.trim().isEmpty || _selectedFarm == null) return;
-              await _mongoService.createFarmStaff(
-                FarmStaff(farmId: _selectedFarm!.id!, name: nameController.text.trim()),
-              );
+              if (nameController.text.trim().isEmpty) return;
+              await _mongoService.createFarmStaff(FarmStaff(name: nameController.text.trim()));
               if (!context.mounted) return;
               Navigator.pop(context);
-              _selectFarm(_selectedFarm!);
+              _load();
             },
             child: const Text('Ajouter'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Étape 2 (et modifications ultérieures) : renommer et/ou (ré)affecter une ferme en une
+  /// seule fenêtre — les deux actions modifient le même enregistrement (PUT /farm-staff/{id}).
+  void _showEditDialog(FarmStaff s) {
+    final nameController = TextEditingController(text: s.name);
+    String? selectedFarmId = s.farmId;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Modifier'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Nom', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String?>(
+                initialValue: selectedFarmId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Ferme', border: OutlineInputBorder()),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('Non affecté')),
+                  ..._farms.map((f) => DropdownMenuItem<String?>(value: f.id, child: Text(f.name))),
+                ],
+                onChanged: (v) => setDialogState(() => selectedFarmId = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.green700, foregroundColor: Colors.white),
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) return;
+                await _mongoService.updateFarmStaff(FarmStaff(
+                  id: s.id,
+                  farmId: selectedFarmId,
+                  name: nameController.text.trim(),
+                  isActive: s.isActive,
+                ));
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _load();
+              },
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -123,7 +184,7 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
               await _mongoService.deleteFarmStaff(s.id!);
               if (!context.mounted) return;
               Navigator.pop(context);
-              _selectFarm(_selectedFarm!);
+              _load();
             },
             child: const Text('Retirer'),
           ),
@@ -150,16 +211,15 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final unassignedCount = _allStaff.where((s) => s.farmId == null).length;
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: dailyReportAppBar('Personnel par ferme'),
-      floatingActionButton: _selectedFarm == null
-          ? null
-          : FloatingActionButton(
-              backgroundColor: DailyReportColors.green700,
-              onPressed: _showAddDialog,
-              child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
-            ),
+      appBar: dailyReportAppBar('Personnel'),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: DailyReportColors.green700,
+        onPressed: _showAddDialog,
+        child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
+      ),
       body: Column(
         children: [
           Container(
@@ -171,13 +231,13 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('FERME', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                Text('FILTRER PAR FERME', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                 const SizedBox(height: 6),
                 Container(
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
                   child: DropdownButtonHideUnderline(
-                    child: DropdownButtonFormField<Farm>(
-                      value: _selectedFarm,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _filterFarmId,
                       isExpanded: true,
                       icon: const Icon(Icons.expand_more_rounded, color: DailyReportColors.green700),
                       decoration: const InputDecoration(
@@ -186,8 +246,15 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
                         prefixIcon: Icon(Icons.home_work_rounded, color: DailyReportColors.green700, size: 20),
                       ),
                       style: const TextStyle(color: DailyReportColors.green900, fontWeight: FontWeight.w700, fontSize: 14),
-                      items: _farms.map((f) => DropdownMenuItem(value: f, child: Text(f.name))).toList(),
-                      onChanged: (f) => f != null ? _selectFarm(f) : null,
+                      items: [
+                        const DropdownMenuItem(value: _allFarmsSentinel, child: Text('Toutes les fermes')),
+                        DropdownMenuItem(
+                          value: _unassignedSentinel,
+                          child: Text('Non affectés ($unassignedCount)'),
+                        ),
+                        ..._farms.map((f) => DropdownMenuItem(value: f.id, child: Text(f.name))),
+                      ],
+                      onChanged: (v) => setState(() => _filterFarmId = v ?? _allFarmsSentinel),
                     ),
                   ),
                 ),
@@ -216,7 +283,7 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
                   Icon(Icons.groups_rounded, size: 14, color: Colors.grey.shade500),
                   const SizedBox(width: 6),
                   Text(
-                    '${_staff.length} ${_staff.length > 1 ? "personnes" : "personne"}',
+                    '${_visible.length} ${_visible.length > 1 ? "personnes" : "personne"}',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                 ],
@@ -233,7 +300,7 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
                             Icon(Icons.person_search_rounded, size: 40, color: Colors.grey.shade400),
                             const SizedBox(height: 10),
                             Text(
-                              _staff.isEmpty ? 'Aucun personnel pour cette ferme.' : 'Aucun résultat.',
+                              _allStaff.isEmpty ? 'Aucun personnel — commencez par en ajouter.' : 'Aucun résultat.',
                               style: TextStyle(color: Colors.grey.shade500),
                             ),
                           ],
@@ -245,10 +312,11 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
                         itemBuilder: (context, i) {
                           final s = _visible[i];
                           final color = _avatarColor(s.name);
+                          final farm = s.farmId != null ? _farmsById[s.farmId] : null;
                           return DailyReportCard(
                             accentColor: color,
                             margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                             children: [
                               Row(
                                 children: [
@@ -264,28 +332,36 @@ class _AdminFarmStaffScreenState extends State<AdminFarmStaffScreen> {
                                       children: [
                                         Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
                                         const SizedBox(height: 3),
-                                        Row(
-                                          children: [
-                                            Container(
-                                              width: 7,
-                                              height: 7,
-                                              decoration: BoxDecoration(
-                                                color: s.isActive ? DailyReportColors.green600 : Colors.grey.shade400,
-                                                shape: BoxShape.circle,
+                                        farm != null
+                                            ? Row(
+                                                children: [
+                                                  const Icon(Icons.home_work_rounded, size: 12, color: DailyReportColors.green600),
+                                                  const SizedBox(width: 4),
+                                                  Flexible(
+                                                    child: Text(
+                                                      farm.name,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                                                    ),
+                                                  ),
+                                                ],
+                                              )
+                                            : DailyReportStatusBadge(
+                                                label: 'NON AFFECTÉ',
+                                                color: DailyReportColors.yellow600,
+                                                icon: Icons.priority_high_rounded,
                                               ),
-                                            ),
-                                            const SizedBox(width: 5),
-                                            Text(
-                                              s.isActive ? 'Actif' : 'Inactif',
-                                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600),
-                                            ),
-                                          ],
-                                        ),
                                       ],
                                     ),
                                   ),
                                   IconButton(
+                                    icon: const Icon(Icons.edit_outlined, color: DailyReportColors.green700, size: 20),
+                                    tooltip: 'Modifier',
+                                    onPressed: () => _showEditDialog(s),
+                                  ),
+                                  IconButton(
                                     icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                    tooltip: 'Retirer',
                                     onPressed: () => _confirmDelete(s),
                                   ),
                                 ],

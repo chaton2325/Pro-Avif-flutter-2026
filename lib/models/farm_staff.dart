@@ -1,12 +1,12 @@
 class FarmStaff {
   final String? id;
-  final String farmId;
+  final String? farmId;
   final String name;
   final bool isActive;
 
   FarmStaff({
     this.id,
-    required this.farmId,
+    this.farmId,
     required this.name,
     this.isActive = true,
   });
@@ -20,9 +20,16 @@ class FarmStaff {
   factory FarmStaff.fromMap(Map<String, dynamic> map) {
     return FarmStaff(
       id: map['_id'] as String?,
-      farmId: map['farmId'] as String? ?? '',
+      farmId: map['farmId'] as String?,
       name: map['name'] as String? ?? '',
       isActive: map['isActive'] as bool? ?? true,
     );
   }
+
+  FarmStaff copyWith({String? id, String? farmId, String? name, bool? isActive}) => FarmStaff(
+    id: id ?? this.id,
+    farmId: farmId ?? this.farmId,
+    name: name ?? this.name,
+    isActive: isActive ?? this.isActive,
+  );
 }

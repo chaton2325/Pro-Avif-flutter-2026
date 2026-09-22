@@ -334,7 +334,7 @@ class DailyReportFullSummary extends StatelessWidget {
 
   Widget _productionBlock(String roomName) {
     final p = _productionFor(roomName);
-    if (p == null || (p.oac == 0 && p.po == 0 && p.dj == 0 && p.cas == 0 && p.sal == 0 && p.sol == 0)) {
+    if (p == null || (p.oac == 0 && p.po == 0 && p.dj == 0 && p.cas == 0 && p.sal == 0)) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -361,12 +361,14 @@ class DailyReportFullSummary extends StatelessWidget {
               _prodMetric('DJ', '${p.dj}'),
               _prodMetric('CAS', '${p.cas}'),
               _prodMetric('SAL', '${p.sal}'),
-              _prodMetric('SOL', '${p.sol}'),
               _prodMetric('TP', '${p.tpPercent.toStringAsFixed(1)}%'),
               _prodMetric('%DE', '${p.dePercent.toStringAsFixed(1)}%'),
-              _prodMetric('%SOL', '${p.solPercent.toStringAsFixed(1)}%'),
               if (p.ecartPercent != null) _prodMetric('Écart', '${p.ecartPercent!.toStringAsFixed(1)}%'),
+              _prodMetric('Cumul OAC', '${p.cumulativeOac}'),
               _prodMetric('Cumul PO', '${p.cumulativePo}'),
+              _prodMetric('Cumul DJ', '${p.cumulativeDj}'),
+              _prodMetric('Cumul CAS', '${p.cumulativeCas}'),
+              _prodMetric('Cumul SAL', '${p.cumulativeSal}'),
             ],
           ),
         ],

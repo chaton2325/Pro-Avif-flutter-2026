@@ -600,14 +600,6 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            _intField(
-              'Ramassés au sol',
-              _production[i].sol,
-              (v) => setState(
-                () => _production[i] = _production[i].copyWith(sol: v),
-              ),
-            ),
             const Divider(),
             _readonlyRow(
               'Total · TP · Écart',
@@ -615,9 +607,8 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   '${_report.production[i].ecartPercent ?? "—"}',
             ),
             _readonlyRow(
-              '%DE · %SOL · Cumul',
-              '${_report.production[i].dePercent}% · ${_report.production[i].solPercent}% · '
-                  '${_report.production[i].cumulativePo}',
+              '%DE · Cumul PO',
+              '${_report.production[i].dePercent}% · ${_report.production[i].cumulativePo}',
             ),
           ]),
           const SizedBox(height: 16),

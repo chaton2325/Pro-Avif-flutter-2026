@@ -30,6 +30,7 @@ import '../models/daily_report.dart';
 import '../models/inventory_session.dart';
 import '../models/stock_movement.dart';
 import '../models/lot_headcount.dart';
+import '../models/lot_egg_stock.dart';
 import '../models/farm_feed_stock.dart';
 import '../models/building_tracking.dart';
 import '../models/current_headcount.dart';
@@ -57,7 +58,7 @@ class LicenseBlockedException implements Exception {
 //Base en local : "http://192.168.1.187:8010"
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "http://192.168.1.187:8010";
+  final String baseUrl = "http://192.168.1.198:8010";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -2315,6 +2316,58 @@ class MongoService {
     return LotHeadcountHistoryPagedResult(data: []);
   }
 
+  // ---- Stock d'œufs de départ d'un lot, par salle (admin) ----
+
+  Future<LotEggStock?> getLotEggStock(String farmName, String lotNumber) async {
+    final uri = Uri.parse('$baseUrl/lot-egg-stocks').replace(
+      queryParameters: {'farmName': farmName, 'lotNumber': lotNumber},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200 && response.body != 'null') {
+      final data = jsonDecode(response.body);
+      if (data == null) return null;
+      return LotEggStock.fromMap(data);
+    }
+    return null;
+  }
+
+  Future<({LotEggStock? eggStock, String? error})> upsertLotEggStock(
+    LotEggStock eggStock,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/lot-egg-stocks'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(eggStock.toCreateMap(performedBy: _redacteurName)),
+    );
+    if (response.statusCode == 200) {
+      return (eggStock: LotEggStock.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (
+        eggStock: null,
+        error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue',
+      );
+    } catch (_) {
+      return (eggStock: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<LotEggStockHistoryPagedResult> getLotEggStockHistory(
+    String farmName,
+    String lotNumber, {
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/lot-egg-stocks/history').replace(
+      queryParameters: {'farmName': farmName, 'lotNumber': lotNumber, 'skip': '$skip', 'limit': '$limit'},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return LotEggStockHistoryPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return LotEggStockHistoryPagedResult(data: []);
+  }
+
   // ---- Aliments de départ d'une ferme (admin) — jamais lié à un lot de sujets ----
 
   Future<FarmFeedStock?> getFarmFeedStock(String farmName) async {
@@ -2647,6 +2700,18 @@ class MongoService {
       '$baseUrl/farm-staff',
     ).replace(queryParameters: {'farmId': farmId});
     final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List<dynamic>)
+          .map((s) => FarmStaff.fromMap(s as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  /// Vue admin globale, toutes fermes confondues + non affectés (voir AdminFarmStaffScreen) —
+  /// distincte de getFarmStaff(farmId), toujours scopée à une ferme, utilisée côté rédacteur.
+  Future<List<FarmStaff>> getAllFarmStaff() async {
+    final response = await http.get(Uri.parse('$baseUrl/farm-staff/all'));
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List<dynamic>)
           .map((s) => FarmStaff.fromMap(s as Map<String, dynamic>))

@@ -18,6 +18,9 @@ class DailyReportColors {
   static const purple600 = Color(0xFF6D28D9);
   static const purple100 = Color(0xFFEDE4FB);
 
+  static const blue600 = Color(0xFF1D6FB8);
+  static const blue100 = Color(0xFFE0EDF9);
+
   static const grey500 = Color(0xFF8A978A);
   static const grey100 = Color(0xFFECEEE9);
 
