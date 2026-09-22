@@ -51,6 +51,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   final MongoService _mongoService = MongoService();
   late FarmDailyReport _report;
   int _step = 0;
+  final PageController _pageController = PageController();
   bool _saving = false;
   String? _error;
 
@@ -60,6 +61,11 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   late List<RoomProduction> _production;
   double? _waterLiters;
   late List<TreatmentEntry> _treatments;
+  // Question posée avant de proposer la saisie : tant que la réponse est "Non" (ou pas encore
+  // répondue), on ne montre ni la liste ni le bouton "Ajouter" pour ce type — évite de mélanger
+  // vaccins et médicaments dans un même sélecteur et de laisser deviner s'il y a eu un service.
+  late bool _medicamentDone;
+  late bool _vaccinDone;
   late List<StaffStatusEntry> _staffStatuses;
   String? _observation;
 
@@ -147,9 +153,19 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
         .toList();
     _waterLiters = _report.waterLiters;
     _treatments = List.of(_report.treatments);
+    // Un rapport rouvert qui a déjà des traitements enregistrés doit rouvrir la question sur
+    // "Oui" et montrer ce qui existe déjà, pas repartir de "Non" comme si de rien n'était.
+    _medicamentDone = _treatments.any((t) => t.type == 'medicament');
+    _vaccinDone = _treatments.any((t) => t.type == 'vaccin');
     _staffStatuses = List.of(_report.staffStatuses);
     _observation = _report.observation;
     _loadReferentials();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadReferentials() async {
@@ -178,14 +194,19 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     });
   }
 
-  Future<void> _saveStepAndAdvance() async {
-    if (_step == 1 &&
+  /// Sauvegarde les champs d'UNE étape précise (PATCH ciblé) et recharge les champs AUTO
+  /// recalculés côté serveur — appelé en arrière-plan à chaque fois qu'on quitte une étape en
+  /// faisant glisser l'écran (voir _onPageChanged), plus une dernière fois avant d'ouvrir le
+  /// récapitulatif. Retourne false sans rien envoyer si l'étape n'est pas valide : l'erreur
+  /// reste affichée, mais ne bloque jamais le glissement déjà en cours (voir _onPageChanged).
+  Future<bool> _saveStep(int step) async {
+    if (step == 1 &&
         _consumption.any((c) => c.quantityKg > 0 && c.formulaId == null)) {
       setState(
         () => _error =
             "Choisissez l'aliment consommé pour chaque salle ayant une quantité saisie.",
       );
-      return;
+      return false;
     }
     setState(() {
       _saving = true;
@@ -193,53 +214,81 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     });
     final result = await _mongoService.patchDailyReport(
       _report.id,
-      consumptionByRoom: _step == 1 ? _consumption : null,
-      mortalityByRoom: _step == 1 ? _mortality : null,
-      clinicMortality: _step == 1 ? _clinicMortality : null,
-      production: _step == 2 ? _production : null,
-      waterLiters: _step == 2 ? _waterLiters : null,
-      treatments: _step == 3 ? _treatments : null,
-      staffStatuses: _step == 3 ? _staffStatuses : null,
-      observation: _step == 3 ? _observation : null,
+      consumptionByRoom: step == 1 ? _consumption : null,
+      mortalityByRoom: step == 1 ? _mortality : null,
+      clinicMortality: step == 1 ? _clinicMortality : null,
+      production: step == 2 ? _production : null,
+      waterLiters: step == 2 ? _waterLiters : null,
+      treatments: step == 3 ? _treatments : null,
+      staffStatuses: step == 3 ? _staffStatuses : null,
+      observation: step == 3 ? _observation : null,
     );
-    if (!mounted) return;
+    if (!mounted) return false;
     if (result.error != null) {
       setState(() {
         _saving = false;
         _error = result.error;
       });
-      return;
+      return false;
     }
     setState(() {
       _saving = false;
       _report = result.report!;
     });
-    if (_step < 3) {
-      setState(() => _step++);
-    } else if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => DailyReportSummaryScreen(
-            user: widget.user,
-            report: _report,
-            readOnly: false,
-          ),
+    return true;
+  }
+
+  /// Glissement horizontal entre étapes (remplace les boutons Suivant/Retour) : l'étape qu'on
+  /// vient de quitter est sauvegardée en arrière-plan, sans jamais bloquer ni annuler le
+  /// glissement déjà effectué par l'utilisateur.
+  void _onPageChanged(int newIndex) {
+    final leftStep = _step;
+    setState(() => _step = newIndex);
+    _saveStep(leftStep);
+  }
+
+  Future<void> _finishAndReview() async {
+    final ok = await _saveStep(3);
+    if (!ok || !mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DailyReportSummaryScreen(
+          user: widget.user,
+          report: _report,
+          readOnly: false,
         ),
-      );
-    }
+      ),
+    );
   }
 
   void _back() {
     if (_step > 0) {
-      setState(() => _step--);
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+      );
     } else {
       Navigator.pop(context);
     }
   }
 
+  void _goToStep(int step) {
+    _pageController.animateToPage(
+      step,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+    );
+  }
+
+  /// Un rapport "à corriger" avec des endroits précis flagués par le validateur ne montre que
+  /// ces endroits-là, sur une seule page (_buildCorrectionScaffold) — jamais l'assistant en 4
+  /// étapes complet, pour ne pas laisser deviner ce qui a vraiment besoin d'être revu.
+  bool get _isTargetedCorrection => widget.report.status == 'a_corriger' && widget.report.rejectionFlags.isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
+    if (_isTargetedCorrection) return _buildCorrectionScaffold();
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
       appBar: dailyReportAppBar(
@@ -256,15 +305,20 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
             child: Row(
               children: List.generate(4, (i) {
                 final active = i <= _step;
+                // Cliquable : sans bouton Retour/Suivant, c'est le seul moyen de sauter
+                // directement à une étape sans glisser plusieurs fois de suite.
                 return Expanded(
-                  child: Container(
-                    height: 5,
-                    margin: EdgeInsets.only(right: i < 3 ? 5 : 0),
-                    decoration: BoxDecoration(
-                      color: active
-                          ? DailyReportColors.yellow500
-                          : Colors.white.withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(3),
+                  child: GestureDetector(
+                    onTap: () => _goToStep(i),
+                    child: Container(
+                      height: 5,
+                      margin: EdgeInsets.only(right: i < 3 ? 5 : 0),
+                      decoration: BoxDecoration(
+                        color: active
+                            ? DailyReportColors.yellow500
+                            : Colors.white.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
                     ),
                   ),
                 );
@@ -292,9 +346,199 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                       color: DailyReportColors.green700,
                     ),
                   )
+                // Glissement horizontal entre les 4 étapes (remplace Suivant/Retour) — chaque
+                // étape garde son propre défilement vertical indépendant (voir _onPageChanged
+                // pour la sauvegarde en arrière-plan à chaque changement de page).
+                : PageView(
+                    controller: _pageController,
+                    onPageChanged: _onPageChanged,
+                    children: [
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: _buildIdentificationStep(),
+                      ),
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: _buildAlimentMortaliteStep(),
+                      ),
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: _buildProductionEauStep(),
+                      ),
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: _buildTraitementsPersonnelStep(),
+                      ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: _step < 3
+              // Rappel discret plutôt qu'un bouton : la navigation se fait en glissant l'écran.
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.swipe_rounded, size: 16, color: Colors.grey.shade400),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Glissez pour continuer',
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                )
+              : SizedBox(
+                  height: 50,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: const LinearGradient(
+                        colors: [
+                          DailyReportColors.green700,
+                          DailyReportColors.green600,
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: DailyReportColors.green700.withValues(
+                            alpha: 0.32,
+                          ),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _saving ? null : _finishAndReview,
+                        child: Center(
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Voir le récapitulatif',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
+  // ---- Vue de correction ciblée : seuls les endroits flagués par le validateur, une seule
+  // page, avec un accès au récapitulatif global pour le contexte (voir _isTargetedCorrection).
+  Future<void> _saveCorrectionAndReview() async {
+    if (_consumption.any((c) => c.quantityKg > 0 && c.formulaId == null)) {
+      setState(() => _error = "Choisissez l'aliment consommé pour chaque salle ayant une quantité saisie.");
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final result = await _mongoService.patchDailyReport(
+      _report.id,
+      consumptionByRoom: _consumption,
+      mortalityByRoom: _mortality,
+      clinicMortality: _clinicMortality,
+      production: _production,
+      waterLiters: _waterLiters,
+      treatments: _treatments,
+      staffStatuses: _staffStatuses,
+      observation: _observation,
+    );
+    if (!mounted) return;
+    if (result.error != null) {
+      setState(() {
+        _saving = false;
+        _error = result.error;
+      });
+      return;
+    }
+    setState(() {
+      _saving = false;
+      _report = result.report!;
+    });
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DailyReportSummaryScreen(user: widget.user, report: _report, readOnly: false),
+      ),
+    );
+  }
+
+  Widget _buildCorrectionScaffold() {
+    final flaggedRooms = <String, Set<String>>{};
+    for (final f in _report.rejectionFlags) {
+      if (f.roomName != null) flaggedRooms.putIfAbsent(f.roomName!, () => {}).add(f.field);
+    }
+    final globalFlags = _report.rejectionFlags.where((f) => f.roomName == null).map((f) => f.field).toSet();
+
+    return Scaffold(
+      backgroundColor: DailyReportColors.surface,
+      appBar: dailyReportAppBar(
+        'Corrections demandées',
+        subtitle: _report.farmName,
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
+      ),
+      body: Column(
+        children: [
+          if (_error != null)
+            Container(
+              width: double.infinity,
+              color: Colors.red.shade50,
+              padding: const EdgeInsets.all(10),
+              child: Text(_error!, style: TextStyle(color: Colors.red.shade700)),
+            ),
+          Expanded(
+            child: _loadingRefs
+                ? const Center(child: CircularProgressIndicator(color: DailyReportColors.green700))
                 : SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
-                    child: _buildStep(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_report.rejectionReason != null)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(color: DailyReportColors.yellow100, borderRadius: BorderRadius.circular(12)),
+                            child: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(color: Colors.black87, fontSize: 13),
+                                children: [
+                                  const TextSpan(text: 'Motif du validateur : ', style: TextStyle(fontWeight: FontWeight.w800)),
+                                  TextSpan(text: '« ${_report.rejectionReason} »'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        for (final entry in flaggedRooms.entries) _roomCorrectionCard(entry.key, entry.value),
+                        if (globalFlags.contains('water')) ...[_waterSection(), const SizedBox(height: 16)],
+                        if (globalFlags.contains('treatments')) ...[_treatmentsSection(), const SizedBox(height: 16)],
+                        if (globalFlags.contains('staff')) ...[_personnelSection(), const SizedBox(height: 16)],
+                        if (globalFlags.contains('observation')) _observationSection(),
+                      ],
+                    ),
                   ),
           ),
         ],
@@ -308,21 +552,20 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 child: SizedBox(
                   height: 50,
                   child: OutlinedButton(
-                    onPressed: _saving ? null : _back,
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DailyReportSummaryScreen(user: widget.user, report: _report, readOnly: true),
+                              ),
+                            ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: DailyReportColors.green700,
-                      side: const BorderSide(
-                        color: DailyReportColors.green600,
-                        width: 1.4,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      side: const BorderSide(color: DailyReportColors.green600, width: 1.4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text(
-                      'Retour',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                    child: const Text('Récapitulatif global', style: TextStyle(fontWeight: FontWeight.w700), textAlign: TextAlign.center),
                   ),
                 ),
               ),
@@ -333,44 +576,20 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   height: 50,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    gradient: const LinearGradient(
-                      colors: [
-                        DailyReportColors.green700,
-                        DailyReportColors.green600,
-                      ],
-                    ),
+                    gradient: const LinearGradient(colors: [DailyReportColors.green700, DailyReportColors.green600]),
                     boxShadow: [
-                      BoxShadow(
-                        color: DailyReportColors.green700.withValues(
-                          alpha: 0.32,
-                        ),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
+                      BoxShadow(color: DailyReportColors.green700.withValues(alpha: 0.32), blurRadius: 10, offset: const Offset(0, 4)),
                     ],
                   ),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
-                      onTap: _saving ? null : _saveStepAndAdvance,
+                      onTap: _saving ? null : _saveCorrectionAndReview,
                       child: Center(
                         child: _saving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                _step < 3 ? 'Suivant' : 'Voir le récapitulatif',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Text('Enregistrer', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
                       ),
                     ),
                   ),
@@ -383,17 +602,101 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     );
   }
 
-  Widget _buildStep() {
-    switch (_step) {
-      case 0:
-        return _buildIdentificationStep();
-      case 1:
-        return _buildAlimentMortaliteStep();
-      case 2:
-        return _buildProductionEauStep();
-      default:
-        return _buildTraitementsPersonnelStep();
-    }
+  Widget _roomCorrectionCard(String roomName, Set<String> fields) {
+    final mortIndex = _mortality.indexWhere((m) => m.roomName == roomName);
+    final prodIndex = _production.indexWhere((p) => p.roomName == roomName);
+    final hasProductionFlag = fields.any((f) => ['oac', 'po', 'dj', 'cas', 'sal'].contains(f));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle(roomName),
+          _card([
+            if (fields.contains('mortality') && mortIndex != -1) ...[
+              const Text('Mortalité', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: _stepperField(
+                      label: 'Femelles',
+                      value: _mortality[mortIndex].femaleCount,
+                      onChanged: (v) => setState(() => _mortality[mortIndex] = _mortality[mortIndex].copyWith(femaleCount: v)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _stepperField(
+                      label: 'Mâles',
+                      value: _mortality[mortIndex].maleCount,
+                      onChanged: (v) => setState(() => _mortality[mortIndex] = _mortality[mortIndex].copyWith(maleCount: v)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (fields.contains('consumption')) ...[
+              const Text('Consommation', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              const SizedBox(height: 6),
+              _roomConsumptionGroup(roomName),
+            ],
+            if (prodIndex != -1 && hasProductionFlag) ...[
+              const Text('Production', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (fields.contains('oac'))
+                    SizedBox(
+                      width: 90,
+                      child: _intField('OAC', _production[prodIndex].oac, (v) => setState(() => _production[prodIndex] = _production[prodIndex].copyWith(oac: v))),
+                    ),
+                  if (fields.contains('po'))
+                    SizedBox(
+                      width: 90,
+                      child: _intField('PO', _production[prodIndex].po, (v) => setState(() => _production[prodIndex] = _production[prodIndex].copyWith(po: v))),
+                    ),
+                  if (fields.contains('dj'))
+                    SizedBox(
+                      width: 90,
+                      child: _intField('DJ', _production[prodIndex].dj, (v) => setState(() => _production[prodIndex] = _production[prodIndex].copyWith(dj: v))),
+                    ),
+                  if (fields.contains('cas'))
+                    SizedBox(
+                      width: 90,
+                      child: _intField('CAS', _production[prodIndex].cas, (v) => setState(() => _production[prodIndex] = _production[prodIndex].copyWith(cas: v))),
+                    ),
+                  if (fields.contains('sal'))
+                    SizedBox(
+                      width: 90,
+                      child: _intField('SAL', _production[prodIndex].sal, (v) => setState(() => _production[prodIndex] = _production[prodIndex].copyWith(sal: v))),
+                    ),
+                ],
+              ),
+            ],
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _waterSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('Eau'),
+        _card([
+          _numberField(
+            label: 'Litres consommés',
+            value: _waterLiters,
+            onChanged: (v) => setState(() => _waterLiters = v),
+          ),
+        ]),
+      ],
+    );
   }
 
   // ---- Étape 1 : identification & effectifs (lecture seule) ----
@@ -442,10 +745,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
               child: Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children: _report.aliment.receivedDetail
+                children: _report.aliment.receivedTotalsByFormula.entries
                     .map(
-                      (d) => Chip(
-                        label: Text('${d.formulaName} · ${d.quantity} kg'),
+                      (e) => Chip(
+                        label: Text('${e.key} · ${e.value} kg'),
                       ),
                     )
                     .toList(),
@@ -634,31 +937,70 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _treatmentsSection(),
+        const SizedBox(height: 16),
+        _personnelSection(),
+        const SizedBox(height: 16),
+        _observationSection(),
+      ],
+    );
+  }
+
+  /// Extraites de _buildTraitementsPersonnelStep pour être réutilisables telles quelles dans
+  /// la vue de correction ciblée (un rapport "à corriger" ne montre que les sections flaguées
+  /// par le validateur, voir _buildCorrectionView).
+  Widget _treatmentsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         _sectionTitle('Traitements'),
         _card([
-          for (var i = 0; i < _treatments.length; i++)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(_treatments[i].name),
-              subtitle: Text(
-                '${_treatments[i].dose ?? ""}'
-                '${_treatments[i].date != null ? " · ${DateFormat('dd/MM/yyyy').format(_treatments[i].date!)}" : ""}',
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: () => setState(() => _treatments.removeAt(i)),
-              ),
-            ),
-          TextButton.icon(
-            onPressed: _addTreatmentDialog,
-            icon: const Icon(Icons.add, color: DailyReportColors.green700),
-            label: const Text(
-              'Ajouter un traitement',
-              style: TextStyle(color: DailyReportColors.green700),
-            ),
+          _treatmentYesNoRow(
+            'Un service médicament a été fait ?',
+            _medicamentDone,
+            (v) => setState(() {
+              _medicamentDone = v;
+              if (!v) _treatments.removeWhere((t) => t.type == 'medicament');
+            }),
           ),
+          if (_medicamentDone) ...[
+            const SizedBox(height: 8),
+            for (var i = 0; i < _treatments.length; i++)
+              if (_treatments[i].type == 'medicament') _treatmentTile(i),
+            TextButton.icon(
+              onPressed: () => _addTreatmentDialog('medicament'),
+              icon: const Icon(Icons.add, color: DailyReportColors.green700),
+              label: const Text('Ajouter un médicament', style: TextStyle(color: DailyReportColors.green700)),
+            ),
+          ],
+          const Divider(height: 24),
+          _treatmentYesNoRow(
+            'Un vaccin a été fait ?',
+            _vaccinDone,
+            (v) => setState(() {
+              _vaccinDone = v;
+              if (!v) _treatments.removeWhere((t) => t.type == 'vaccin');
+            }),
+          ),
+          if (_vaccinDone) ...[
+            const SizedBox(height: 8),
+            for (var i = 0; i < _treatments.length; i++)
+              if (_treatments[i].type == 'vaccin') _treatmentTile(i),
+            TextButton.icon(
+              onPressed: () => _addTreatmentDialog('vaccin'),
+              icon: const Icon(Icons.add, color: DailyReportColors.green700),
+              label: const Text('Ajouter un vaccin', style: TextStyle(color: DailyReportColors.green700)),
+            ),
+          ],
         ]),
-        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _personnelSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         _sectionTitle('Personnel en poste'),
         _card([
           if (_staffStatuses.isEmpty)
@@ -695,7 +1037,14 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
             const SizedBox(height: 12),
           ],
         ]),
-        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _observationSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         _sectionTitle('Observation'),
         _card([
           TextFormField(
@@ -712,10 +1061,48 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     );
   }
 
-  void _addTreatmentDialog() {
-    TreatmentReference? selectedRef = _references.isNotEmpty
-        ? _references.first
-        : null;
+  Widget _treatmentYesNoRow(String question, bool value, ValueChanged<bool> onChanged) {
+    return Row(
+      children: [
+        Expanded(child: Text(question, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5))),
+        const SizedBox(width: 8),
+        ChoiceChip(
+          label: const Text('Oui'),
+          selected: value,
+          selectedColor: DailyReportColors.green600,
+          labelStyle: TextStyle(color: value ? Colors.white : Colors.black87, fontSize: 12, fontWeight: FontWeight.w700),
+          onSelected: (_) => onChanged(true),
+        ),
+        const SizedBox(width: 6),
+        ChoiceChip(
+          label: const Text('Non'),
+          selected: !value,
+          selectedColor: Colors.grey.shade500,
+          labelStyle: TextStyle(color: !value ? Colors.white : Colors.black87, fontSize: 12, fontWeight: FontWeight.w700),
+          onSelected: (_) => onChanged(false),
+        ),
+      ],
+    );
+  }
+
+  Widget _treatmentTile(int i) {
+    final t = _treatments[i];
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(t.name),
+      subtitle: Text(
+        '${t.dose ?? ""}${t.date != null ? " · ${DateFormat('dd/MM/yyyy').format(t.date!)}" : ""}',
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.close, size: 18),
+        onPressed: () => setState(() => _treatments.removeAt(i)),
+      ),
+    );
+  }
+
+  void _addTreatmentDialog(String type) {
+    final typeRefs = _references.where((r) => r.type == type).toList();
+    TreatmentReference? selectedRef = typeRefs.isNotEmpty ? typeRefs.first : null;
     final doseController = TextEditingController();
     DateTime selectedDate = DateTime.now();
 
@@ -723,28 +1110,28 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Ajouter un traitement'),
+          title: Text(type == 'vaccin' ? 'Ajouter un vaccin' : 'Ajouter un médicament'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_references.isEmpty)
-                const Text("Aucun vaccin/médicament dans le référentiel admin.")
+              if (typeRefs.isEmpty)
+                Text(type == 'vaccin'
+                    ? "Aucun vaccin dans le référentiel admin."
+                    : "Aucun médicament dans le référentiel admin.")
               else
                 DropdownButtonFormField<TreatmentReference>(
                   value: selectedRef,
-                  items: _references
+                  items: typeRefs
                       .map(
                         (r) => DropdownMenuItem(
                           value: r,
-                          child: Text(
-                            '${r.type == "vaccin" ? "💉" : "💊"} ${r.name}',
-                          ),
+                          child: Text(r.name),
                         ),
                       )
                       .toList(),
                   onChanged: (v) => setDialogState(() => selectedRef = v),
-                  decoration: const InputDecoration(
-                    labelText: 'Vaccin / médicament',
+                  decoration: InputDecoration(
+                    labelText: type == 'vaccin' ? 'Vaccin' : 'Médicament',
                   ),
                 ),
               TextField(
