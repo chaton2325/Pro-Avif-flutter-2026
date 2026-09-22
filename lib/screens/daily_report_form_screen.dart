@@ -17,6 +17,8 @@ const List<String> kStaffStatuses = [
   'absent',
   'malade',
   'permission',
+  'affecte',
+  'sanctionne',
 ];
 const Map<String, String> kStaffStatusLabels = {
   'present': 'Présent',
@@ -24,6 +26,8 @@ const Map<String, String> kStaffStatusLabels = {
   'absent': 'Absent',
   'malade': 'Malade',
   'permission': 'Permission',
+  'affecte': 'Affecté',
+  'sanctionne': 'Sanctionné',
 };
 
 /// Formulaire du rapport en 4 étapes (maquette écrans 03-06) : identification & effectifs

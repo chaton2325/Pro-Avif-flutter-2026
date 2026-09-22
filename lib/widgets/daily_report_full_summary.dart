@@ -11,6 +11,25 @@ const Map<String, String> _kStaffStatusLabels = {
   'absent': 'Absent',
   'malade': 'Malade',
   'permission': 'Permission',
+  'affecte': 'Affecté',
+  'sanctionne': 'Sanctionné',
+};
+
+/// Ordre d'affichage des groupes "Personnel" : positif d'abord (présent/affecté), puis
+/// absences planifiées (repos/permission), puis ce qui mérite l'attention (absent/malade),
+/// sanctionné en dernier — le plus sévère, jamais noyé dans le reste.
+const List<String> _kStaffStatusOrder = ['present', 'affecte', 'repos', 'permission', 'absent', 'malade', 'sanctionne'];
+
+/// Une couleur par statut (jamais deux fois la même) pour que le groupe "Présent" ne se
+/// confonde jamais visuellement avec "Absent" ou "Sanctionné" dans le récapitulatif.
+const Map<String, Color> _kStaffStatusColors = {
+  'present': DailyReportColors.green700,
+  'affecte': Colors.teal,
+  'repos': DailyReportColors.blue600,
+  'permission': DailyReportColors.purple600,
+  'absent': Colors.red,
+  'malade': Colors.deepOrange,
+  'sanctionne': Color(0xFF7A0000),
 };
 
 /// Contenu complet d'un rapport journalier — effectifs par salle, aliment (reçu +
@@ -214,17 +233,10 @@ class DailyReportFullSummary extends StatelessWidget {
           const SizedBox(height: 16),
           DailyReportSectionLabel('Personnel', icon: Icons.badge_outlined),
           DailyReportCard(children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final s in report.staffStatuses)
-                  Chip(
-                    label: Text('${s.name} · ${_kStaffStatusLabels[s.status] ?? s.status}'),
-                    backgroundColor: s.status == 'present' ? DailyReportColors.green100 : DailyReportColors.yellow100,
-                  ),
-              ],
-            ),
+            for (final status in _kStaffStatusOrder) _staffStatusGroup(status),
+            // Statuts inconnus (donnée ancienne ou externe) : ne jamais les faire disparaître
+            // silencieusement, un dernier groupe générique les rassemble.
+            _staffStatusGroup(null),
           ]),
         ],
 
@@ -236,6 +248,50 @@ class DailyReportFullSummary extends StatelessWidget {
           ]),
         ],
       ],
+    );
+  }
+
+  /// Un groupe par statut ("Présent" → tout le monde présent listé dessous, etc.), chacun
+  /// dans sa propre couleur — plutôt qu'une liste de puces "Nom · Statut" à relire une par
+  /// une pour savoir qui est où. `status: null` = statuts inconnus (donnée ancienne),
+  /// regroupés génériquement plutôt que de disparaître silencieusement.
+  Widget _staffStatusGroup(String? status) {
+    final members = status != null
+        ? report.staffStatuses.where((s) => s.status == status).toList()
+        : report.staffStatuses.where((s) => !_kStaffStatusOrder.contains(s.status)).toList();
+    if (members.isEmpty) return const SizedBox.shrink();
+    final color = status != null ? (_kStaffStatusColors[status] ?? Colors.grey) : Colors.grey;
+    final label = status != null ? (_kStaffStatusLabels[status] ?? status) : 'Autre';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Text(
+                '${label.toUpperCase()} (${members.length})',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5, color: color, letterSpacing: 0.3),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final m in members)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
+                  child: Text(m.name, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
