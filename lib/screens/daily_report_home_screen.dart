@@ -10,6 +10,7 @@ import 'daily_report_form_screen.dart';
 import 'daily_report_notifications_screen.dart';
 import 'daily_report_summary_screen.dart';
 import 'current_headcount_screen.dart';
+import 'current_egg_stock_screen.dart';
 import 'farm_feed_stock_view_screen.dart';
 import 'feed_reception_screen.dart';
 
@@ -30,6 +31,7 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
   FarmDailyReport? _report;
   bool _isLoading = true;
   String? _error;
+  int _pendingReceptions = 0;
 
   String get _todayStr => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -64,10 +66,12 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
       farmId: farm.id!,
       date: _todayStr,
     );
+    final pendingReceptions = await _mongoService.getPendingReceptionsCount(farmName: farm.name);
     if (!mounted) return;
     setState(() {
       _farm = farm;
       _report = report;
+      _pendingReceptions = pendingReceptions;
       _isLoading = false;
       if (report == null) _error = 'Impossible de charger le rapport du jour.';
     });
@@ -159,25 +163,53 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border(left: BorderSide(color: DailyReportColors.yellow500, width: 4)),
                           ),
-                          child: Row(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.priority_high_rounded, color: DailyReportColors.yellow600, size: 20),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: RichText(
-                                  text: TextSpan(
-                                    style: const TextStyle(color: Colors.black87, fontSize: 13),
-                                    children: [
-                                      const TextSpan(
-                                        text: 'Motif du validateur : ',
-                                        style: TextStyle(fontWeight: FontWeight.w800),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.priority_high_rounded, color: DailyReportColors.yellow600, size: 20),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: RichText(
+                                      text: TextSpan(
+                                        style: const TextStyle(color: Colors.black87, fontSize: 13),
+                                        children: [
+                                          const TextSpan(
+                                            text: 'Motif du validateur : ',
+                                            style: TextStyle(fontWeight: FontWeight.w800),
+                                          ),
+                                          TextSpan(text: '« ${_report!.rejectionReason} »'),
+                                        ],
                                       ),
-                                      TextSpan(text: '« ${_report!.rejectionReason} »'),
-                                    ],
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
+                              if (_report!.rejectionFlags.isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                const Text(
+                                  'À corriger précisément :',
+                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.black87),
+                                ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final f in _report!.rejectionFlags)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(999)),
+                                        child: Text(
+                                          f.roomName != null ? '${f.roomName} · ${f.label}' : f.label,
+                                          style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w700, fontSize: 11.5),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -208,15 +240,21 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 26),
-                      DailyReportMenuTile(
-                        icon: Icons.local_shipping_outlined,
-                        color: DailyReportColors.yellow600,
-                        title: "Réception d'aliments",
-                        subtitle: "Livraisons de l'usine à confirmer",
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => FeedReceptionScreen(farmName: _farm!.name),
+                      Badge(
+                        isLabelVisible: _pendingReceptions > 0,
+                        label: Text('$_pendingReceptions'),
+                        backgroundColor: Colors.red.shade600,
+                        alignment: const Alignment(1.04, -1.04),
+                        child: DailyReportMenuTile(
+                          icon: Icons.local_shipping_outlined,
+                          color: DailyReportColors.yellow600,
+                          title: "Réception d'aliments",
+                          subtitle: "Livraisons de l'usine à confirmer",
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => FeedReceptionScreen(farmName: _farm!.name),
+                            ),
                           ),
                         ),
                       ),
@@ -243,6 +281,19 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (_) => CurrentHeadcountScreen(farmName: _farm!.name),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DailyReportMenuTile(
+                        icon: Icons.egg_outlined,
+                        color: DailyReportColors.purple600,
+                        title: 'Stock œufs',
+                        subtitle: 'Cumuls OAC/PO/DJ/CAS/SAL, par salle',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CurrentEggStockScreen(farmName: _farm!.name),
                           ),
                         ),
                       ),

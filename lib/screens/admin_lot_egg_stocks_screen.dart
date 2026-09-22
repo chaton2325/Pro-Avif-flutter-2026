@@ -5,6 +5,7 @@ import '../models/lot_egg_stock.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
+import 'current_egg_stock_screen.dart';
 import 'lot_egg_stock_history_screen.dart';
 
 enum _EsSort { alpha, status }
@@ -166,11 +167,11 @@ class _AdminLotEggStocksScreenState extends State<AdminLotEggStocksScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       children: [
-        InkWell(
-          onTap: () => _openFarm(s),
-          child: Row(
-            children: [
-              Expanded(
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () => _openFarm(s),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -190,15 +191,22 @@ class _AdminLotEggStocksScreenState extends State<AdminLotEggStocksScreen> {
                   ],
                 ),
               ),
-              DailyReportStatusBadge(
-                label: defined ? 'DÉFINI' : 'À DÉFINIR',
-                color: color,
-                icon: defined ? Icons.check_rounded : Icons.priority_high_rounded,
+            ),
+            DailyReportStatusBadge(
+              label: defined ? 'DÉFINI' : 'À DÉFINIR',
+              color: color,
+              icon: defined ? Icons.check_rounded : Icons.priority_high_rounded,
+            ),
+            IconButton(
+              icon: const Icon(Icons.visibility_outlined, color: DailyReportColors.green700, size: 20),
+              tooltip: 'Voir le stock actuel',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => CurrentEggStockScreen(farmName: s.farm.name)),
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-            ],
-          ),
+            ),
+            InkWell(onTap: () => _openFarm(s), child: Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400)),
+          ],
         ),
       ],
     );

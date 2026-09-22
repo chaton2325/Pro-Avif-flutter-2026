@@ -56,7 +56,7 @@ class _CurrentHeadcountScreenState extends State<CurrentHeadcountScreen> {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(color: DailyReportColors.yellow100, borderRadius: BorderRadius.circular(10)),
                       child: Text(
-                        "Aucun rapport journalier encore soumis pour ce lot — effectif de départ affiché.",
+                        "Aucun rapport journalier encore validé pour ce lot — effectif de départ affiché.",
                         style: TextStyle(color: DailyReportColors.yellow600, fontWeight: FontWeight.w600, fontSize: 12.5),
                       ),
                     ),

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
+import 'admin_cumuls_screen.dart';
 import 'admin_farm_staff_screen.dart';
 import 'admin_feed_receptions_screen.dart';
 import 'admin_farm_feed_stocks_screen.dart';
@@ -29,8 +30,10 @@ class AdminDailyReportHubScreen extends StatefulWidget {
 }
 
 class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
+  final MongoService _mongoService = MongoService();
   late DateTime _now;
   Timer? _clockTimer;
+  int _pendingReceptions = 0;
 
   @override
   void initState() {
@@ -41,6 +44,14 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
+    _loadPendingReceptions();
+  }
+
+  // Pas de farmName = toutes fermes confondues (vue admin globale).
+  Future<void> _loadPendingReceptions() async {
+    final count = await _mongoService.getPendingReceptionsCount();
+    if (!mounted) return;
+    setState(() => _pendingReceptions = count);
   }
 
   @override
@@ -61,6 +72,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.green700,
             title: 'Tableau de suivi',
             subtitle: 'Valider ou renvoyer les rapports du jour',
+            badgeCount: 0,
             builder: (BuildContext c) => ValidatorOverviewScreen(user: MongoService().currentUser!),
           ),
           (
@@ -68,6 +80,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.green900,
             title: 'Suivi bâtiment',
             subtitle: 'Effectifs & aliments : ce qui reste, par ferme',
+            badgeCount: 0,
             builder: (BuildContext c) => const BuildingTrackingScreen(),
           ),
           (
@@ -75,6 +88,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.yellow600,
             title: 'Réceptions — toutes fermes',
             subtitle: 'En attente et historique, tous bâtiments',
+            badgeCount: _pendingReceptions,
             builder: (BuildContext c) => const AdminFeedReceptionsScreen(),
           ),
         ],
@@ -88,6 +102,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.green600,
             title: 'Effectifs de départ',
             subtitle: "Saisir l'effectif initial d'un lot",
+            badgeCount: 0,
             builder: (BuildContext c) => const AdminLotHeadcountsScreen(),
           ),
           (
@@ -95,6 +110,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.yellow500,
             title: 'Aliments de départ',
             subtitle: "Saisir le stock d'aliment initial d'une ferme",
+            badgeCount: 0,
             builder: (BuildContext c) => const AdminFarmFeedStocksScreen(),
           ),
           (
@@ -102,7 +118,16 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.purple600,
             title: "Stock d'œufs de départ",
             subtitle: "Saisir OAC/PO/DJ/CAS/SAL initiaux d'un lot",
+            badgeCount: 0,
             builder: (BuildContext c) => const AdminLotEggStocksScreen(),
+          ),
+          (
+            icon: Icons.stacked_line_chart_rounded,
+            color: DailyReportColors.purple600,
+            title: 'Cumuls de départ',
+            subtitle: "S'ajoutent au cumul existant — aliments et œufs",
+            badgeCount: 0,
+            builder: (BuildContext c) => const AdminCumulsScreen(),
           ),
         ],
       ),
@@ -115,6 +140,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.purple600,
             title: 'Transferts de sujets',
             subtitle: 'Déplacer des sujets entre salles',
+            badgeCount: 0,
             builder: (BuildContext c) => const AdminRoomTransfersScreen(),
           ),
         ],
@@ -128,6 +154,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.blue600,
             title: 'Vaccins & médicaments',
             subtitle: 'Référentiel des traitements',
+            badgeCount: 0,
             builder: (BuildContext c) => const AdminTreatmentReferencesScreen(),
           ),
           (
@@ -135,6 +162,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             color: DailyReportColors.green700,
             title: 'Personnel',
             subtitle: 'Créer, affecter, gérer par ferme',
+            badgeCount: 0,
             builder: (BuildContext c) => const AdminFarmStaffScreen(),
           ),
         ],
@@ -164,12 +192,21 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
                       SizedBox(
                         width: tileWidth,
                         height: 64,
-                        child: DailyReportGridMenuTile(
-                          icon: e.icon,
-                          color: e.color,
-                          title: e.title,
-                          subtitle: e.subtitle,
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: e.builder)),
+                        child: Badge(
+                          isLabelVisible: e.badgeCount > 0,
+                          label: Text('${e.badgeCount}'),
+                          backgroundColor: Colors.red.shade600,
+                          alignment: const Alignment(1.02, -1.1),
+                          child: DailyReportGridMenuTile(
+                            icon: e.icon,
+                            color: e.color,
+                            title: e.title,
+                            subtitle: e.subtitle,
+                            onTap: () async {
+                              await Navigator.push(context, MaterialPageRoute(builder: e.builder));
+                              if (mounted) _loadPendingReceptions();
+                            },
+                          ),
                         ),
                       ),
                   ],

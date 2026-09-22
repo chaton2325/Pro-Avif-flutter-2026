@@ -118,6 +118,17 @@ class DailyReportAliment {
     this.securityStockDays,
   });
 
+  /// receivedDetail a une entrée par livraison reçue (traçabilité), donc le même aliment
+  /// apparaît plusieurs fois si plusieurs camions livrent la même formule le même jour —
+  /// regroupé ici par aliment pour l'affichage ("Reçu aujourd'hui"), jamais pour le calcul.
+  Map<String, double> get receivedTotalsByFormula {
+    final totals = <String, double>{};
+    for (final d in receivedDetail) {
+      totals[d.formulaName] = (totals[d.formulaName] ?? 0) + d.quantity;
+    }
+    return totals;
+  }
+
   factory DailyReportAliment.fromMap(Map<String, dynamic>? map) {
     if (map == null) return DailyReportAliment();
     return DailyReportAliment(
@@ -389,6 +400,7 @@ class FarmDailyReport {
   final DateTime? validatedAt;
   final String? validatedBy;
   final String? rejectionReason;
+  final List<RejectionFlag> rejectionFlags;
   final DateTime? rejectedAt;
   final String? rejectedBy;
 
@@ -418,6 +430,7 @@ class FarmDailyReport {
     this.validatedAt,
     this.validatedBy,
     this.rejectionReason,
+    this.rejectionFlags = const [],
     this.rejectedAt,
     this.rejectedBy,
   }) : clinicStart = clinicStart ?? SexCount(),
@@ -474,8 +487,37 @@ class FarmDailyReport {
       validatedAt: parseCameroonTime(map['validatedAt']?.toString()),
       validatedBy: map['validatedBy'] as String?,
       rejectionReason: map['rejectionReason'] as String?,
+      rejectionFlags: (map['rejectionFlags'] as List<dynamic>? ?? [])
+          .map((f) => RejectionFlag.fromMap(f as Map<String, dynamic>))
+          .toList(),
       rejectedAt: parseCameroonTime(map['rejectedAt']?.toString()),
       rejectedBy: map['rejectedBy'] as String?,
+    );
+  }
+}
+
+/// Un endroit précis du rapport que le validateur pointe comme à corriger (ex : salle 1 /
+/// PO) — en plus du motif texte libre, pour que le rédacteur sache exactement quoi revoir
+/// sans avoir à deviner à partir d'une phrase générique. roomName=null = pas lié à une salle
+/// (eau, traitements, personnel, observation, transferts).
+class RejectionFlag {
+  final String? roomName;
+  final String field;
+  final String label;
+
+  RejectionFlag({this.roomName, required this.field, required this.label});
+
+  Map<String, dynamic> toMap() => {
+    'roomName': roomName,
+    'field': field,
+    'label': label,
+  };
+
+  factory RejectionFlag.fromMap(Map<String, dynamic> map) {
+    return RejectionFlag(
+      roomName: map['roomName'] as String?,
+      field: map['field'] as String? ?? '',
+      label: map['label'] as String? ?? '',
     );
   }
 }

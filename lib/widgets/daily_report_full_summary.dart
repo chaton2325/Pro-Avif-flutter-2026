@@ -155,8 +155,8 @@ class DailyReportFullSummary extends StatelessWidget {
               child: Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children: report.aliment.receivedDetail
-                    .map((d) => Chip(label: Text('${d.formulaName} · ${d.quantity} kg')))
+                children: report.aliment.receivedTotalsByFormula.entries
+                    .map((e) => Chip(label: Text('${e.key} · ${e.value} kg')))
                     .toList(),
               ),
             ),

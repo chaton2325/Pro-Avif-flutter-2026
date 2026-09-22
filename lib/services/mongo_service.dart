@@ -34,10 +34,12 @@ import '../models/lot_egg_stock.dart';
 import '../models/farm_feed_stock.dart';
 import '../models/building_tracking.dart';
 import '../models/current_headcount.dart';
+import '../models/current_egg_stock.dart';
 import '../models/farm_daily_report.dart';
 import '../models/treatment_reference.dart';
 import '../models/farm_staff.dart';
 import '../models/daily_report_notification.dart';
+import '../models/cumul.dart';
 import './session_storage.dart';
 
 /// Une ligne de comptage d'inventaire : [batchId] null = comptage global d'une matière,
@@ -58,7 +60,7 @@ class LicenseBlockedException implements Exception {
 //Base en local : "http://192.168.1.187:8010"
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "http://192.168.1.198:8010";
+  final String baseUrl = "http://192.168.1.187:8010";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -2226,6 +2228,19 @@ class MongoService {
     return [];
   }
 
+  /// Nombre de réceptions en attente — pour la bulle de notification (accueil rédacteur avec
+  /// farmName, tableau de bord admin sans farmName = toutes fermes confondues).
+  Future<int> getPendingReceptionsCount({String? farmName}) async {
+    final uri = Uri.parse('$baseUrl/deliveries/farm-pending/count').replace(
+      queryParameters: farmName != null ? {'farmName': farmName} : null,
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body)['count'] as num?)?.toInt() ?? 0;
+    }
+    return 0;
+  }
+
   Future<DeliveryPagedResult> getFarmAckHistory(String farmName, {int skip = 0, int limit = 30}) async {
     final uri = Uri.parse(
       '$baseUrl/deliveries/farm-history',
@@ -2537,6 +2552,17 @@ class MongoService {
     return CurrentHeadcount(farmName: farmName);
   }
 
+  Future<CurrentEggStock> getCurrentEggStock(String farmName) async {
+    final uri = Uri.parse('$baseUrl/daily-reports/current-egg-stock').replace(
+      queryParameters: {'farmName': farmName},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return CurrentEggStock.fromMap(jsonDecode(response.body));
+    }
+    return CurrentEggStock(farmName: farmName);
+  }
+
   Future<({FarmDailyReport? report, String? error})> validateDailyReport(String id) async {
     final response = await http.post(
       Uri.parse('$baseUrl/daily-reports/$id/validate'),
@@ -2558,12 +2584,17 @@ class MongoService {
 
   Future<({FarmDailyReport? report, String? error})> rejectDailyReport(
     String id,
-    String reason,
-  ) async {
+    String reason, {
+    List<RejectionFlag> flags = const [],
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/daily-reports/$id/reject'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'reason': reason, 'performedBy': _redacteurName}),
+      body: jsonEncode({
+        'reason': reason,
+        'flags': flags.map((f) => f.toMap()).toList(),
+        'performedBy': _redacteurName,
+      }),
     );
     if (response.statusCode == 200) {
       return (report: FarmDailyReport.fromMap(jsonDecode(response.body)), error: null);
@@ -2576,6 +2607,127 @@ class MongoService {
     } catch (_) {
       return (report: null, error: 'Erreur inconnue');
     }
+  }
+
+  // ---- Cumuls de départ (aliments et œufs, admin uniquement) — DISTINCT du stock de départ /
+  // stock actuel : un compteur manuel qui ne bouge jamais avec la consommation ou la ponte du
+  // rapport journalier. Chaque ajout ADDITIONNE au cumul déjà existant. ----
+
+  Future<FarmFeedCumul?> getFarmFeedCumul(String farmName) async {
+    final uri = Uri.parse('$baseUrl/cumuls/feed').replace(queryParameters: {'farmName': farmName});
+    final response = await http.get(uri);
+    if (response.statusCode == 200 && response.body != 'null') {
+      final data = jsonDecode(response.body);
+      if (data == null) return null;
+      return FarmFeedCumul.fromMap(data);
+    }
+    return null;
+  }
+
+  Future<({FarmFeedCumul? cumul, String? error})> addFarmFeedCumul(String farmName, double quantityKg) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/cumuls/feed/add'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'farmName': farmName, 'quantityKg': quantityKg, 'performedBy': _redacteurName}),
+    );
+    if (response.statusCode == 200) {
+      return (cumul: FarmFeedCumul.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (cumul: null, error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue');
+    } catch (_) {
+      return (cumul: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<FarmFeedCumulHistoryPagedResult> getFarmFeedCumulHistory(
+    String farmName, {
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/cumuls/feed/history').replace(
+      queryParameters: {'farmName': farmName, 'skip': '$skip', 'limit': '$limit'},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return FarmFeedCumulHistoryPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return FarmFeedCumulHistoryPagedResult(data: []);
+  }
+
+  Future<LotEggCumul?> getLotEggCumul(String farmName, String lotNumber) async {
+    final uri = Uri.parse('$baseUrl/cumuls/eggs').replace(
+      queryParameters: {'farmName': farmName, 'lotNumber': lotNumber},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200 && response.body != 'null') {
+      final data = jsonDecode(response.body);
+      if (data == null) return null;
+      return LotEggCumul.fromMap(data);
+    }
+    return null;
+  }
+
+  Future<({LotEggCumul? cumul, String? error})> addLotEggCumul({
+    required String farmName,
+    required String lotNumber,
+    required String roomName,
+    int oac = 0,
+    int po = 0,
+    int dj = 0,
+    int cas = 0,
+    int sal = 0,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/cumuls/eggs/add'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'farmName': farmName,
+        'lotNumber': lotNumber,
+        'roomName': roomName,
+        'oac': oac,
+        'po': po,
+        'dj': dj,
+        'cas': cas,
+        'sal': sal,
+        'performedBy': _redacteurName,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return (cumul: LotEggCumul.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (cumul: null, error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue');
+    } catch (_) {
+      return (cumul: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<LotEggCumulHistoryPagedResult> getLotEggCumulHistory(
+    String farmName,
+    String lotNumber, {
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/cumuls/eggs/history').replace(
+      queryParameters: {'farmName': farmName, 'lotNumber': lotNumber, 'skip': '$skip', 'limit': '$limit'},
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return LotEggCumulHistoryPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return LotEggCumulHistoryPagedResult(data: []);
+  }
+
+  Future<List<BuildingCumulItem>> getBuildingCumuls() async {
+    final response = await http.get(Uri.parse('$baseUrl/cumuls/building-tracking'));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['items'] as List<dynamic>? ?? [])
+          .map((i) => BuildingCumulItem.fromMap(i as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
   }
 
   // ---- Suivi bâtiment (effectifs + aliments, ferme par ferme) ----

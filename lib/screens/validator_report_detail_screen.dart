@@ -3,6 +3,7 @@ import '../models/farm_daily_report.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/blocking_loader.dart';
 import '../widgets/daily_report_full_summary.dart';
 import '../widgets/daily_report_widgets.dart';
 
@@ -10,6 +11,28 @@ const List<String> kRejectReasonChips = [
   'Chiffre incohérent',
   'Stock à vérifier',
   'Photo manquante',
+];
+
+/// Catégories flagables par salle — un motif texte libre ne dit pas AU RÉDACTEUR quel chiffre
+/// précis revoir ; ces flags si (ex: "salle 1 · PO") s'affichent ensuite sur son rapport.
+const List<({String field, String label})> kRoomFlagFields = [
+  (field: 'mortality', label: 'Mortalité'),
+  (field: 'consumption', label: 'Consommation'),
+  (field: 'oac', label: 'OAC'),
+  (field: 'po', label: 'PO'),
+  (field: 'dj', label: 'DJ'),
+  (field: 'cas', label: 'CAS'),
+  (field: 'sal', label: 'SAL'),
+];
+
+/// Catégories flagables non liées à une salle précise. Pas de "Transferts" ici : c'est
+/// réservé à l'admin (voir AdminRoomTransfersScreen), le rédacteur qui corrige un rapport
+/// "à corriger" n'a aucun moyen d'agir dessus.
+const List<({String field, String label})> kGlobalFlagFields = [
+  (field: 'water', label: 'Eau'),
+  (field: 'treatments', label: 'Traitements'),
+  (field: 'staff', label: 'Personnel'),
+  (field: 'observation', label: 'Observation'),
 ];
 
 /// Détail & validation (maquette écran 10) : données du rédacteur en lecture seule, un
@@ -31,6 +54,9 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
   final _customReasonController = TextEditingController();
   bool _busy = false;
   String? _error;
+  // Clé composite "salle|champ" (salle vide pour un flag global) — un Set suffit, pas besoin
+  // d'égalité sur RejectionFlag lui-même.
+  final Set<String> _selectedFlagKeys = {};
 
   @override
   void initState() {
@@ -40,12 +66,67 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
 
   bool get _canAct => _report.status == 'en_attente_validation';
 
+  String _flagKey(String? room, String field) => '${room ?? ''}|$field';
+
+  void _toggleFlag(String? room, String field) {
+    final key = _flagKey(room, field);
+    setState(() {
+      if (!_selectedFlagKeys.remove(key)) _selectedFlagKeys.add(key);
+    });
+  }
+
+  List<RejectionFlag> _buildFlags() {
+    final flags = <RejectionFlag>[];
+    for (final room in _report.startCounts) {
+      for (final f in kRoomFlagFields) {
+        if (_selectedFlagKeys.contains(_flagKey(room.roomName, f.field))) {
+          flags.add(RejectionFlag(roomName: room.roomName, field: f.field, label: f.label));
+        }
+      }
+    }
+    for (final f in kGlobalFlagFields) {
+      if (_selectedFlagKeys.contains(_flagKey(null, f.field))) {
+        flags.add(RejectionFlag(field: f.field, label: f.label));
+      }
+    }
+    return flags;
+  }
+
+  Future<bool> _confirm(String title, String content, {required Color color, required String confirmLabel}) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        content: Text(content, style: const TextStyle(fontSize: 13.5)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _validate() async {
+    final confirmed = await _confirm(
+      'Valider ce rapport ?',
+      'Êtes-vous sûr de vouloir valider le rapport de ${_report.farmName} du ${_report.date} ? '
+          "Cette action est définitive — le rapport ne pourra plus être modifié.",
+      color: DailyReportColors.green700,
+      confirmLabel: 'Valider',
+    );
+    if (!confirmed || !mounted) return;
+
     setState(() {
       _busy = true;
       _error = null;
     });
-    final result = await _mongoService.validateDailyReport(_report.id);
+    final result = await runBlocking(context, () => _mongoService.validateDailyReport(_report.id));
     if (!mounted) return;
     if (result.error != null) {
       setState(() {
@@ -63,11 +144,25 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
       setState(() => _error = 'Choisissez ou saisissez un motif.');
       return;
     }
+    final flags = _buildFlags();
+    if (flags.isEmpty) {
+      setState(() => _error = "Précisez au moins un endroit à corriger (ex : salle 1 · PO).");
+      return;
+    }
+    final confirmed = await _confirm(
+      'Renvoyer ce rapport ?',
+      "Êtes-vous sûr de vouloir renvoyer le rapport de ${_report.farmName} à corriger ? "
+          "Le rédacteur recevra le motif et les endroits précis sélectionnés.",
+      color: DailyReportColors.yellow600,
+      confirmLabel: 'Renvoyer',
+    );
+    if (!confirmed || !mounted) return;
+
     setState(() {
       _busy = true;
       _error = null;
     });
-    final result = await _mongoService.rejectDailyReport(_report.id, reason);
+    final result = await runBlocking(context, () => _mongoService.rejectDailyReport(_report.id, reason, flags: flags));
     if (!mounted) return;
     if (result.error != null) {
       setState(() {
@@ -112,6 +207,25 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
                 decoration: const InputDecoration(hintText: 'Précisez le motif', border: OutlineInputBorder()),
               ),
             ],
+            const SizedBox(height: 16),
+            const DailyReportSectionLabel("Renvoyer — endroit(s) précis à corriger", icon: Icons.my_location_rounded),
+            for (final room in _report.startCounts) _roomFlagPicker(room.roomName),
+            const Text('Général', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: kGlobalFlagFields.map((f) {
+                final selected = _selectedFlagKeys.contains(_flagKey(null, f.field));
+                return ChoiceChip(
+                  label: Text(f.label),
+                  selected: selected,
+                  selectedColor: Colors.red.shade600,
+                  labelStyle: TextStyle(fontSize: 11.5, color: selected ? Colors.white : Colors.black87, fontWeight: FontWeight.w700),
+                  onSelected: (_) => _toggleFlag(null, f.field),
+                );
+              }).toList(),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 10),
               Text(_error!, style: TextStyle(color: Colors.red.shade700, fontSize: 12)),
@@ -183,4 +297,30 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
     );
   }
 
+  Widget _roomFlagPicker(String roomName) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(roomName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: kRoomFlagFields.map((f) {
+              final selected = _selectedFlagKeys.contains(_flagKey(roomName, f.field));
+              return ChoiceChip(
+                label: Text(f.label),
+                selected: selected,
+                selectedColor: Colors.red.shade600,
+                labelStyle: TextStyle(fontSize: 11.5, color: selected ? Colors.white : Colors.black87, fontWeight: FontWeight.w700),
+                onSelected: (_) => _toggleFlag(roomName, f.field),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
 }

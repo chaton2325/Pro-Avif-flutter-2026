@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/building_tracking.dart';
+import '../models/cumul.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
@@ -25,13 +26,18 @@ class BuildingTrackingScreen extends StatefulWidget {
   State<BuildingTrackingScreen> createState() => _BuildingTrackingScreenState();
 }
 
-class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> {
+class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> with SingleTickerProviderStateMixin {
   final MongoService _mongoService = MongoService();
   List<BuildingTrackingItem> _items = [];
   bool _loading = true;
   _BtSort _sortMode = _BtSort.alpha;
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  late final TabController _tabController;
+  // Onglet "Cumul" : indépendant de la vue d'ensemble ci-dessus, ne lit jamais
+  // rapports_journaliers (voir GET /cumuls/building-tracking) — chargé une seule fois.
+  List<BuildingCumulItem> _cumulItems = [];
+  bool _cumulLoading = true;
 
   bool _isAlert(BuildingTrackingItem i) =>
       i.hasReports &&
@@ -66,12 +72,15 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _load();
+    _loadCumuls();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -85,21 +94,55 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> {
     });
   }
 
+  Future<void> _loadCumuls() async {
+    setState(() => _cumulLoading = true);
+    final items = await _mongoService.getBuildingCumuls();
+    if (!mounted) return;
+    setState(() {
+      _cumulItems = items;
+      _cumulLoading = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: DailyReportColors.surface,
+      appBar: dailyReportAppBar(
+        'Suivi bâtiment',
+        subtitle: 'Effectifs & aliments par ferme',
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          tabs: const [
+            Tab(text: "Vue d'ensemble"),
+            Tab(text: 'Cumuls'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _overviewTab(),
+          _cumulsTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _overviewTab() {
     final alertCount = _items.where(_isAlert).length;
     final okCount = _items.length - alertCount;
 
-    return Scaffold(
-      backgroundColor: DailyReportColors.surface,
-      appBar: dailyReportAppBar('Suivi bâtiment', subtitle: 'Effectifs & aliments par ferme'),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: DailyReportColors.green700))
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
+    return _loading
+        ? const Center(child: CircularProgressIndicator(color: DailyReportColors.green700))
+        : RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
                   Row(
                     children: [
                       Expanded(
@@ -146,7 +189,87 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> {
                     for (final item in _visible) _farmCard(item),
                 ],
               ),
+            );
+  }
+
+  Widget _cumulsTab() {
+    final totalFeedKg = _cumulItems.fold<double>(0, (a, i) => a + i.feedCumulKg);
+    return _cumulLoading
+        ? const Center(child: CircularProgressIndicator(color: DailyReportColors.green700))
+        : RefreshIndicator(
+            onRefresh: _loadCumuls,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                DailyReportStatTile(
+                  value: '${totalFeedKg.toStringAsFixed(totalFeedKg == totalFeedKg.roundToDouble() ? 0 : 2)} kg',
+                  label: 'Cumul aliment — toutes fermes',
+                  color: DailyReportColors.purple600,
+                  icon: Icons.stacked_line_chart_rounded,
+                ),
+                const SizedBox(height: 18),
+                const DailyReportSectionLabel('Par ferme, par salle'),
+                if (_cumulItems.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 30),
+                    child: Center(child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500))),
+                  )
+                else
+                  for (final item in _cumulItems) _cumulCard(item),
+              ],
             ),
+          );
+  }
+
+  Widget _cumulCard(BuildingCumulItem item) {
+    return DailyReportCard(
+      accentColor: DailyReportColors.purple600,
+      margin: const EdgeInsets.only(bottom: 12),
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(item.farmName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+            if (item.lotNumber != null)
+              Text('Lot ${item.lotNumber}', style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            const Icon(Icons.grain_rounded, size: 14, color: DailyReportColors.purple600),
+            const SizedBox(width: 6),
+            Text(
+              'Cumul aliment : ${item.feedCumulKg.toStringAsFixed(item.feedCumulKg == item.feedCumulKg.roundToDouble() ? 0 : 2)} kg',
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: DailyReportColors.purple600),
+            ),
+          ],
+        ),
+        if (item.rooms.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final r in item.rooms)
+                if (r.oac + r.po + r.dj + r.cas + r.sal > 0) _eggCumulChip(r),
+            ],
+          ),
+        ] else ...[
+          const SizedBox(height: 8),
+          Text('Aucun cumul œufs enregistré.', style: TextStyle(color: Colors.grey.shade400, fontSize: 11.5)),
+        ],
+      ],
+    );
+  }
+
+  Widget _eggCumulChip(RoomEggCumul r) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: DailyReportColors.purple600.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+      child: Text(
+        '${r.roomName} · OAC ${r.oac} · PO ${r.po} · DJ ${r.dj} · CAS ${r.cas} · SAL ${r.sal}',
+        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: DailyReportColors.purple600),
+      ),
     );
   }
 
@@ -181,7 +304,7 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> {
                 [
                   if (item.lotNumber != null) 'Lot ${item.lotNumber}',
                   if (item.ageDays != null) 'Âge ${item.ageDays}j (S${item.ageWeeks})',
-                  if (!item.hasReports) 'Aucun rapport encore soumis',
+                  if (!item.hasReports) 'Aucun rapport encore validé',
                 ].join(' · '),
                 style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
               ),
