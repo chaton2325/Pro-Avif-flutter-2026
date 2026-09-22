@@ -1,14 +1,11 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/building_tracking.dart';
-import '../models/farm_daily_report.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
+import 'building_tracking_day_by_day_screen.dart';
 import 'room_transfer_history_screen.dart';
-
-const _pageSize = 20;
 
 // Mortalité = rouge (cohérent avec le reste de l'écran de suivi bâtiment), deux nuances
 // pour distinguer femelles/mâles ; aliment = jaune (couleur déjà associée à ce domaine dans
@@ -18,8 +15,9 @@ final _mortalityFemaleColor = Colors.red.shade400;
 final _mortalityMaleColor = Colors.red.shade800;
 
 /// Détail du suivi bâtiment pour une ferme : le récapitulatif (effectif/stock actuels vs
-/// départ) en tête, puis l'historique jour par jour du lot en cours — paginé (bouton
-/// "Charger plus"), même pattern que les écrans d'historique effectifs/aliments de départ.
+/// départ) et les graphiques hebdomadaires. Le jour par jour et l'historique des transferts
+/// sont sur des pages séparées et paginées (BuildingTrackingDayByDayScreen,
+/// RoomTransferHistoryScreen) pour ne pas surcharger cet écran.
 class BuildingTrackingDetailScreen extends StatefulWidget {
   final BuildingTrackingItem item;
 
@@ -31,16 +29,11 @@ class BuildingTrackingDetailScreen extends StatefulWidget {
 
 class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScreen> {
   final MongoService _mongoService = MongoService();
-  List<FarmDailyReport> _reports = [];
   List<WeeklyTrackingPoint> _weeklyPoints = [];
   bool _isLoading = true;
-  bool _loadingMore = false;
-  int _totalCount = 0;
   // null = toutes les salles cumulées ; sinon filtre les deux graphiques sur une salle
   // précise (utile pour repérer où la mortalité ou la consommation se concentre).
   String? _selectedRoom;
-
-  bool get _hasMore => _reports.length < _totalCount;
 
   List<String> get _availableRooms {
     final rooms = <String>{};
@@ -70,39 +63,14 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
-    final history = await _mongoService.getBuildingTrackingHistory(
-      widget.item.farmId,
-      lotNumber: widget.item.lotNumber,
-      skip: 0,
-      limit: _pageSize,
-    );
     final weeklyPoints = await _mongoService.getBuildingTrackingWeeklyChart(
       widget.item.farmId,
       lotNumber: widget.item.lotNumber,
     );
     if (!mounted) return;
     setState(() {
-      _reports = history.data;
-      _totalCount = history.totalCount;
       _weeklyPoints = weeklyPoints;
       _isLoading = false;
-    });
-  }
-
-  Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
-    setState(() => _loadingMore = true);
-    final result = await _mongoService.getBuildingTrackingHistory(
-      widget.item.farmId,
-      lotNumber: widget.item.lotNumber,
-      skip: _reports.length,
-      limit: _pageSize,
-    );
-    if (!mounted) return;
-    setState(() {
-      _reports = [..._reports, ...result.data];
-      _totalCount = result.totalCount;
-      _loadingMore = false;
     });
   }
 
@@ -152,33 +120,27 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
                     icon: const Icon(Icons.swap_horiz_rounded, size: 18),
                     label: const Text("Voir l'historique des transferts de sujets"),
                   ),
-                  const SizedBox(height: 18),
-                  DailyReportSectionLabel('Jour par jour ($_totalCount)', icon: Icons.event_note_rounded),
-                  if (_reports.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 30),
-                      child: Center(child: Text('Aucun rapport pour ce lot.', style: TextStyle(color: Colors.grey.shade500))),
-                    )
-                  else ...[
-                    for (final r in _reports) _dayCard(r),
-                    if (_hasMore)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Center(
-                          child: _loadingMore
-                              ? const CircularProgressIndicator(color: DailyReportColors.green700)
-                              : OutlinedButton(
-                                  onPressed: _loadMore,
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: DailyReportColors.green700,
-                                    side: const BorderSide(color: DailyReportColors.green600),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                  child: Text('Charger plus (${_totalCount - _reports.length} restants)'),
-                                ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BuildingTrackingDayByDayScreen(
+                          farmId: item.farmId,
+                          farmName: item.farmName,
+                          lotNumber: item.lotNumber,
                         ),
                       ),
-                  ],
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: DailyReportColors.green700,
+                      side: const BorderSide(color: DailyReportColors.green600),
+                      minimumSize: const Size(double.infinity, 44),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.event_note_rounded, size: 18),
+                    label: const Text('Voir jour par jour (qui a fait quoi, et quand)'),
+                  ),
                 ],
               ),
             ),
@@ -450,88 +412,4 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
     );
   }
 
-  Widget _dayCard(FarmDailyReport r) {
-    final date = DateTime.tryParse(r.date);
-    final dateStr = date != null ? DateFormat('EEEE dd/MM/yyyy', 'fr_FR').format(date) : r.date;
-    final currentTotal = r.endCounts.fold<int>(0, (a, c) => a + c.femaleCount + c.maleCount) +
-        r.clinicEnd.femaleCount + r.clinicEnd.maleCount;
-    final mortalityToday = r.mortality.totalFemale + r.mortality.totalMale;
-    return DailyReportCard(
-      accentColor: mortalityToday > 0 ? DailyReportColors.yellow500 : DailyReportColors.green600,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text(dateStr, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
-            DailyReportStatusBadge(
-              label: r.statusLabel.toUpperCase(),
-              color: r.status == 'valide'
-                  ? DailyReportColors.green600
-                  : r.status == 'a_corriger'
-                      ? Colors.red
-                      : DailyReportColors.yellow600,
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _dayMetric(
-                icon: Icons.groups_rounded,
-                value: '$currentTotal',
-                sub: mortalityToday > 0 ? '-$mortalityToday' : '±0',
-                subColor: mortalityToday > 0 ? Colors.red.shade600 : Colors.grey.shade400,
-              ),
-            ),
-            Expanded(
-              child: _dayMetric(
-                icon: Icons.grain_rounded,
-                value: '${r.aliment.stockAfterKg.toStringAsFixed(0)} kg',
-                sub: r.aliment.totalConsumedKg > 0 ? '-${r.aliment.totalConsumedKg.toStringAsFixed(1)} kg' : '±0',
-                subColor: r.aliment.totalConsumedKg > 0 ? DailyReportColors.yellow600 : Colors.grey.shade400,
-              ),
-            ),
-          ],
-        ),
-        if (r.transfers.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          for (final t in r.transfers)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
-                children: [
-                  const Icon(Icons.swap_horiz_rounded, size: 14, color: DailyReportColors.green700),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      '${t.fromRoom} → ${t.toRoom} · ${t.femaleCount} F · ${t.maleCount} M',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: DailyReportColors.green700),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ],
-    );
-  }
-
-  Widget _dayMetric({required IconData icon, required String value, required String sub, required Color subColor}) {
-    return Row(
-      children: [
-        Icon(icon, size: 15, color: Colors.grey.shade500),
-        const SizedBox(width: 6),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-            Text(sub, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: subColor)),
-          ],
-        ),
-      ],
-    );
-  }
 }

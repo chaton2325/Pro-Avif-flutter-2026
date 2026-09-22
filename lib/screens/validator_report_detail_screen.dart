@@ -3,6 +3,7 @@ import '../models/farm_daily_report.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_full_summary.dart';
 import '../widgets/daily_report_widgets.dart';
 
 const List<String> kRejectReasonChips = [
@@ -86,24 +87,8 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _card([
-            _row(
-              'Mortalité · Production · Eau',
-              '${_report.mortality.totalFemale + _report.mortality.totalMale} · '
-                  '${_report.production.fold<int>(0, (a, p) => a + p.po)} · ${_report.waterLiters ?? 0} L',
-            ),
-            const Divider(),
-            _row(
-              'Stock aliment · Sécurité',
-              '${_report.aliment.stockAfterKg} kg · '
-                  '${_report.aliment.securityStockDays != null ? "${_report.aliment.securityStockDays!.round()} j" : "—"}',
-            ),
-          ]),
+          DailyReportFullSummary(report: _report),
           const SizedBox(height: 16),
-          if (_report.observation != null && _report.observation!.isNotEmpty) ...[
-            _card([_row('Observation', _report.observation!)]),
-            const SizedBox(height: 16),
-          ],
           if (_canAct) ...[
             const DailyReportSectionLabel('Renvoyer — motif', icon: Icons.reply_rounded),
             Wrap(
@@ -198,17 +183,4 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
     );
   }
 
-  Widget _card(List<Widget> children) => DailyReportCard(children: children);
-
-  Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 3),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-          ],
-        ),
-      );
 }

@@ -3,11 +3,17 @@ import '../models/farm_daily_report.dart';
 import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_full_summary.dart';
 import '../widgets/daily_report_widgets.dart';
 
 /// Récapitulatif & envoi (maquette écran 07) : tout ce qui est affiché ici vient du serveur
 /// (calculs jamais retapés) ; "Envoyer au validateur" déclenche la soumission (avec les
 /// règles anti-erreur du cahier des charges appliquées côté backend).
+///
+/// Le contenu (effectifs, aliment, mortalité, transferts, production, traitements,
+/// personnel, observation) vient de DailyReportFullSummary — partagé avec
+/// ValidatorReportDetailScreen pour que le validateur voie exactement la même chose que le
+/// rédacteur, jamais une version appauvrie.
 class DailyReportSummaryScreen extends StatefulWidget {
   final User user;
   final FarmDailyReport report;
@@ -58,55 +64,14 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final totalFemaleProd = _report.production.fold<int>(0, (a, p) => a + p.po);
-    final totalFemaleEnd = _report.endCounts.fold<int>(0, (a, r) => a + r.femaleCount) + _report.clinicEnd.femaleCount;
-
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: dailyReportAppBar('Récapitulatif'),
+      appBar: dailyReportAppBar('Récapitulatif', subtitle: _report.farmName),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: DailyReportStatTile(
-                  value: '$totalFemaleProd',
-                  label: 'Prod. totale',
-                  color: DailyReportColors.green700,
-                  icon: Icons.egg_outlined,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: DailyReportStatTile(
-                  value: '$totalFemaleEnd',
-                  label: 'Eff. restant F',
-                  color: DailyReportColors.green600,
-                  icon: Icons.groups_outlined,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: DailyReportStatTile(
-                  value: _report.aliment.securityStockDays != null ? '${_report.aliment.securityStockDays!.round()} j' : '—',
-                  label: 'Sécurité aliment',
-                  color: DailyReportColors.yellow600,
-                  icon: Icons.inventory_2_outlined,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          DailyReportCard(children: [
-            _row('Mortalité du jour · cumul F/M',
-                '${_report.mortality.totalFemale + _report.mortality.totalMale} · '
-                    '${_report.mortality.cumulativeFemale}/${_report.mortality.cumulativeMale}'),
-            const Divider(),
-            _row('Eau consommée', '${_report.waterLiters ?? 0} L'),
-            const Divider(),
-            _row('Stock aliment', '${_report.aliment.stockAfterKg} kg'),
-          ]),
+          DailyReportFullSummary(report: _report),
+          const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -168,15 +133,4 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
       ),
     );
   }
-
-  Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5))),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-          ],
-        ),
-      );
 }

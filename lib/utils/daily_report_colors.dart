@@ -15,8 +15,28 @@ class DailyReportColors {
   static const yellow500 = Color(0xFFE2A319);
   static const yellow100 = Color(0xFFFDF1DA);
 
+  static const purple600 = Color(0xFF6D28D9);
+  static const purple100 = Color(0xFFEDE4FB);
+
   static const grey500 = Color(0xFF8A978A);
   static const grey100 = Color(0xFFECEEE9);
 
   static const surface = Color(0xFFF3F6F1);
+
+  /// Une couleur par aliment (jamais deux aliments avec la même), utilisée à la fois dans le
+  /// formulaire de saisie et le récapitulatif pour qu'un même aliment garde la même couleur
+  /// partout. Volontairement à l'écart du vert/jaune/rouge/violet déjà utilisés ailleurs pour
+  /// un statut (validé/alerte/mortalité/en attente), pour ne pas laisser croire à un autre sens.
+  static const List<Color> alimentPalette = [
+    Color(0xFF2563EB), // bleu
+    Color(0xFF0D9488), // sarcelle
+    Color(0xFF4F46E5), // indigo
+    Color(0xFF92400E), // brun
+    Color(0xFFDB2777), // rose
+    Color(0xFF0E7490), // cyan
+    Color(0xFFEA580C), // orange foncé
+    Color(0xFF0284C7), // bleu clair
+    Color(0xFF4D7C0F), // vert olive
+    Color(0xFF475569), // ardoise
+  ];
 }

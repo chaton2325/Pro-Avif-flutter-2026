@@ -45,15 +45,28 @@ class RoomConsumptionEntry {
   final String roomName;
   final String? formulaId;
   final String? formulaName;
-  final double quantityKg;
+  final double quantityKg; // total F+M, toujours recalculé côté serveur
+  // null = pas encore ventilé par sexe (rapport antérieur à cette fonctionnalité) ; 0 =
+  // ventilé, mais aucune quantité saisie pour ce sexe. Distinction importante à l'affichage.
+  final double? femaleQuantityKg;
+  final double? maleQuantityKg;
 
-  RoomConsumptionEntry({required this.roomName, this.formulaId, this.formulaName, this.quantityKg = 0});
+  RoomConsumptionEntry({
+    required this.roomName,
+    this.formulaId,
+    this.formulaName,
+    this.quantityKg = 0,
+    this.femaleQuantityKg,
+    this.maleQuantityKg,
+  });
 
   Map<String, dynamic> toMap() => {
     'roomName': roomName,
     'formulaId': formulaId,
     'formulaName': formulaName,
     'quantityKg': quantityKg,
+    'femaleQuantityKg': femaleQuantityKg,
+    'maleQuantityKg': maleQuantityKg,
   };
 
   factory RoomConsumptionEntry.fromMap(Map<String, dynamic> map) {
@@ -62,15 +75,28 @@ class RoomConsumptionEntry {
       formulaId: map['formulaId'] as String?,
       formulaName: map['formulaName'] as String?,
       quantityKg: (map['quantityKg'] as num?)?.toDouble() ?? 0,
+      femaleQuantityKg: (map['femaleQuantityKg'] as num?)?.toDouble(),
+      maleQuantityKg: (map['maleQuantityKg'] as num?)?.toDouble(),
     );
   }
 
-  RoomConsumptionEntry copyWith({String? formulaId, String? formulaName, double? quantityKg}) => RoomConsumptionEntry(
-    roomName: roomName,
-    formulaId: formulaId ?? this.formulaId,
-    formulaName: formulaName ?? this.formulaName,
-    quantityKg: quantityKg ?? this.quantityKg,
-  );
+  RoomConsumptionEntry copyWith({
+    String? formulaId,
+    String? formulaName,
+    double? femaleQuantityKg,
+    double? maleQuantityKg,
+  }) {
+    final f = femaleQuantityKg ?? this.femaleQuantityKg ?? 0;
+    final m = maleQuantityKg ?? this.maleQuantityKg ?? 0;
+    return RoomConsumptionEntry(
+      roomName: roomName,
+      formulaId: formulaId ?? this.formulaId,
+      formulaName: formulaName ?? this.formulaName,
+      quantityKg: f + m,
+      femaleQuantityKg: f,
+      maleQuantityKg: m,
+    );
+  }
 }
 
 class DailyReportAliment {

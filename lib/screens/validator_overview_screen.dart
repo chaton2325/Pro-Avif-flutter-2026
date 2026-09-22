@@ -172,7 +172,7 @@ class _ValidatorOverviewScreenState extends State<ValidatorOverviewScreen> {
 
   Color _statusPillColor(String status) => switch (status) {
     'valide' => DailyReportColors.green600,
-    'en_attente_validation' => DailyReportColors.yellow600,
+    'en_attente_validation' => DailyReportColors.purple600,
     'a_corriger' => DailyReportColors.yellow600,
     'brouillon' => DailyReportColors.green700,
     'non_fait' => Colors.grey.shade500,

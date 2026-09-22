@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/farm_daily_report.dart';
+import '../models/farm_feed_stock.dart';
 import '../models/formula.dart';
 import '../models/lot_headcount.dart';
 import '../models/treatment_reference.dart';
@@ -10,7 +11,13 @@ import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
 import 'daily_report_summary_screen.dart';
 
-const List<String> kStaffStatuses = ['present', 'repos', 'absent', 'malade', 'permission'];
+const List<String> kStaffStatuses = [
+  'present',
+  'repos',
+  'absent',
+  'malade',
+  'permission',
+];
 const Map<String, String> kStaffStatusLabels = {
   'present': 'Présent',
   'repos': 'Repos',
@@ -26,7 +33,11 @@ class DailyReportFormScreen extends StatefulWidget {
   final User user;
   final FarmDailyReport report;
 
-  const DailyReportFormScreen({super.key, required this.user, required this.report});
+  const DailyReportFormScreen({
+    super.key,
+    required this.user,
+    required this.report,
+  });
 
   @override
   State<DailyReportFormScreen> createState() => _DailyReportFormScreenState();
@@ -50,7 +61,44 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
 
   List<TreatmentReference> _references = [];
   List<Formula> _formulas = [];
+  // Aliments que CETTE ferme a réellement en stock (farm_feed_stocks) — le référentiel
+  // "formulas" est global à toutes les usines, et deux usines peuvent définir un aliment du
+  // même nom (ex. "RL1") avec un formulaId différent : sans ce filtre, le menu déroulant
+  // affiche chaque nom en double, sans distinction possible pour qui saisit.
+  Set<String> _stockFormulaIds = {};
   bool _loadingRefs = true;
+
+  List<Formula> get _consumableFormulas {
+    if (_stockFormulaIds.isEmpty) return _formulas;
+    final alreadySelected = _consumption
+        .map((c) => c.formulaId)
+        .whereType<String>()
+        .toSet();
+    return _formulas
+        .where(
+          (f) =>
+              _stockFormulaIds.contains(f.id) || alreadySelected.contains(f.id),
+        )
+        .toList();
+  }
+
+  /// Même palette que le récapitulatif (DailyReportColors.alimentPalette) : un aliment garde
+  /// la même couleur de la saisie jusqu'à la relecture par le validateur — assignée dans
+  /// l'ordre de première apparition, jamais deux aliments avec la même tant qu'il reste une
+  /// couleur libre.
+  Map<String, Color> get _alimentColors {
+    final map = <String, Color>{};
+    for (final c in _consumption) {
+      if (c.formulaId == null) continue;
+      map.putIfAbsent(
+        c.formulaId!,
+        () =>
+            DailyReportColors.alimentPalette[map.length %
+                DailyReportColors.alimentPalette.length],
+      );
+    }
+    return map;
+  }
 
   static const _stepTitles = [
     'Identification & effectifs',
@@ -63,24 +111,35 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   void initState() {
     super.initState();
     _report = widget.report;
-    _consumption = _report.startCounts
-        .map((r) => _report.aliment.consumptionByRoom.firstWhere(
-              (c) => c.roomName == r.roomName,
-              orElse: () => RoomConsumptionEntry(roomName: r.roomName),
-            ))
-        .toList();
+    // Une salle peut consommer plusieurs aliments le même jour (transition de formule, mix,
+    // etc.) — donc pas une seule entrée par salle : toutes celles déjà saisies, ou une seule
+    // vide par défaut pour une salle qui n'en a encore aucune.
+    _consumption = [
+      for (final r in _report.startCounts)
+        ..._report.aliment.consumptionByRoom
+                .where((c) => c.roomName == r.roomName)
+                .isEmpty
+            ? [RoomConsumptionEntry(roomName: r.roomName)]
+            : _report.aliment.consumptionByRoom.where(
+                (c) => c.roomName == r.roomName,
+              ),
+    ];
     _mortality = _report.startCounts
-        .map((r) => _report.mortality.byRoom.firstWhere(
-              (m) => m.roomName == r.roomName,
-              orElse: () => RoomHeadcount(roomName: r.roomName),
-            ))
+        .map(
+          (r) => _report.mortality.byRoom.firstWhere(
+            (m) => m.roomName == r.roomName,
+            orElse: () => RoomHeadcount(roomName: r.roomName),
+          ),
+        )
         .toList();
     _clinicMortality = _report.mortality.clinic;
     _production = _report.startCounts
-        .map((r) => _report.production.firstWhere(
-              (p) => p.roomName == r.roomName,
-              orElse: () => RoomProduction(roomName: r.roomName),
-            ))
+        .map(
+          (r) => _report.production.firstWhere(
+            (p) => p.roomName == r.roomName,
+            orElse: () => RoomProduction(roomName: r.roomName),
+          ),
+        )
         .toList();
     _waterLiters = _report.waterLiters;
     _treatments = List.of(_report.treatments);
@@ -95,13 +154,20 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     final formulas = List.of(await _mongoService.getAllFormulas())
       ..retainWhere((f) => f.isActive)
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final feedStock = await _mongoService.getFarmFeedStock(_report.farmName);
     if (!mounted) return;
     setState(() {
       _references = refs;
       _formulas = formulas;
+      _stockFormulaIds = {
+        for (final q in feedStock?.quantities ?? <FeedStartingQuantity>[])
+          if (q.quantityKg > 0) q.formulaId,
+      };
       for (final s in staff.where((s) => s.isActive)) {
         if (!_staffStatuses.any((e) => e.staffId == s.id)) {
-          _staffStatuses.add(StaffStatusEntry(staffId: s.id!, name: s.name, status: 'present'));
+          _staffStatuses.add(
+            StaffStatusEntry(staffId: s.id!, name: s.name, status: 'present'),
+          );
         }
       }
       _loadingRefs = false;
@@ -109,8 +175,12 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   }
 
   Future<void> _saveStepAndAdvance() async {
-    if (_step == 1 && _consumption.any((c) => c.quantityKg > 0 && c.formulaId == null)) {
-      setState(() => _error = "Choisissez l'aliment consommé pour chaque salle ayant une quantité saisie.");
+    if (_step == 1 &&
+        _consumption.any((c) => c.quantityKg > 0 && c.formulaId == null)) {
+      setState(
+        () => _error =
+            "Choisissez l'aliment consommé pour chaque salle ayant une quantité saisie.",
+      );
       return;
     }
     setState(() {
@@ -146,7 +216,11 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => DailyReportSummaryScreen(user: widget.user, report: _report, readOnly: false),
+          builder: (_) => DailyReportSummaryScreen(
+            user: widget.user,
+            report: _report,
+            readOnly: false,
+          ),
         ),
       );
     }
@@ -167,7 +241,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       appBar: dailyReportAppBar(
         _stepTitles[_step],
         subtitle: 'Étape ${_step + 1} / 4',
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _back,
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(10),
           child: Padding(
@@ -180,7 +257,9 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                     height: 5,
                     margin: EdgeInsets.only(right: i < 3 ? 5 : 0),
                     decoration: BoxDecoration(
-                      color: active ? DailyReportColors.yellow500 : Colors.white.withValues(alpha: 0.25),
+                      color: active
+                          ? DailyReportColors.yellow500
+                          : Colors.white.withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -197,11 +276,18 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
               width: double.infinity,
               color: Colors.red.shade50,
               padding: const EdgeInsets.all(10),
-              child: Text(_error!, style: TextStyle(color: Colors.red.shade700)),
+              child: Text(
+                _error!,
+                style: TextStyle(color: Colors.red.shade700),
+              ),
             ),
           Expanded(
             child: _loadingRefs
-                ? const Center(child: CircularProgressIndicator(color: DailyReportColors.green700))
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: DailyReportColors.green700,
+                    ),
+                  )
                 : SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: _buildStep(),
@@ -221,10 +307,18 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                     onPressed: _saving ? null : _back,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: DailyReportColors.green700,
-                      side: const BorderSide(color: DailyReportColors.green600, width: 1.4),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      side: const BorderSide(
+                        color: DailyReportColors.green600,
+                        width: 1.4,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    child: const Text('Retour', style: TextStyle(fontWeight: FontWeight.w700)),
+                    child: const Text(
+                      'Retour',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ),
               ),
@@ -235,9 +329,20 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   height: 50,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    gradient: const LinearGradient(colors: [DailyReportColors.green700, DailyReportColors.green600]),
+                    gradient: const LinearGradient(
+                      colors: [
+                        DailyReportColors.green700,
+                        DailyReportColors.green600,
+                      ],
+                    ),
                     boxShadow: [
-                      BoxShadow(color: DailyReportColors.green700.withValues(alpha: 0.32), blurRadius: 10, offset: const Offset(0, 4)),
+                      BoxShadow(
+                        color: DailyReportColors.green700.withValues(
+                          alpha: 0.32,
+                        ),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
                     ],
                   ),
                   child: Material(
@@ -250,11 +355,17 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : Text(
                                 _step < 3 ? 'Suivant' : 'Voir le récapitulatif',
-                                style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
                               ),
                       ),
                     ),
@@ -317,7 +428,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       children: [
         _sectionTitle('Aliment (kg)'),
         _card([
-          _readonlyRow('Reçu aujourd\'hui', '${_report.aliment.receivedTotalKg} kg'),
+          _readonlyRow(
+            'Reçu aujourd\'hui',
+            '${_report.aliment.receivedTotalKg} kg',
+          ),
           if (_report.aliment.receivedDetail.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6, bottom: 6),
@@ -325,27 +439,38 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 spacing: 6,
                 runSpacing: 6,
                 children: _report.aliment.receivedDetail
-                    .map((d) => Chip(label: Text('${d.formulaName} · ${d.quantity} kg')))
+                    .map(
+                      (d) => Chip(
+                        label: Text('${d.formulaName} · ${d.quantity} kg'),
+                      ),
+                    )
                     .toList(),
               ),
             ),
           const Divider(),
-          for (var i = 0; i < _consumption.length; i++) _consumptionRow(i),
-          const Divider(),
+          for (final r in _report.startCounts)
+            _roomConsumptionGroup(r.roomName),
           _readonlyRow('Stock avant', '${_report.aliment.stockBeforeKg} kg'),
         ]),
         const SizedBox(height: 16),
         _sectionTitle('Mortalité'),
         _card([
           for (var i = 0; i < _mortality.length; i++) ...[
-            Text(_mortality[i].roomName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            Text(
+              _mortality[i].roomName,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
             Row(
               children: [
                 Expanded(
                   child: _stepperField(
                     label: 'Femelles',
                     value: _mortality[i].femaleCount,
-                    onChanged: (v) => setState(() => _mortality[i] = _mortality[i].copyWith(femaleCount: v)),
+                    onChanged: (v) => setState(
+                      () => _mortality[i] = _mortality[i].copyWith(
+                        femaleCount: v,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -353,14 +478,20 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   child: _stepperField(
                     label: 'Mâles',
                     value: _mortality[i].maleCount,
-                    onChanged: (v) => setState(() => _mortality[i] = _mortality[i].copyWith(maleCount: v)),
+                    onChanged: (v) => setState(
+                      () =>
+                          _mortality[i] = _mortality[i].copyWith(maleCount: v),
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
           ],
-          Text('Clinique', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          Text(
+            'Clinique',
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
           Row(
             children: [
               Expanded(
@@ -368,7 +499,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   label: 'Femelles',
                   value: _clinicMortality.femaleCount,
                   onChanged: (v) => setState(
-                    () => _clinicMortality = SexCount(femaleCount: v, maleCount: _clinicMortality.maleCount),
+                    () => _clinicMortality = SexCount(
+                      femaleCount: v,
+                      maleCount: _clinicMortality.maleCount,
+                    ),
                   ),
                 ),
               ),
@@ -378,7 +512,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   label: 'Mâles',
                   value: _clinicMortality.maleCount,
                   onChanged: (v) => setState(
-                    () => _clinicMortality = SexCount(femaleCount: _clinicMortality.femaleCount, maleCount: v),
+                    () => _clinicMortality = SexCount(
+                      femaleCount: _clinicMortality.femaleCount,
+                      maleCount: v,
+                    ),
                   ),
                 ),
               ),
@@ -409,13 +546,23 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
             Row(
               children: [
                 Expanded(
-                  child: _intField('OAC', _production[i].oac,
-                      (v) => setState(() => _production[i] = _production[i].copyWith(oac: v))),
+                  child: _intField(
+                    'OAC',
+                    _production[i].oac,
+                    (v) => setState(
+                      () => _production[i] = _production[i].copyWith(oac: v),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _intField('PO', _production[i].po,
-                      (v) => setState(() => _production[i] = _production[i].copyWith(po: v))),
+                  child: _intField(
+                    'PO',
+                    _production[i].po,
+                    (v) => setState(
+                      () => _production[i] = _production[i].copyWith(po: v),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -423,24 +570,44 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
             Row(
               children: [
                 Expanded(
-                  child: _intField('DJ', _production[i].dj,
-                      (v) => setState(() => _production[i] = _production[i].copyWith(dj: v))),
+                  child: _intField(
+                    'DJ',
+                    _production[i].dj,
+                    (v) => setState(
+                      () => _production[i] = _production[i].copyWith(dj: v),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _intField('CAS', _production[i].cas,
-                      (v) => setState(() => _production[i] = _production[i].copyWith(cas: v))),
+                  child: _intField(
+                    'CAS',
+                    _production[i].cas,
+                    (v) => setState(
+                      () => _production[i] = _production[i].copyWith(cas: v),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _intField('SAL', _production[i].sal,
-                      (v) => setState(() => _production[i] = _production[i].copyWith(sal: v))),
+                  child: _intField(
+                    'SAL',
+                    _production[i].sal,
+                    (v) => setState(
+                      () => _production[i] = _production[i].copyWith(sal: v),
+                    ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            _intField('Ramassés au sol', _production[i].sol,
-                (v) => setState(() => _production[i] = _production[i].copyWith(sol: v))),
+            _intField(
+              'Ramassés au sol',
+              _production[i].sol,
+              (v) => setState(
+                () => _production[i] = _production[i].copyWith(sol: v),
+              ),
+            ),
             const Divider(),
             _readonlyRow(
               'Total · TP · Écart',
@@ -490,16 +657,25 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
           TextButton.icon(
             onPressed: _addTreatmentDialog,
             icon: const Icon(Icons.add, color: DailyReportColors.green700),
-            label: const Text('Ajouter un traitement', style: TextStyle(color: DailyReportColors.green700)),
+            label: const Text(
+              'Ajouter un traitement',
+              style: TextStyle(color: DailyReportColors.green700),
+            ),
           ),
         ]),
         const SizedBox(height: 16),
         _sectionTitle('Personnel en poste'),
         _card([
           if (_staffStatuses.isEmpty)
-            Text('Aucun personnel affecté à cette ferme.', style: TextStyle(color: Colors.grey.shade600)),
+            Text(
+              'Aucun personnel affecté à cette ferme.',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
           for (var i = 0; i < _staffStatuses.length; i++) ...[
-            Text(_staffStatuses[i].name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            Text(
+              _staffStatuses[i].name,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
             const SizedBox(height: 6),
             Wrap(
               spacing: 6,
@@ -509,8 +685,15 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   label: Text(kStaffStatusLabels[s]!),
                   selected: selected,
                   selectedColor: DailyReportColors.green600,
-                  labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87, fontSize: 11.5),
-                  onSelected: (_) => setState(() => _staffStatuses[i] = _staffStatuses[i].copyWith(status: s)),
+                  labelStyle: TextStyle(
+                    color: selected ? Colors.white : Colors.black87,
+                    fontSize: 11.5,
+                  ),
+                  onSelected: (_) => setState(
+                    () => _staffStatuses[i] = _staffStatuses[i].copyWith(
+                      status: s,
+                    ),
+                  ),
                 );
               }).toList(),
             ),
@@ -535,7 +718,9 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   }
 
   void _addTreatmentDialog() {
-    TreatmentReference? selectedRef = _references.isNotEmpty ? _references.first : null;
+    TreatmentReference? selectedRef = _references.isNotEmpty
+        ? _references.first
+        : null;
     final doseController = TextEditingController();
     DateTime selectedDate = DateTime.now();
 
@@ -553,13 +738,19 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 DropdownButtonFormField<TreatmentReference>(
                   value: selectedRef,
                   items: _references
-                      .map((r) => DropdownMenuItem(
-                            value: r,
-                            child: Text('${r.type == "vaccin" ? "💉" : "💊"} ${r.name}'),
-                          ))
+                      .map(
+                        (r) => DropdownMenuItem(
+                          value: r,
+                          child: Text(
+                            '${r.type == "vaccin" ? "💉" : "💊"} ${r.name}',
+                          ),
+                        ),
+                      )
                       .toList(),
                   onChanged: (v) => setDialogState(() => selectedRef = v),
-                  decoration: const InputDecoration(labelText: 'Vaccin / médicament'),
+                  decoration: const InputDecoration(
+                    labelText: 'Vaccin / médicament',
+                  ),
                 ),
               TextField(
                 controller: doseController,
@@ -568,17 +759,22 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Text('Date : ${DateFormat('dd/MM/yyyy').format(selectedDate)}'),
+                  Text(
+                    'Date : ${DateFormat('dd/MM/yyyy').format(selectedDate)}',
+                  ),
                   const Spacer(),
                   TextButton(
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
                         initialDate: selectedDate,
-                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                        firstDate: DateTime.now().subtract(
+                          const Duration(days: 365),
+                        ),
                         lastDate: DateTime.now().add(const Duration(days: 1)),
                       );
-                      if (picked != null) setDialogState(() => selectedDate = picked);
+                      if (picked != null)
+                        setDialogState(() => selectedDate = picked);
                     },
                     child: const Text('Changer'),
                   ),
@@ -587,19 +783,26 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler'),
+            ),
             ElevatedButton(
               onPressed: selectedRef == null
                   ? null
                   : () {
                       setState(() {
-                        _treatments.add(TreatmentEntry(
-                          referenceId: selectedRef!.id!,
-                          type: selectedRef!.type,
-                          name: selectedRef!.name,
-                          dose: doseController.text.trim().isEmpty ? null : doseController.text.trim(),
-                          date: selectedDate,
-                        ));
+                        _treatments.add(
+                          TreatmentEntry(
+                            referenceId: selectedRef!.id!,
+                            type: selectedRef!.type,
+                            name: selectedRef!.name,
+                            dose: doseController.text.trim().isEmpty
+                                ? null
+                                : doseController.text.trim(),
+                            date: selectedDate,
+                          ),
+                        );
                       });
                       Navigator.pop(context);
                     },
@@ -616,68 +819,199 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   Widget _card(List<Widget> children) => DailyReportCard(children: children);
 
   Widget _readonlyRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5))),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: DailyReportColors.green900)),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
+          ),
         ),
-      );
+        Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            color: DailyReportColors.green900,
+          ),
+        ),
+      ],
+    ),
+  );
 
-  Widget _numberField({required String label, double? value, required ValueChanged<double?> onChanged}) {
+  Widget _numberField({
+    required String label,
+    double? value,
+    required ValueChanged<double?> onChanged,
+  }) {
     return TextFormField(
       initialValue: value?.toString() ?? '',
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: const OutlineInputBorder(),
+      ),
       onChanged: (v) => onChanged(double.tryParse(v.replaceAll(',', '.'))),
     );
   }
 
-  /// Salle + aliment consommé (référentiel Usine Aliment) + quantité — l'aliment est
-  /// nécessaire pour que le stock de la ferme (farm_feed_stocks) puisse être débité du bon
-  /// aliment à la validation du rapport (routers/daily_reports.py).
-  Widget _consumptionRow(int i) {
-    final entry = _consumption[i];
+  /// Une salle peut consommer plusieurs aliments le même jour (transition de formule, mix…) :
+  /// une ligne par aliment, un bouton pour en ajouter une autre pour cette salle, un formulaire
+  /// déjà choisi dans une autre ligne de la même salle n'est plus proposé (doublon inutile —
+  /// il faut augmenter la quantité de la ligne existante à la place).
+  Widget _roomConsumptionGroup(String roomName) {
+    final indices = [
+      for (var i = 0; i < _consumption.length; i++)
+        if (_consumption[i].roomName == roomName) i,
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(entry.roomName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-          const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: DropdownButtonFormField<String>(
-                  initialValue: entry.formulaId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Aliment', isDense: true, border: OutlineInputBorder()),
-                  hint: const Text('Choisir'),
-                  items: _formulas
-                      .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name, overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: (formulaId) => setState(() {
-                    final formula = _formulas.firstWhere((f) => f.id == formulaId);
-                    _consumption[i] = entry.copyWith(formulaId: formula.id, formulaName: formula.name);
-                  }),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: _numberField(
-                  label: 'Kg',
-                  value: entry.quantityKg,
-                  onChanged: (v) => setState(() => _consumption[i] = _consumption[i].copyWith(quantityKg: v)),
-                ),
-              ),
-            ],
+          Text(
+            roomName,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           ),
+          const SizedBox(height: 6),
+          for (final i in indices)
+            _consumptionEntryRow(i, showDelete: indices.length > 1),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: indices.length >= _consumableFormulas.length
+                  ? null
+                  : () => setState(
+                      () => _consumption.add(
+                        RoomConsumptionEntry(roomName: roomName),
+                      ),
+                    ),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+              ),
+              icon: const Icon(Icons.add_circle_outline, size: 16),
+              label: const Text(
+                'Ajouter un aliment',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+          const Divider(),
         ],
+      ),
+    );
+  }
+
+  /// Aliment consommé (référentiel Usine Aliment) + quantité — l'aliment est nécessaire pour
+  /// que le stock de la ferme (farm_feed_stocks) puisse être débité du bon aliment à la
+  /// validation du rapport (routers/daily_reports.py).
+  Widget _consumptionEntryRow(int i, {required bool showDelete}) {
+    final entry = _consumption[i];
+    final usedElsewhere = _consumption
+        .where((c) => c.roomName == entry.roomName && c != entry)
+        .map((c) => c.formulaId)
+        .toSet();
+    final selectable = _consumableFormulas
+        .where((f) => f.id == entry.formulaId || !usedElsewhere.contains(f.id))
+        .toList();
+    // Pas encore d'aliment choisi sur cette ligne : gris neutre plutôt qu'une couleur de la
+    // palette, pour ne pas préempter une couleur qu'une autre ligne pourrait ensuite recevoir.
+    final color = entry.formulaId != null
+        ? _alimentColors[entry.formulaId!] ?? Colors.grey.shade400
+        : Colors.grey.shade400;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: entry.formulaId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Aliment',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    hint: const Text('Choisir'),
+                    items: selectable
+                        .map(
+                          (f) => DropdownMenuItem(
+                            value: f.id,
+                            child: Text(
+                              f.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (formulaId) => setState(() {
+                      final formula = _formulas.firstWhere(
+                        (f) => f.id == formulaId,
+                      );
+                      _consumption[i] = entry.copyWith(
+                        formulaId: formula.id,
+                        formulaName: formula.name,
+                      );
+                    }),
+                  ),
+                ),
+                if (showDelete)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                    onPressed: () => setState(() => _consumption.removeAt(i)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: _numberField(
+                    label: 'Femelles (kg)',
+                    value: entry.femaleQuantityKg ?? 0,
+                    onChanged: (v) => setState(
+                      () => _consumption[i] = entry.copyWith(
+                        femaleQuantityKg: v ?? 0,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _numberField(
+                    label: 'Mâles (kg)',
+                    value: entry.maleQuantityKg ?? 0,
+                    onChanged: (v) => setState(
+                      () => _consumption[i] = entry.copyWith(
+                        maleQuantityKg: v ?? 0,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -686,25 +1020,39 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     return TextFormField(
       initialValue: value.toString(),
       keyboardType: TextInputType.number,
-      decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: const OutlineInputBorder(),
+      ),
       onChanged: (v) => onChanged(int.tryParse(v) ?? 0),
     );
   }
 
-  Widget _stepperField({required String label, required int value, required ValueChanged<int> onChanged}) {
+  Widget _stepperField({
+    required String label,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
     final active = value > 0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: active ? DailyReportColors.yellow100 : DailyReportColors.surface,
-        border: Border.all(color: active ? DailyReportColors.yellow500 : Colors.grey.shade300),
+        border: Border.all(
+          color: active ? DailyReportColors.yellow500 : Colors.grey.shade300,
+        ),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
-            child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -712,7 +1060,13 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: Icon(Icons.remove_circle, size: 22, color: value > 0 ? DailyReportColors.green700 : Colors.grey.shade300),
+                icon: Icon(
+                  Icons.remove_circle,
+                  size: 22,
+                  color: value > 0
+                      ? DailyReportColors.green700
+                      : Colors.grey.shade300,
+                ),
                 onPressed: value > 0 ? () => onChanged(value - 1) : null,
               ),
               SizedBox(
@@ -720,13 +1074,22 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 child: Text(
                   '$value',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontWeight: FontWeight.w800, color: active ? DailyReportColors.yellow600 : DailyReportColors.green900),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: active
+                        ? DailyReportColors.yellow600
+                        : DailyReportColors.green900,
+                  ),
                 ),
               ),
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: const Icon(Icons.add_circle, size: 22, color: DailyReportColors.green700),
+                icon: const Icon(
+                  Icons.add_circle,
+                  size: 22,
+                  color: DailyReportColors.green700,
+                ),
                 onPressed: () => onChanged(value + 1),
               ),
             ],
