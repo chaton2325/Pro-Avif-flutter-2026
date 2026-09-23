@@ -31,6 +31,10 @@ class RoomEggStockCurrent {
 /// propre ferme (bouton "Stock œufs") — jamais juste le stock de départ. Si aucun rapport
 /// journalier n'a encore été soumis pour le lot en cours, retombe sur le stock de départ
 /// (hasReports: false), même principe que CurrentHeadcount.
+///
+/// totalOac est le cumul de PRODUCTION pur (ne diminue jamais). currentStockOac est ce qui
+/// reste réellement disponible pour une expédition vers un couvoir (totalOac -
+/// totalShippedOac) — à utiliser partout où on affiche "le stock", jamais totalOac seul.
 class CurrentEggStock {
   final String farmName;
   final String? lotNumber;
@@ -40,6 +44,8 @@ class CurrentEggStock {
   final int totalDj;
   final int totalCas;
   final int totalSal;
+  final int totalShippedOac;
+  final int currentStockOac;
   final bool hasReports;
 
   CurrentEggStock({
@@ -51,6 +57,8 @@ class CurrentEggStock {
     this.totalDj = 0,
     this.totalCas = 0,
     this.totalSal = 0,
+    this.totalShippedOac = 0,
+    this.currentStockOac = 0,
     this.hasReports = false,
   });
 
@@ -66,6 +74,8 @@ class CurrentEggStock {
       totalDj: (map['totalDj'] as num?)?.toInt() ?? 0,
       totalCas: (map['totalCas'] as num?)?.toInt() ?? 0,
       totalSal: (map['totalSal'] as num?)?.toInt() ?? 0,
+      totalShippedOac: (map['totalShippedOac'] as num?)?.toInt() ?? 0,
+      currentStockOac: (map['currentStockOac'] as num?)?.toInt() ?? 0,
       hasReports: map['hasReports'] as bool? ?? false,
     );
   }

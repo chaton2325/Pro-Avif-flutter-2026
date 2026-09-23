@@ -69,6 +69,21 @@ class _CurrentEggStockScreenState extends State<CurrentEggStockScreen> {
                       ),
                     ),
                   const SizedBox(height: 12),
+                  DailyReportStatTile(
+                    value: '${s.currentStockOac}',
+                    label: 'OAC disponibles pour expédition',
+                    color: DailyReportColors.purple600,
+                    icon: Icons.egg_rounded,
+                  ),
+                  if (s.totalShippedOac > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '${s.totalShippedOac} OAC déjà expédié(s) vers un couvoir sur ce lot.',
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  const DailyReportSectionLabel('Cumul de production (ne diminue jamais)', icon: Icons.stacked_line_chart_rounded),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,

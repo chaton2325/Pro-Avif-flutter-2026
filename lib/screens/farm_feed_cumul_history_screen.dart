@@ -7,13 +7,16 @@ import '../widgets/daily_report_widgets.dart';
 
 const _pageSize = 20;
 
-/// Historique des ajouts au cumul d'aliment de départ d'une ferme — page séparée et paginée,
-/// même pattern que FarmFeedStockHistoryScreen. Un ajout n'écrase jamais rien : c'est un
-/// journal d'additions successives (voir POST /cumuls/feed/add côté backend).
+/// Historique des ajouts à la valeur de DÉPART du cumul de consommation aliment, pour une
+/// ferme + un lot — page séparée et paginée, même pattern que LotEggCumulHistoryScreen. Un
+/// ajout n'écrase jamais rien : journal d'additions successives, par salle (voir
+/// POST /cumuls/feed/add côté backend). Le cumul ACTUEL (incrémenté par les rapports validés)
+/// ne se trouve pas ici — voir l'onglet "Cumuls" de Suivi Bâtiment.
 class FarmFeedCumulHistoryScreen extends StatefulWidget {
   final String farmName;
+  final String lotNumber;
 
-  const FarmFeedCumulHistoryScreen({super.key, required this.farmName});
+  const FarmFeedCumulHistoryScreen({super.key, required this.farmName, required this.lotNumber});
 
   @override
   State<FarmFeedCumulHistoryScreen> createState() => _FarmFeedCumulHistoryScreenState();
@@ -21,7 +24,7 @@ class FarmFeedCumulHistoryScreen extends StatefulWidget {
 
 class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen> {
   final MongoService _mongoService = MongoService();
-  List<FarmFeedCumulHistoryEntry> _entries = [];
+  List<LotFeedCumulHistoryEntry> _entries = [];
   bool _isLoading = true;
   bool _loadingMore = false;
   int _totalCount = 0;
@@ -36,7 +39,7 @@ class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen>
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
-    final result = await _mongoService.getFarmFeedCumulHistory(widget.farmName, skip: 0, limit: _pageSize);
+    final result = await _mongoService.getLotFeedCumulHistory(widget.farmName, widget.lotNumber, skip: 0, limit: _pageSize);
     if (!mounted) return;
     setState(() {
       _entries = result.data;
@@ -48,8 +51,9 @@ class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen>
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
     setState(() => _loadingMore = true);
-    final result = await _mongoService.getFarmFeedCumulHistory(
+    final result = await _mongoService.getLotFeedCumulHistory(
       widget.farmName,
+      widget.lotNumber,
       skip: _entries.length,
       limit: _pageSize,
     );
@@ -65,7 +69,7 @@ class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: dailyReportAppBar(widget.farmName, subtitle: 'Historique du cumul aliment'),
+      appBar: dailyReportAppBar(widget.farmName, subtitle: 'Historique cumul aliment — Lot ${widget.lotNumber}'),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: DailyReportColors.green700))
           : RefreshIndicator(
@@ -116,7 +120,7 @@ class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen>
     );
   }
 
-  Widget _entryCard(FarmFeedCumulHistoryEntry h) {
+  Widget _entryCard(LotFeedCumulHistoryEntry h) {
     final dateStr = DateFormat('dd/MM/yyyy à HH:mm').format(h.createdAt);
     return DailyReportCard(
       accentColor: DailyReportColors.purple600,
@@ -135,22 +139,15 @@ class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen>
             ),
           ],
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            const Expanded(child: Text('Ajout', style: TextStyle(fontSize: 13))),
-            Text('+${h.quantityKg} kg', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: DailyReportColors.purple600)),
-          ],
+        const SizedBox(height: 2),
+        Padding(
+          padding: const EdgeInsets.only(left: 25),
+          child: Text('Salle ${h.roomName} · ${h.formulaName}', style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5)),
         ),
-        const Divider(height: 16),
-        Row(
-          children: [
-            const Expanded(child: Text('Cumul après ajout', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
-            Text(
-              '${h.totalAfterKg} kg',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: DailyReportColors.green700),
-            ),
-          ],
+        const SizedBox(height: 10),
+        Text(
+          'F +${h.femaleKg} kg · M +${h.maleKg} kg',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: DailyReportColors.purple600),
         ),
       ],
     );

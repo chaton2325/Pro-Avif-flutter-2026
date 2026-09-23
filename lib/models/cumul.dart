@@ -1,69 +1,116 @@
 import '../utils/cameroon_time.dart';
+import 'lot_headcount.dart' show RoomHeadcount;
 
-/// Cumul de départ (aliments ou œufs) : notion DISTINCTE du stock de départ / stock actuel —
-/// un compteur manuel géré uniquement par l'admin qui ne bouge jamais avec la consommation ou
-/// la ponte du rapport journalier. Une ferme peut avoir un stock d'OAC de 10 en salle 1 et un
-/// cumul de 100 sur cette même salle : deux notions indépendantes. Chaque saisie ADDITIONNE au
-/// cumul déjà existant (jamais un remplacement).
+/// Cumul ŒUFS : compteur manuel géré UNIQUEMENT par l'admin, totalement indépendant du stock
+/// actuel — une ferme peut avoir un stock d'OAC de 10 en salle 1 et un cumul de 100 sur cette
+/// même salle, deux notions qui ne se recalculent jamais l'une depuis l'autre. Chaque saisie
+/// ADDITIONNE au cumul déjà existant (jamais un remplacement).
+///
+/// Cumul ALIMENT : DIFFÉRENT — c'est la consommation cumulée par salle, par ALIMENT
+/// (référentiel "formulas" du module Usine Aliment — RL0, RL1, etc., jamais modifié ici,
+/// uniquement lu) et par sexe (F/M), qui s'incrémente automatiquement à chaque rapport
+/// journalier où une consommation est saisie pour cette salle et cet aliment (voir
+/// RoomFeedCumul). lot_feed_cumuls (LotFeedCumul ci-dessous) ne sert que de VALEUR DE DÉPART,
+/// lot-scopée comme le stock d'œufs de départ — jamais le cumul actuel lui-même, déjà
+/// incrémenté par les rapports validés.
 
-class FarmFeedCumul {
+class RoomFeedCumul {
+  final String roomName;
+  final String? formulaId;
+  final String? formulaName;
+  final double femaleKg;
+  final double maleKg;
+
+  RoomFeedCumul({
+    required this.roomName,
+    this.formulaId,
+    this.formulaName,
+    this.femaleKg = 0,
+    this.maleKg = 0,
+  });
+
+  factory RoomFeedCumul.fromMap(Map<String, dynamic> map) {
+    return RoomFeedCumul(
+      roomName: map['roomName'] as String? ?? '',
+      formulaId: map['formulaId'] as String?,
+      formulaName: map['formulaName'] as String?,
+      femaleKg: (map['femaleKg'] as num?)?.toDouble() ?? 0,
+      maleKg: (map['maleKg'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+class LotFeedCumul {
   final String? id;
   final String farmName;
-  final double totalKg;
+  final String lotNumber;
+  final List<RoomFeedCumul> rooms;
   final DateTime? updatedAt;
 
-  FarmFeedCumul({this.id, required this.farmName, this.totalKg = 0, this.updatedAt});
+  LotFeedCumul({this.id, required this.farmName, required this.lotNumber, this.rooms = const [], this.updatedAt});
 
-  factory FarmFeedCumul.fromMap(Map<String, dynamic> map) {
-    return FarmFeedCumul(
+  factory LotFeedCumul.fromMap(Map<String, dynamic> map) {
+    return LotFeedCumul(
       id: map['_id'] as String?,
       farmName: map['farmName'] as String? ?? '',
-      totalKg: (map['totalKg'] as num?)?.toDouble() ?? 0,
+      lotNumber: map['lotNumber'] as String? ?? '',
+      rooms: (map['rooms'] as List<dynamic>? ?? [])
+          .map((r) => RoomFeedCumul.fromMap(r as Map<String, dynamic>))
+          .toList(),
       updatedAt: parseCameroonTime(map['updatedAt']?.toString()),
     );
   }
 }
 
-class FarmFeedCumulHistoryEntry {
+class LotFeedCumulHistoryEntry {
   final String? id;
   final String farmName;
-  final double quantityKg;
-  final double totalAfterKg;
+  final String lotNumber;
+  final String roomName;
+  final String formulaName;
+  final double femaleKg;
+  final double maleKg;
   final String? performedBy;
   final DateTime createdAt;
 
-  FarmFeedCumulHistoryEntry({
+  LotFeedCumulHistoryEntry({
     this.id,
     required this.farmName,
-    this.quantityKg = 0,
-    this.totalAfterKg = 0,
+    required this.lotNumber,
+    required this.roomName,
+    required this.formulaName,
+    this.femaleKg = 0,
+    this.maleKg = 0,
     this.performedBy,
     required this.createdAt,
   });
 
-  factory FarmFeedCumulHistoryEntry.fromMap(Map<String, dynamic> map) {
-    return FarmFeedCumulHistoryEntry(
+  factory LotFeedCumulHistoryEntry.fromMap(Map<String, dynamic> map) {
+    return LotFeedCumulHistoryEntry(
       id: map['_id'] as String?,
       farmName: map['farmName'] as String? ?? '',
-      quantityKg: (map['quantityKg'] as num?)?.toDouble() ?? 0,
-      totalAfterKg: (map['totalAfterKg'] as num?)?.toDouble() ?? 0,
+      lotNumber: map['lotNumber'] as String? ?? '',
+      roomName: map['roomName'] as String? ?? '',
+      formulaName: map['formulaName'] as String? ?? '',
+      femaleKg: (map['femaleKg'] as num?)?.toDouble() ?? 0,
+      maleKg: (map['maleKg'] as num?)?.toDouble() ?? 0,
       performedBy: map['performedBy'] as String?,
       createdAt: parseCameroonTime(map['createdAt']?.toString()) ?? DateTime.now(),
     );
   }
 }
 
-class FarmFeedCumulHistoryPagedResult {
+class LotFeedCumulHistoryPagedResult {
   final int totalCount;
-  final List<FarmFeedCumulHistoryEntry> data;
+  final List<LotFeedCumulHistoryEntry> data;
 
-  FarmFeedCumulHistoryPagedResult({this.totalCount = 0, required this.data});
+  LotFeedCumulHistoryPagedResult({this.totalCount = 0, required this.data});
 
-  factory FarmFeedCumulHistoryPagedResult.fromMap(Map<String, dynamic> map) {
-    return FarmFeedCumulHistoryPagedResult(
+  factory LotFeedCumulHistoryPagedResult.fromMap(Map<String, dynamic> map) {
+    return LotFeedCumulHistoryPagedResult(
       totalCount: (map['totalCount'] as num?)?.toInt() ?? 0,
       data: (map['data'] as List<dynamic>? ?? [])
-          .map((h) => FarmFeedCumulHistoryEntry.fromMap(h as Map<String, dynamic>))
+          .map((h) => LotFeedCumulHistoryEntry.fromMap(h as Map<String, dynamic>))
           .toList(),
     );
   }
@@ -173,20 +220,108 @@ class LotEggCumulHistoryPagedResult {
   }
 }
 
+/// Cumul MORTALITÉ : même principe que le cumul aliment — PAR SALLE et par sexe (F/M),
+/// incrémenté automatiquement par chaque rapport journalier validé. Cette classe ne gère que
+/// la VALEUR DE DÉPART (lot_mortality_cumuls), lot-scopée comme le stock d'œufs de départ.
+class LotMortalityCumul {
+  final String? id;
+  final String farmName;
+  final String lotNumber;
+  final List<RoomHeadcount> rooms;
+  final DateTime? updatedAt;
+
+  LotMortalityCumul({
+    this.id,
+    required this.farmName,
+    required this.lotNumber,
+    this.rooms = const [],
+    this.updatedAt,
+  });
+
+  factory LotMortalityCumul.fromMap(Map<String, dynamic> map) {
+    return LotMortalityCumul(
+      id: map['_id'] as String?,
+      farmName: map['farmName'] as String? ?? '',
+      lotNumber: map['lotNumber'] as String? ?? '',
+      rooms: (map['rooms'] as List<dynamic>? ?? [])
+          .map((r) => RoomHeadcount.fromMap(r as Map<String, dynamic>))
+          .toList(),
+      updatedAt: parseCameroonTime(map['updatedAt']?.toString()),
+    );
+  }
+}
+
+class LotMortalityCumulHistoryEntry {
+  final String? id;
+  final String farmName;
+  final String lotNumber;
+  final String roomName;
+  final int femaleCount;
+  final int maleCount;
+  final String? performedBy;
+  final DateTime createdAt;
+
+  LotMortalityCumulHistoryEntry({
+    this.id,
+    required this.farmName,
+    required this.lotNumber,
+    required this.roomName,
+    this.femaleCount = 0,
+    this.maleCount = 0,
+    this.performedBy,
+    required this.createdAt,
+  });
+
+  factory LotMortalityCumulHistoryEntry.fromMap(Map<String, dynamic> map) {
+    return LotMortalityCumulHistoryEntry(
+      id: map['_id'] as String?,
+      farmName: map['farmName'] as String? ?? '',
+      lotNumber: map['lotNumber'] as String? ?? '',
+      roomName: map['roomName'] as String? ?? '',
+      femaleCount: (map['femaleCount'] as num?)?.toInt() ?? 0,
+      maleCount: (map['maleCount'] as num?)?.toInt() ?? 0,
+      performedBy: map['performedBy'] as String?,
+      createdAt: parseCameroonTime(map['createdAt']?.toString()) ?? DateTime.now(),
+    );
+  }
+}
+
+class LotMortalityCumulHistoryPagedResult {
+  final int totalCount;
+  final List<LotMortalityCumulHistoryEntry> data;
+
+  LotMortalityCumulHistoryPagedResult({this.totalCount = 0, required this.data});
+
+  factory LotMortalityCumulHistoryPagedResult.fromMap(Map<String, dynamic> map) {
+    return LotMortalityCumulHistoryPagedResult(
+      totalCount: (map['totalCount'] as num?)?.toInt() ?? 0,
+      data: (map['data'] as List<dynamic>? ?? [])
+          .map((h) => LotMortalityCumulHistoryEntry.fromMap(h as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
 /// Vue combinée pour l'onglet "Cumul" de Suivi Bâtiment : ferme par ferme, salle par salle.
 class BuildingCumulItem {
   final String farmId;
   final String farmName;
   final String? lotNumber;
-  final double feedCumulKg;
+  final List<RoomFeedCumul> feedRooms;
   final List<RoomEggCumul> rooms;
+  final List<RoomHeadcount> mortalityRooms;
+  final int cumulativeMortalityFemale;
+  final int cumulativeMortalityMale;
 
   BuildingCumulItem({
     required this.farmId,
     required this.farmName,
     this.lotNumber,
-    this.feedCumulKg = 0,
+    this.feedRooms = const [],
     this.rooms = const [],
+    this.mortalityRooms = const [],
+    this.cumulativeMortalityFemale = 0,
+    this.cumulativeMortalityMale = 0,
   });
 
   factory BuildingCumulItem.fromMap(Map<String, dynamic> map) {
@@ -194,10 +329,17 @@ class BuildingCumulItem {
       farmId: map['farmId'] as String? ?? '',
       farmName: map['farmName'] as String? ?? '',
       lotNumber: map['lotNumber'] as String?,
-      feedCumulKg: (map['feedCumulKg'] as num?)?.toDouble() ?? 0,
+      feedRooms: (map['feedRooms'] as List<dynamic>? ?? [])
+          .map((r) => RoomFeedCumul.fromMap(r as Map<String, dynamic>))
+          .toList(),
       rooms: (map['rooms'] as List<dynamic>? ?? [])
           .map((r) => RoomEggCumul.fromMap(r as Map<String, dynamic>))
           .toList(),
+      mortalityRooms: (map['mortalityRooms'] as List<dynamic>? ?? [])
+          .map((r) => RoomHeadcount.fromMap(r as Map<String, dynamic>))
+          .toList(),
+      cumulativeMortalityFemale: (map['cumulativeMortalityFemale'] as num?)?.toInt() ?? 0,
+      cumulativeMortalityMale: (map['cumulativeMortalityMale'] as num?)?.toInt() ?? 0,
     );
   }
 }

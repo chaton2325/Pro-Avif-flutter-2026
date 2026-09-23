@@ -26,6 +26,13 @@ class BuildingTrackingItem {
   final List<RoomHeadcount> currentRooms;
   final SexCount currentClinic;
   final bool hasReports;
+  final int cumulativeOac;
+  final int cumulativePo;
+  final int cumulativeDj;
+  final int cumulativeCas;
+  final int cumulativeSal;
+  final double? layingRatePercent;
+  final double? feedConversionRatio;
 
   BuildingTrackingItem({
     required this.farmId,
@@ -49,6 +56,13 @@ class BuildingTrackingItem {
     this.currentRooms = const [],
     SexCount? currentClinic,
     this.hasReports = false,
+    this.cumulativeOac = 0,
+    this.cumulativePo = 0,
+    this.cumulativeDj = 0,
+    this.cumulativeCas = 0,
+    this.cumulativeSal = 0,
+    this.layingRatePercent,
+    this.feedConversionRatio,
   }) : currentClinic = currentClinic ?? SexCount();
 
   int get initialTotal => initialFemale + initialMale;
@@ -89,6 +103,13 @@ class BuildingTrackingItem {
           .toList(),
       currentClinic: SexCount.fromMap(map['currentClinic'] as Map<String, dynamic>?),
       hasReports: map['hasReports'] as bool? ?? false,
+      cumulativeOac: (map['cumulativeOac'] as num?)?.toInt() ?? 0,
+      cumulativePo: (map['cumulativePo'] as num?)?.toInt() ?? 0,
+      cumulativeDj: (map['cumulativeDj'] as num?)?.toInt() ?? 0,
+      cumulativeCas: (map['cumulativeCas'] as num?)?.toInt() ?? 0,
+      cumulativeSal: (map['cumulativeSal'] as num?)?.toInt() ?? 0,
+      layingRatePercent: (map['layingRatePercent'] as num?)?.toDouble(),
+      feedConversionRatio: (map['feedConversionRatio'] as num?)?.toDouble(),
     );
   }
 }

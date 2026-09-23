@@ -13,6 +13,7 @@ import 'current_headcount_screen.dart';
 import 'current_egg_stock_screen.dart';
 import 'farm_feed_stock_view_screen.dart';
 import 'feed_reception_screen.dart';
+import 'egg_shipment_screen.dart';
 
 /// Accueil du rapport du jour (maquette écran 02) : statut, motif de renvoi éventuel, bouton
 /// principal adaptatif — point d'entrée du parcours rédacteur.
@@ -294,6 +295,19 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (_) => CurrentEggStockScreen(farmName: _farm!.name),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DailyReportMenuTile(
+                        icon: Icons.local_shipping_rounded,
+                        color: DailyReportColors.purple600,
+                        title: 'Expédier des œufs',
+                        subtitle: 'Œufs à couver (OAC) vers un couvoir',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EggShipmentScreen(farmName: _farm!.name),
                           ),
                         ),
                       ),

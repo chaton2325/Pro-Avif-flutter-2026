@@ -12,6 +12,8 @@ import 'admin_lot_headcounts_screen.dart';
 import 'admin_lot_egg_stocks_screen.dart';
 import 'admin_room_transfers_screen.dart';
 import 'admin_treatment_references_screen.dart';
+import 'admin_egg_shipments_screen.dart';
+import 'admin_hatcheries_screen.dart';
 import 'building_tracking_screen.dart';
 import 'validator_overview_screen.dart';
 
@@ -34,6 +36,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
   late DateTime _now;
   Timer? _clockTimer;
   int _pendingReceptions = 0;
+  int _pendingEggShipments = 0;
 
   @override
   void initState() {
@@ -45,6 +48,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
       if (mounted) setState(() => _now = DateTime.now());
     });
     _loadPendingReceptions();
+    _loadPendingEggShipments();
   }
 
   // Pas de farmName = toutes fermes confondues (vue admin globale).
@@ -52,6 +56,12 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
     final count = await _mongoService.getPendingReceptionsCount();
     if (!mounted) return;
     setState(() => _pendingReceptions = count);
+  }
+
+  Future<void> _loadPendingEggShipments() async {
+    final count = await _mongoService.getPendingEggShipmentsCount();
+    if (!mounted) return;
+    setState(() => _pendingEggShipments = count);
   }
 
   @override
@@ -143,6 +153,14 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             badgeCount: 0,
             builder: (BuildContext c) => const AdminRoomTransfersScreen(),
           ),
+          (
+            icon: Icons.local_shipping_rounded,
+            color: DailyReportColors.purple600,
+            title: "Expéditions d'œufs",
+            subtitle: 'Œufs à couver (OAC) vers un couvoir',
+            badgeCount: _pendingEggShipments,
+            builder: (BuildContext c) => const AdminEggShipmentsScreen(),
+          ),
         ],
       ),
       (
@@ -156,6 +174,14 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             subtitle: 'Référentiel des traitements',
             badgeCount: 0,
             builder: (BuildContext c) => const AdminTreatmentReferencesScreen(),
+          ),
+          (
+            icon: Icons.egg_rounded,
+            color: DailyReportColors.blue600,
+            title: 'Couvoirs',
+            subtitle: "Vers où sont expédiés les œufs à couver",
+            badgeCount: 0,
+            builder: (BuildContext c) => const AdminHatcheriesScreen(),
           ),
           (
             icon: Icons.badge_rounded,
@@ -204,7 +230,10 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
                             subtitle: e.subtitle,
                             onTap: () async {
                               await Navigator.push(context, MaterialPageRoute(builder: e.builder));
-                              if (mounted) _loadPendingReceptions();
+                              if (mounted) {
+                                _loadPendingReceptions();
+                                _loadPendingEggShipments();
+                              }
                             },
                           ),
                         ),
