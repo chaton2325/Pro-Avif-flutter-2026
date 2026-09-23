@@ -22,6 +22,14 @@ class EggShipment {
   final DateTime? rejectedAt;
   final String? rejectedBy;
   final String? rejectionReason;
+  // Coût de revient par œuf (FCFA) — saisi à la validation
+  final double? costPerEgg;
+  // Charges indirectes TOTALES (FCFA) — saisi à la validation
+  final double? indirectCosts;
+  // Motif / commentaire de la validation
+  final String? motif;
+  // Coût total = costPerEgg * oacCount + indirectCosts
+  final double? totalCost;
 
   EggShipment({
     this.id,
@@ -38,6 +46,10 @@ class EggShipment {
     this.rejectedAt,
     this.rejectedBy,
     this.rejectionReason,
+    this.costPerEgg,
+    this.indirectCosts,
+    this.motif,
+    this.totalCost,
   });
 
   bool get isPending => status == 'en_attente_validation';
@@ -66,6 +78,10 @@ class EggShipment {
       rejectedAt: parseCameroonTime(map['rejectedAt']?.toString()),
       rejectedBy: map['rejectedBy'] as String?,
       rejectionReason: map['rejectionReason'] as String?,
+      costPerEgg: (map['costPerEgg'] as num?)?.toDouble(),
+      indirectCosts: (map['indirectCosts'] as num?)?.toDouble(),
+      motif: map['motif'] as String?,
+      totalCost: (map['totalCost'] as num?)?.toDouble(),
     );
   }
 }

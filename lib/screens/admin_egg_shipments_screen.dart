@@ -110,31 +110,23 @@ class _AdminEggShipmentsScreenState extends State<AdminEggShipmentsScreen> {
                 Expanded(
                   child: _visible.isEmpty
                       ? Center(child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500)))
-                      : ListView.builder(
+                      : ListView(
                           padding: const EdgeInsets.all(16),
-                          itemCount: _visible.length,
-                          itemBuilder: (context, i) {
-                            final f = _visible[i];
-                            return DailyReportCard(
-                              accentColor: DailyReportColors.purple600,
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          children: [
+                            DailyReportFarmGrid(
                               children: [
-                                InkWell(
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => EggShipmentScreen(farmName: f.name, isAdmin: true)),
+                                for (final f in _visible)
+                                  DailyReportFarmGridCard(
+                                    title: f.name,
+                                    accentColor: DailyReportColors.purple600,
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => EggShipmentScreen(farmName: f.name, isAdmin: true)),
+                                    ),
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(child: Text(f.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5))),
-                                      Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-                                    ],
-                                  ),
-                                ),
                               ],
-                            );
-                          },
+                            ),
+                          ],
                         ),
                 ),
               ],

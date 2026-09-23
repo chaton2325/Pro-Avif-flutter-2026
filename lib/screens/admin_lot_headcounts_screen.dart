@@ -148,7 +148,7 @@ class _AdminLotHeadcountsScreenState extends State<AdminLotHeadcountsScreen> {
                       child: Center(child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500))),
                     )
                   else
-                    for (final s in _visible) _farmCard(s),
+                    DailyReportFarmGrid(children: [for (final s in _visible) _farmCard(s)]),
                 ],
               ),
             ),
@@ -158,46 +158,19 @@ class _AdminLotHeadcountsScreenState extends State<AdminLotHeadcountsScreen> {
   Widget _farmCard(_FarmHeadcountStatus s) {
     final defined = s.headcount != null;
     final color = defined ? DailyReportColors.green600 : DailyReportColors.yellow500;
-    return DailyReportCard(
+    return DailyReportFarmGridCard(
+      title: s.farm.name,
       accentColor: color,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      children: [
-        InkWell(
-          onTap: () => _openFarm(s),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(s.farm.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-                    const SizedBox(height: 2),
-                    Text(
-                      s.lotNumber != null ? 'Lot ${s.lotNumber}' : 'Aucun lot en cours',
-                      style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
-                    ),
-                    if (defined) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '${s.headcount!.totalFemale} F · ${s.headcount!.totalMale} M',
-                        style: const TextStyle(color: DailyReportColors.green700, fontWeight: FontWeight.w700, fontSize: 12),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              DailyReportStatusBadge(
-                label: defined ? 'DÉFINIS' : 'À DÉFINIR',
-                color: color,
-                icon: defined ? Icons.check_rounded : Icons.priority_high_rounded,
-              ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-            ],
-          ),
-        ),
-      ],
+      subtitle: [
+        s.lotNumber != null ? 'Lot ${s.lotNumber}' : 'Aucun lot en cours',
+        if (defined) '${s.headcount!.totalFemale} F · ${s.headcount!.totalMale} M',
+      ].join(' · '),
+      badge: DailyReportStatusBadge(
+        label: defined ? 'DÉFINIS' : 'À DÉFINIR',
+        color: color,
+        icon: defined ? Icons.check_rounded : Icons.priority_high_rounded,
+      ),
+      onTap: () => _openFarm(s),
     );
   }
 }

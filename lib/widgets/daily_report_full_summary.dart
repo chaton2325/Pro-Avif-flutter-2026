@@ -55,6 +55,12 @@ class DailyReportFullSummary extends StatelessWidget {
       final key = c.formulaId ?? c.formulaName ?? '?';
       map.putIfAbsent(key, () => DailyReportColors.alimentPalette[map.length % DailyReportColors.alimentPalette.length]);
     }
+    // Le cumul peut porter un aliment qui n'a pas été consommé aujourd'hui (rien de nouveau
+    // ce jour-là) — même palette pour qu'un aliment garde toujours la même couleur.
+    for (final c in report.aliment.cumulativeConsumptionByRoom) {
+      final key = c.formulaId ?? c.formulaName ?? '?';
+      map.putIfAbsent(key, () => DailyReportColors.alimentPalette[map.length % DailyReportColors.alimentPalette.length]);
+    }
     return map;
   }
 
@@ -164,6 +170,12 @@ class DailyReportFullSummary extends StatelessWidget {
           Text('Consommation par salle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Colors.grey.shade700)),
           const SizedBox(height: 6),
           for (final start in report.startCounts) _consumptionBlock(start.roomName),
+          if (report.aliment.cumulativeConsumptionByRoom.isNotEmpty) ...[
+            const Divider(),
+            Text('Cumul de consommation par salle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Colors.grey.shade700)),
+            const SizedBox(height: 6),
+            for (final start in report.startCounts) _consumptionCumulBlock(start.roomName),
+          ],
           const Divider(),
           _row('Stock avant', '${report.aliment.stockBeforeKg} kg'),
           _row('Consommé (total)', '${report.aliment.totalConsumedKg} kg'),
@@ -180,6 +192,28 @@ class DailyReportFullSummary extends StatelessWidget {
               '${report.mortality.totalFemale} F · ${report.mortality.totalMale} M',
             ),
             _row('Cumul (F/M)', '${report.mortality.cumulativeFemale} F · ${report.mortality.cumulativeMale} M'),
+            if (report.mortality.cumulativeByRoom.any((r) => r.femaleCount > 0 || r.maleCount > 0)) ...[
+              const SizedBox(height: 4),
+              Text('Cumul par salle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5, color: Colors.grey.shade600)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final r in report.mortality.cumulativeByRoom)
+                    if (r.femaleCount > 0 || r.maleCount > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+                        child: Text(
+                          '${r.roomName} · ${r.femaleCount} F · ${r.maleCount} M',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.red.shade700),
+                        ),
+                      ),
+                ],
+              ),
+              const SizedBox(height: 6),
+            ],
             if (report.mortality.rateFemalePercent != null || report.mortality.rateMalePercent != null)
               _row(
                 'Taux cumulé (F/M)',
@@ -383,6 +417,61 @@ class DailyReportFullSummary extends StatelessWidget {
             hasSplit ? 'F ${e.femaleQuantityKg ?? 0} kg · M ${e.maleQuantityKg ?? 0} kg' : '${e.quantityKg} kg (non ventilé)',
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Cumul de consommation d'une salle, par aliment (F/M) — s'incrémente automatiquement à
+  /// chaque rapport validé, jamais retouché par ce rapport-ci seul : distinct de
+  /// _consumptionBlock qui n'affiche que ce qui a été saisi aujourd'hui.
+  Widget _consumptionCumulBlock(String roomName) {
+    final entries = report.aliment.cumulativeConsumptionByRoom
+        .where((c) => c.roomName == roomName && (c.femaleKg > 0 || c.maleKg > 0))
+        .toList();
+    if (entries.isEmpty) return const SizedBox.shrink();
+    final colors = _alimentColors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(roomName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in entries) _cumulAlimentCard(e, colors[e.formulaId ?? e.formulaName ?? '?']!),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cumulAlimentCard(RoomFeedConsumptionCumul e, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Text(e.formulaName ?? 'Aliment non renseigné', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: color)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('F ${e.femaleKg} kg · M ${e.maleKg} kg', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5)),
         ],
       ),
     );

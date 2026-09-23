@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/usine.dart';
+import '../models/usine_user.dart';
 import '../services/mongo_service.dart';
 import 'admin_mode_selector_screen.dart';
 import 'blocked_screen.dart';
+import 'daily_report_validator_home_screen.dart';
 import 'module_choice_screen.dart';
 import 'usine_home_screen.dart';
+import 'usine_module_choice_screen.dart';
 import 'validator_overview_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -88,7 +91,22 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else if (accountType == 'usine_user') {
-        await _routeUsineUser();
+        final user = mongoService.currentUsineUser!;
+        // Si l'utilisateur a accès aux deux modules, on propose le choix
+        if (user.modules.contains('validations_expeditions') &&
+            user.modules.contains('usine')) {
+          setState(() => _isLoading = false);
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => UsineModuleChoiceScreen(user: user)),
+          );
+        } else if (user.modules.contains('validations_expeditions')) {
+          // Accès direct aux validations expéditions (validateur œufs)
+          await _routeDailyReportValidator(user);
+        } else {
+          // Accès standard au module Usine
+          await _routeUsineUser();
+        }
       } else {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -147,6 +165,39 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Post-connexion pour un validateur d'expéditions d'œufs (module Rapport Journalier)
+  Future<void> _routeDailyReportValidator(UsineUser user) async {
+    final mongoService = MongoService();
+    final assignments = await mongoService.getPosteAssignments(userId: user.id);
+    if (!mounted) return;
+
+    if (assignments.isEmpty) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Aucune usine ni poste ne vous a été affecté. Contactez l'administrateur.",
+          ),
+        ),
+      );
+      return;
+    }
+
+    final usines = await mongoService.getUsines();
+    final usineIds = assignments.map((a) => a.usineId).toSet().toList();
+    final assignedUsines = usines
+        .where((u) => usineIds.contains(u.id))
+        .toList();
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (assignedUsines.length == 1) {
+      await _enterDailyReportValidator(user, assignedUsines.first);
+    } else {
+      _showUsinePickerForValidator(user, assignedUsines);
+    }
+  }
+
   Future<void> _enterUsine(String userId, Usine usine) async {
     final mongoService = MongoService();
     setState(() => _isLoading = true);
@@ -163,6 +214,22 @@ class _LoginScreenState extends State<LoginScreen> {
           usine: usine,
           usineUser: mongoService.currentUsineUser!,
           permissions: permissions,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _enterDailyReportValidator(
+      UsineUser user, Usine usine) async {
+    // Le validateur d'œufs n'a pas besoin de permissions usine, il accède directement
+    // à l'écran de validation des expéditions d'œufs (toutes fermes)
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DailyReportValidatorHomeScreen(
+          usineUser: user,
+          usine: usine,
         ),
       ),
     );
@@ -192,6 +259,40 @@ class _LoginScreenState extends State<LoginScreen> {
                     onTap: () {
                       Navigator.pop(context);
                       _enterUsine(userId, u);
+                    },
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showUsinePickerForValidator(UsineUser user, List<Usine> usines) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Choisissez une usine (validation œufs)',
+          style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+        ),
+        content: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: usines
+                .map(
+                  (u) => ListTile(
+                    leading: const Icon(
+                      Icons.factory_rounded,
+                      color: Colors.orange,
+                    ),
+                    title: Text(u.name),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _enterDailyReportValidator(user, u);
                     },
                   ),
                 )

@@ -143,7 +143,7 @@ class _AdminFarmFeedStocksScreenState extends State<AdminFarmFeedStocksScreen> {
                       child: Center(child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500))),
                     )
                   else
-                    for (final s in _visible) _farmCard(s),
+                    DailyReportFarmGrid(children: [for (final s in _visible) _farmCard(s)]),
                 ],
               ),
             ),
@@ -153,41 +153,16 @@ class _AdminFarmFeedStocksScreenState extends State<AdminFarmFeedStocksScreen> {
   Widget _farmCard(_FarmFeedStockStatus s) {
     final defined = s.feedStock != null;
     final color = defined ? DailyReportColors.green600 : DailyReportColors.yellow500;
-    return DailyReportCard(
+    return DailyReportFarmGridCard(
+      title: s.farm.name,
       accentColor: color,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      children: [
-        InkWell(
-          onTap: () => _openFarm(s),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(s.farm.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-                    if (defined) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '${s.feedStock!.totalKg} kg',
-                        style: const TextStyle(color: DailyReportColors.green700, fontWeight: FontWeight.w700, fontSize: 12),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              DailyReportStatusBadge(
-                label: defined ? 'DÉFINIS' : 'À DÉFINIR',
-                color: color,
-                icon: defined ? Icons.check_rounded : Icons.priority_high_rounded,
-              ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-            ],
-          ),
-        ),
-      ],
+      subtitle: defined ? '${s.feedStock!.totalKg} kg' : null,
+      badge: DailyReportStatusBadge(
+        label: defined ? 'DÉFINIS' : 'À DÉFINIR',
+        color: color,
+        icon: defined ? Icons.check_rounded : Icons.priority_high_rounded,
+      ),
+      onTap: () => _openFarm(s),
     );
   }
 }

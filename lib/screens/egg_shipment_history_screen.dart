@@ -22,11 +22,22 @@ String? _statusFor(_StatusFilter f) => switch (f) {
 /// farmName renseigné : l'historique d'une seule ferme (rédacteur de sa propre ferme, ou admin
 /// qui l'a choisie). isAdmin contrôle si les boutons Valider/Rejeter apparaissent sur les
 /// expéditions en attente — le rédacteur ne fait que consulter, jamais valider.
+/// validatorName : si renseigné, filtre sur les expéditions validées PAR cet utilisateur
+/// (pour l'onglet "Mes validations" du validateur œufs).
+/// initialFilter : filtre de statut initial sous forme de string (ex: 'valide', 'en_attente_validation', 'rejetee', ou null pour toutes).
 class EggShipmentHistoryScreen extends StatefulWidget {
   final String? farmName;
   final bool isAdmin;
+  final String? validatorName;
+  final String? initialFilter;
 
-  const EggShipmentHistoryScreen({super.key, this.farmName, this.isAdmin = false});
+  const EggShipmentHistoryScreen({
+    super.key,
+    this.farmName,
+    this.isAdmin = false,
+    this.validatorName,
+    this.initialFilter,
+  });
 
   @override
   State<EggShipmentHistoryScreen> createState() => _EggShipmentHistoryScreenState();
@@ -45,7 +56,21 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _filter = _parseFilter(widget.initialFilter);
     _load();
+  }
+
+  _StatusFilter _parseFilter(String? filter) {
+    switch (filter) {
+      case 'en_attente_validation':
+        return _StatusFilter.pending;
+      case 'valide':
+        return _StatusFilter.validated;
+      case 'rejetee':
+        return _StatusFilter.rejected;
+      default:
+        return _StatusFilter.all;
+    }
   }
 
   Future<void> _load() async {
@@ -53,6 +78,7 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
     final result = await _mongoService.getEggShipments(
       farmName: widget.farmName,
       status: _statusFor(_filter),
+      validatedBy: widget.validatorName,
       skip: 0,
       limit: _pageSize,
     );
@@ -70,6 +96,7 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
     final result = await _mongoService.getEggShipments(
       farmName: widget.farmName,
       status: _statusFor(_filter),
+      validatedBy: widget.validatorName,
       skip: _entries.length,
       limit: _pageSize,
     );
@@ -87,15 +114,56 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
   }
 
   Future<void> _validate(EggShipment s) async {
+    final costController = TextEditingController();
+    final indirectController = TextEditingController();
+    final motifController = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Valider cette expédition ?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        content: Text(
-          'Valider ${s.oacCount} OAC vers ${s.hatcheryName} (${s.farmName}) va diminuer le stock d\'œufs '
-          'disponible de cette ferme. Cette action est définitive.',
-          style: const TextStyle(fontSize: 13.5),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Valider ${s.oacCount} OAC vers ${s.hatcheryName} (${s.farmName}) va diminuer le stock d\'œufs '
+                'disponible de cette ferme. Cette action est définitive.',
+                style: const TextStyle(fontSize: 13.5),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: costController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Coût de revient par œuf (FCFA)',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ex: 25.50',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: indirectController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Charges indirectes TOTALES (FCFA)',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ex: 5000 (transport, manutention...)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: motifController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Motif / Commentaire (optionnel)',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ex: Client pressé, qualité validée, livraison urgente...',
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
@@ -108,7 +176,15 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final result = await runBlocking(context, () => _mongoService.validateEggShipment(s.id!));
+    final costPerEgg = double.tryParse(costController.text);
+    final indirectCosts = double.tryParse(indirectController.text);
+    final motif = motifController.text.trim().isEmpty ? null : motifController.text.trim();
+    final result = await runBlocking(context, () => _mongoService.validateEggShipment(
+      s.id!,
+      costPerEgg: costPerEgg,
+      indirectCosts: indirectCosts,
+      motif: motif,
+    ));
     if (!mounted) return;
     if (result.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.error!)));
@@ -300,12 +376,40 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
         ),
         const SizedBox(height: 10),
         Text('${s.oacCount} OAC', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: color)),
-        if (s.isValidated && s.validatedAt != null) ...[
+        if (s.isValidated) ...[
           const SizedBox(height: 4),
           Text(
             'Validée le ${DateFormat('dd/MM/yyyy à HH:mm').format(s.validatedAt!)}${s.validatedBy != null ? ' par ${s.validatedBy}' : ''}',
             style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
           ),
+          if (s.motif != null && s.motif!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Motif: ${s.motif}',
+              style: TextStyle(color: Colors.blue.shade700, fontSize: 11, fontStyle: FontStyle.italic),
+            ),
+          ],
+          if (s.costPerEgg != null || s.indirectCosts != null || s.totalCost != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: DailyReportColors.green100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (s.costPerEgg != null)
+                    Text('Coût/œuf: ${s.costPerEgg!.toStringAsFixed(0)} FCFA', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: DailyReportColors.green900)),
+                  if (s.indirectCosts != null)
+                    Text('Charges indirectes: ${s.indirectCosts!.toStringAsFixed(0)} FCFA', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: DailyReportColors.green900)),
+                  if (s.totalCost != null)
+                    Text('Coût TOTAL: ${s.totalCost!.toStringAsFixed(0)} FCFA', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: DailyReportColors.green700)),
+                ],
+              ),
+            ),
+          ],
         ],
         if (s.isRejected) ...[
           const SizedBox(height: 4),

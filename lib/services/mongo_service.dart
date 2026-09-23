@@ -2654,6 +2654,7 @@ class MongoService {
   Future<EggShipmentPagedResult> getEggShipments({
     String? farmName,
     String? status,
+    String? validatedBy,
     int skip = 0,
     int limit = 20,
   }) async {
@@ -2661,6 +2662,7 @@ class MongoService {
       queryParameters: {
         if (farmName != null) 'farmName': farmName,
         if (status != null) 'status': status,
+        if (validatedBy != null) 'validatedBy': validatedBy,
         'skip': '$skip',
         'limit': '$limit',
       },
@@ -2684,11 +2686,21 @@ class MongoService {
     return 0;
   }
 
-  Future<({EggShipment? shipment, String? error})> validateEggShipment(String id) async {
+  Future<({EggShipment? shipment, String? error})> validateEggShipment(
+    String id, {
+    double? costPerEgg,
+    double? indirectCosts,
+    String? motif,
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/egg-shipments/$id/validate'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'performedBy': _redacteurName}),
+      body: jsonEncode({
+        'performedBy': _redacteurName,
+        if (costPerEgg != null) 'costPerEgg': costPerEgg,
+        if (indirectCosts != null) 'indirectCosts': indirectCosts,
+        if (motif != null) 'motif': motif,
+      }),
     );
     if (response.statusCode == 200) {
       return (shipment: EggShipment.fromMap(jsonDecode(response.body)), error: null);

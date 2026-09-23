@@ -99,10 +99,41 @@ class RoomConsumptionEntry {
   }
 }
 
+/// Cumul de consommation pour une salle + un aliment donnés (F/M) — au niveau de la salle,
+/// pas de chaque entrée du jour (une salle peut consommer plusieurs aliments le même jour) :
+/// calculé serveur uniquement, continue la chaîne des rapports précédents (voir RoomFeedCumul
+/// côté backend).
+class RoomFeedConsumptionCumul {
+  final String roomName;
+  final String? formulaId;
+  final String? formulaName;
+  final double femaleKg;
+  final double maleKg;
+
+  RoomFeedConsumptionCumul({
+    required this.roomName,
+    this.formulaId,
+    this.formulaName,
+    this.femaleKg = 0,
+    this.maleKg = 0,
+  });
+
+  factory RoomFeedConsumptionCumul.fromMap(Map<String, dynamic> map) {
+    return RoomFeedConsumptionCumul(
+      roomName: map['roomName'] as String? ?? '',
+      formulaId: map['formulaId'] as String?,
+      formulaName: map['formulaName'] as String?,
+      femaleKg: (map['femaleKg'] as num?)?.toDouble() ?? 0,
+      maleKg: (map['maleKg'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
 class DailyReportAliment {
   final double receivedTotalKg;
   final List<DailyReportFeedReceivedItem> receivedDetail;
   final List<RoomConsumptionEntry> consumptionByRoom;
+  final List<RoomFeedConsumptionCumul> cumulativeConsumptionByRoom;
   final double totalConsumedKg;
   final double stockBeforeKg;
   final double stockAfterKg;
@@ -112,6 +143,7 @@ class DailyReportAliment {
     this.receivedTotalKg = 0,
     this.receivedDetail = const [],
     this.consumptionByRoom = const [],
+    this.cumulativeConsumptionByRoom = const [],
     this.totalConsumedKg = 0,
     this.stockBeforeKg = 0,
     this.stockAfterKg = 0,
@@ -139,6 +171,9 @@ class DailyReportAliment {
       consumptionByRoom: (map['consumptionByRoom'] as List<dynamic>? ?? [])
           .map((c) => RoomConsumptionEntry.fromMap(c as Map<String, dynamic>))
           .toList(),
+      cumulativeConsumptionByRoom: (map['cumulativeConsumptionByRoom'] as List<dynamic>? ?? [])
+          .map((c) => RoomFeedConsumptionCumul.fromMap(c as Map<String, dynamic>))
+          .toList(),
       totalConsumedKg: (map['totalConsumedKg'] as num?)?.toDouble() ?? 0,
       stockBeforeKg: (map['stockBeforeKg'] as num?)?.toDouble() ?? 0,
       stockAfterKg: (map['stockAfterKg'] as num?)?.toDouble() ?? 0,
@@ -152,6 +187,11 @@ class DailyReportMortality {
   final SexCount clinic;
   final int totalFemale;
   final int totalMale;
+  // Cumul par salle et par sexe (voir RoomHeadcount, réutilisé tel quel) — le total ferme
+  // ci-dessous (cumulativeFemale/Male) en est toujours la somme + la clinique.
+  final List<RoomHeadcount> cumulativeByRoom;
+  final int cumulativeClinicFemale;
+  final int cumulativeClinicMale;
   final int cumulativeFemale;
   final int cumulativeMale;
   final double? rateFemalePercent;
@@ -162,6 +202,9 @@ class DailyReportMortality {
     SexCount? clinic,
     this.totalFemale = 0,
     this.totalMale = 0,
+    this.cumulativeByRoom = const [],
+    this.cumulativeClinicFemale = 0,
+    this.cumulativeClinicMale = 0,
     this.cumulativeFemale = 0,
     this.cumulativeMale = 0,
     this.rateFemalePercent,
@@ -177,6 +220,11 @@ class DailyReportMortality {
       clinic: SexCount.fromMap(map['clinic'] as Map<String, dynamic>?),
       totalFemale: (map['totalFemale'] as num?)?.toInt() ?? 0,
       totalMale: (map['totalMale'] as num?)?.toInt() ?? 0,
+      cumulativeByRoom: (map['cumulativeByRoom'] as List<dynamic>? ?? [])
+          .map((r) => RoomHeadcount.fromMap(r as Map<String, dynamic>))
+          .toList(),
+      cumulativeClinicFemale: (map['cumulativeClinicFemale'] as num?)?.toInt() ?? 0,
+      cumulativeClinicMale: (map['cumulativeClinicMale'] as num?)?.toInt() ?? 0,
       cumulativeFemale: (map['cumulativeFemale'] as num?)?.toInt() ?? 0,
       cumulativeMale: (map['cumulativeMale'] as num?)?.toInt() ?? 0,
       rateFemalePercent: (map['rateFemalePercent'] as num?)?.toDouble(),

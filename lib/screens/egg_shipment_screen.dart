@@ -73,6 +73,62 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
       });
       return;
     }
+
+    // Dialog de confirmation avant envoi
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Confirmer l\'expédition ?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Expédier $oacCount OAC vers ${_selectedHatchery!.name} (${widget.farmName})',
+              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Stock OAC disponible : ${_stock?.currentStockOac ?? 0}',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: DailyReportColors.yellow100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: DailyReportColors.yellow600),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Cette expédition sera "en attente de validation". '
+                      'Le stock ne diminuera qu\'après validation par l\'admin.',
+                      style: TextStyle(fontSize: 12, color: DailyReportColors.yellow600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.green700, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirmer l\'expédition'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
     setState(() {
       _saving = true;
       _message = null;

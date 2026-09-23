@@ -19,9 +19,9 @@ import 'lot_mortality_cumul_history_screen.dart';
 /// par sexe (F/M), incrémentée automatiquement par chaque rapport journalier validé. Cet écran
 /// ne gère que sa VALEUR DE DÉPART (une salle peut déjà avoir consommé un aliment avant que ce
 /// lot ne soit suivi ici).
-/// Mortalité : même principe que aliment (incrémentée automatiquement par les rapports
-/// validés), mais jamais par salle — mortality.cumulativeFemale/Male est un total ferme+lot
-/// uniquement (salles + clinique confondues).
+/// Mortalité : même principe que aliment — par salle et par sexe (F/M), incrémentée
+/// automatiquement par les rapports validés. Le total ferme (mortality.cumulativeFemale/Male,
+/// utilisé pour le taux de mortalité) reste dérivé de la somme des salles + la clinique.
 class AdminCumulsScreen extends StatefulWidget {
   const AdminCumulsScreen({super.key});
 
@@ -136,33 +136,20 @@ class _FeedCumulTabState extends State<_FeedCumulTab> {
                     child: Center(child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500))),
                   )
                 else
-                  for (final f in _farms) _farmCard(f),
+                  DailyReportFarmGrid(children: [for (final f in _farms) _farmCard(f)]),
               ],
             ),
           );
   }
 
   Widget _farmCard(Farm f) {
-    return DailyReportCard(
+    return DailyReportFarmGridCard(
+      title: f.name,
       accentColor: DailyReportColors.purple600,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      children: [
-        InkWell(
-          onTap: () async {
-            await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminFeedCumulEditScreen(farm: f)));
-            _load();
-          },
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(f.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-              ),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-            ],
-          ),
-        ),
-      ],
+      onTap: () async {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminFeedCumulEditScreen(farm: f)));
+        _load();
+      },
     );
   }
 }
@@ -472,33 +459,20 @@ class _EggCumulTabState extends State<_EggCumulTab> {
                     child: Center(child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500))),
                   )
                 else
-                  for (final f in _farms) _farmCard(f),
+                  DailyReportFarmGrid(children: [for (final f in _farms) _farmCard(f)]),
               ],
             ),
           );
   }
 
   Widget _farmCard(Farm f) {
-    return DailyReportCard(
+    return DailyReportFarmGridCard(
+      title: f.name,
       accentColor: DailyReportColors.purple600,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      children: [
-        InkWell(
-          onTap: () async {
-            await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminEggCumulEditScreen(farm: f)));
-            _load();
-          },
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(f.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-              ),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-            ],
-          ),
-        ),
-      ],
+      onTap: () async {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminEggCumulEditScreen(farm: f)));
+        _load();
+      },
     );
   }
 }
@@ -838,8 +812,8 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// Mortalité (cumul ferme+lot uniquement — jamais par salle — cet écran ne gère que la
-// valeur de départ, incrémentée ensuite automatiquement par les rapports validés)
+// Mortalité (par salle et par sexe — cet écran ne gère que la valeur de départ, incrémentée
+// ensuite automatiquement par les rapports validés)
 // ---------------------------------------------------------------------------
 
 class _MortalityCumulTab extends StatefulWidget {
@@ -885,9 +859,9 @@ class _MortalityCumulTabState extends State<_MortalityCumulTab> {
                   margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(color: Colors.red.shade600.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
                   child: Text(
-                    "Le cumul de mortalité s'incrémente automatiquement à chaque rapport journalier "
-                    "validé (total ferme, jamais par salle). Ici, on ne saisit que la valeur de "
-                    "DÉPART (avant le suivi dans l'appli), qui s'additionne à celle déjà existante.",
+                    "Le cumul de mortalité (par salle et par sexe) s'incrémente automatiquement à "
+                    "chaque rapport journalier validé. Ici, on ne saisit que la valeur de DÉPART "
+                    "(avant le suivi dans l'appli), qui s'additionne à celle déjà existante.",
                     style: TextStyle(fontSize: 12, color: Colors.red.shade700, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -898,40 +872,27 @@ class _MortalityCumulTabState extends State<_MortalityCumulTab> {
                     child: Center(child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500))),
                   )
                 else
-                  for (final f in _farms) _farmCard(f),
+                  DailyReportFarmGrid(children: [for (final f in _farms) _farmCard(f)]),
               ],
             ),
           );
   }
 
   Widget _farmCard(Farm f) {
-    return DailyReportCard(
+    return DailyReportFarmGridCard(
+      title: f.name,
       accentColor: Colors.red.shade600,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      children: [
-        InkWell(
-          onTap: () async {
-            await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminMortalityCumulEditScreen(farm: f)));
-            _load();
-          },
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(f.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-              ),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-            ],
-          ),
-        ),
-      ],
+      onTap: () async {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminMortalityCumulEditScreen(farm: f)));
+        _load();
+      },
     );
   }
 }
 
-/// Saisie de la valeur de DÉPART du cumul de mortalité — pour une ferme + un lot, un total
-/// F/M (jamais par salle). Le champ représente le montant à AJOUTER (pas la valeur totale),
-/// remis à zéro après chaque envoi réussi.
+/// Saisie de la valeur de DÉPART du cumul de mortalité — pour une ferme + un lot, par salle
+/// et par sexe. Le champ représente le montant à AJOUTER (pas la valeur totale), remis à zéro
+/// après chaque envoi réussi.
 class AdminMortalityCumulEditScreen extends StatefulWidget {
   final Farm farm;
 

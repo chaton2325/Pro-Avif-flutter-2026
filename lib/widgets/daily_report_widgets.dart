@@ -433,3 +433,116 @@ class DailyReportGridMenuTile extends StatelessWidget {
     );
   }
 }
+
+/// Grille 2 colonnes pour une liste de fermes/bâtiments (voir AdminCumulsScreen) — remplace
+/// une longue liste verticale de cartes pleine largeur par des cartes plus compactes, deux par
+/// ligne. La largeur exacte est calculée depuis l'espace disponible (LayoutBuilder), jamais une
+/// grille rigide qui forcerait une hauteur identique quel que soit le contenu.
+class DailyReportFarmGrid extends StatelessWidget {
+  final List<Widget> children;
+  final double spacing;
+
+  const DailyReportFarmGrid({super.key, required this.children, this.spacing = 10});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = (constraints.maxWidth - spacing) / 2;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final child in children) SizedBox(width: cardWidth, child: child),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Carte "bâtiment" compacte pour DailyReportFarmGrid : plus carrée qu'une DailyReportCard
+/// pleine largeur, hauteur libre selon le contenu (jamais forcée — évite tout débordement
+/// selon ce qu'affiche chaque écran).
+class DailyReportFarmGridCard extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Color accentColor;
+  final List<Widget> infoLines;
+  final Widget? badge;
+  final VoidCallback onTap;
+  // Actions secondaires (ex: icône "voir le stock actuel") affichées sous la ligne titre,
+  // à côté du badge — jamais dans la ligne titre elle-même, trop étroite en grille 2 colonnes.
+  final List<Widget> trailingActions;
+
+  const DailyReportFarmGridCard({
+    super.key,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.accentColor = DailyReportColors.green600,
+    this.infoLines = const [],
+    this.badge,
+    this.trailingActions = const [],
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border(left: BorderSide(color: accentColor, width: 4)),
+            boxShadow: [
+              BoxShadow(color: DailyReportColors.green900.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, 5)),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, size: 17, color: Colors.grey.shade400),
+                ],
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey.shade500, fontSize: 10.5)),
+              ],
+              if (badge != null || trailingActions.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    if (badge != null) badge!,
+                    const Spacer(),
+                    for (final action in trailingActions) action,
+                  ],
+                ),
+              ],
+              if (infoLines.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                ...infoLines,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

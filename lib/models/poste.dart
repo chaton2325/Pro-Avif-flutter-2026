@@ -17,6 +17,7 @@ const PostePermissions fullAccessPermissions = PostePermissions(
   manageClients: true,
   viewClients: true,
   viewMovementHistory: true,
+  validateEggShipments: true,
 );
 
 /// Ce qu'un poste autorise dans le module Usine Aliment. Le nom du poste est libre
@@ -38,6 +39,7 @@ class PostePermissions {
   final bool manageClients;
   final bool viewClients;
   final bool viewMovementHistory;
+  final bool validateEggShipments;
 
   const PostePermissions({
     this.seeCosts = false,
@@ -55,6 +57,7 @@ class PostePermissions {
     this.manageClients = false,
     this.viewClients = false,
     this.viewMovementHistory = false,
+    this.validateEggShipments = false,
   });
 
   static const List<MapEntry<String, String>> labels = [
@@ -81,6 +84,10 @@ class PostePermissions {
     MapEntry(
       'viewMovementHistory',
       "Historique des mouvements de stock par matière/aliment (réservé à l'admin par défaut)",
+    ),
+    MapEntry(
+      'validateEggShipments',
+      'Valider les expéditions d\'œufs vers couvoir (module Rapport Journalier)',
     ),
   ];
 
@@ -116,6 +123,8 @@ class PostePermissions {
         return viewClients;
       case 'viewMovementHistory':
         return viewMovementHistory;
+      case 'validateEggShipments':
+        return validateEggShipments;
       default:
         return false;
     }
@@ -140,6 +149,9 @@ class PostePermissions {
       viewMovementHistory: key == 'viewMovementHistory'
           ? value
           : viewMovementHistory,
+      validateEggShipments: key == 'validateEggShipments'
+          ? value
+          : validateEggShipments,
     );
   }
 
@@ -160,6 +172,7 @@ class PostePermissions {
       'manageClients': manageClients,
       'viewClients': viewClients,
       'viewMovementHistory': viewMovementHistory,
+      'validateEggShipments': validateEggShipments,
     };
   }
 
@@ -181,6 +194,7 @@ class PostePermissions {
       manageClients: map['manageClients'] as bool? ?? false,
       viewClients: map['viewClients'] as bool? ?? false,
       viewMovementHistory: map['viewMovementHistory'] as bool? ?? false,
+      validateEggShipments: map['validateEggShipments'] as bool? ?? false,
     );
   }
 }

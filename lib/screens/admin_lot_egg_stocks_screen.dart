@@ -152,7 +152,7 @@ class _AdminLotEggStocksScreenState extends State<AdminLotEggStocksScreen> {
                       child: Center(child: Text('Aucun bâtiment trouvé.', style: TextStyle(color: Colors.grey.shade500))),
                     )
                   else
-                    for (final s in _visible) _farmCard(s),
+                    DailyReportFarmGrid(children: [for (final s in _visible) _farmCard(s)]),
                 ],
               ),
             ),
@@ -162,53 +162,31 @@ class _AdminLotEggStocksScreenState extends State<AdminLotEggStocksScreen> {
   Widget _farmCard(_FarmEggStockStatus s) {
     final defined = s.eggStock != null;
     final color = defined ? DailyReportColors.green600 : DailyReportColors.yellow500;
-    return DailyReportCard(
+    return DailyReportFarmGridCard(
+      title: s.farm.name,
       accentColor: color,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: InkWell(
-                onTap: () => _openFarm(s),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(s.farm.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-                    const SizedBox(height: 2),
-                    Text(
-                      s.lotNumber != null ? 'Lot ${s.lotNumber}' : 'Aucun lot en cours',
-                      style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
-                    ),
-                    if (defined) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'PO ${_totalPo(s.eggStock!)}',
-                        style: const TextStyle(color: DailyReportColors.green700, fontWeight: FontWeight.w700, fontSize: 12),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            DailyReportStatusBadge(
-              label: defined ? 'DÉFINI' : 'À DÉFINIR',
-              color: color,
-              icon: defined ? Icons.check_rounded : Icons.priority_high_rounded,
-            ),
-            IconButton(
-              icon: const Icon(Icons.visibility_outlined, color: DailyReportColors.green700, size: 20),
-              tooltip: 'Voir le stock actuel',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => CurrentEggStockScreen(farmName: s.farm.name)),
-              ),
-            ),
-            InkWell(onTap: () => _openFarm(s), child: Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400)),
-          ],
+      subtitle: [
+        s.lotNumber != null ? 'Lot ${s.lotNumber}' : 'Aucun lot en cours',
+        if (defined) 'PO ${_totalPo(s.eggStock!)}',
+      ].join(' · '),
+      badge: DailyReportStatusBadge(
+        label: defined ? 'DÉFINI' : 'À DÉFINIR',
+        color: color,
+        icon: defined ? Icons.check_rounded : Icons.priority_high_rounded,
+      ),
+      trailingActions: [
+        IconButton(
+          icon: const Icon(Icons.visibility_outlined, color: DailyReportColors.green700, size: 18),
+          tooltip: 'Voir le stock actuel',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => CurrentEggStockScreen(farmName: s.farm.name)),
+          ),
         ),
       ],
+      onTap: () => _openFarm(s),
     );
   }
 }
