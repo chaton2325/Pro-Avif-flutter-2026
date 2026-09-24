@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import '../models/current_egg_stock.dart';
+import '../models/egg_shipment.dart';
 import '../models/hatchery.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
 import 'egg_shipment_history_screen.dart';
 
-/// Expédition d'œufs à couver (OAC) vers un couvoir, pour une ferme donnée — accessible au
-/// rédacteur (sa propre ferme) comme à l'admin (n'importe quelle ferme, choisie en amont).
-/// Créée "en attente de validation" : ne diminue le STOCK actuel (currentStockOac) qu'une
-/// fois VALIDÉE par l'admin (voir EggShipmentHistoryScreen) — jamais le cumul de production,
-/// qui ne fait qu'accumuler (voir CurrentEggStock).
+/// Expédition d'œufs vers un couvoir, pour une ferme donnée — accessible au rédacteur (sa propre
+/// ferme) comme à l'admin (n'importe quelle ferme, choisie en amont). Une même expédition peut
+/// mélanger plusieurs catégories (OAC/PO/DJ/CAS/SAL, ex. 50 OAC + 30 PO en une livraison).
+/// Créée "en attente de validation" : ne diminue le STOCK actuel des catégories choisies (voir
+/// CurrentEggStock.stockFor) qu'une fois VALIDÉE par l'admin (voir EggShipmentHistoryScreen) —
+/// jamais le cumul de production, qui ne fait qu'accumuler.
 class EggShipmentScreen extends StatefulWidget {
   final String farmName;
   final bool isAdmin;
@@ -27,7 +29,9 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
   List<Hatchery> _hatcheries = [];
   bool _loading = true;
   Hatchery? _selectedHatchery;
-  final _oacController = TextEditingController();
+  final Map<String, TextEditingController> _controllers = {
+    for (final t in eggTypes) t: TextEditingController(),
+  };
   bool _saving = false;
   String? _message;
   bool _success = false;
@@ -40,7 +44,9 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
 
   @override
   void dispose() {
-    _oacController.dispose();
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -57,6 +63,10 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
     });
   }
 
+  Map<String, int> get _enteredCounts => {
+    for (final t in eggTypes) t: int.tryParse(_controllers[t]!.text) ?? 0,
+  }..removeWhere((_, count) => count <= 0);
+
   Future<void> _submit() async {
     if (_selectedHatchery == null) {
       setState(() {
@@ -65,14 +75,29 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
       });
       return;
     }
-    final oacCount = int.tryParse(_oacController.text) ?? 0;
-    if (oacCount <= 0) {
+    final counts = _enteredCounts;
+    if (counts.isEmpty) {
       setState(() {
-        _message = 'Saisissez une quantité valide.';
+        _message = 'Saisissez une quantité pour au moins une catégorie.';
         _success = false;
       });
       return;
     }
+    final shortfalls = [
+      for (final entry in counts.entries)
+        if (entry.value > (_stock?.stockFor(entry.key) ?? 0)) entry.key,
+    ];
+    if (shortfalls.isNotEmpty) {
+      final detail = shortfalls
+          .map((t) => '${eggTypeLabels[t]} (${_stock?.stockFor(t) ?? 0} disponible(s))')
+          .join(', ');
+      setState(() {
+        _message = 'Stock insuffisant : $detail.';
+        _success = false;
+      });
+      return;
+    }
+    final summary = counts.entries.map((e) => '${e.value} ${eggTypeLabels[e.key]}').join(' + ');
 
     // Dialog de confirmation avant envoi
     final confirmed = await showDialog<bool>(
@@ -85,13 +110,8 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Expédier $oacCount OAC vers ${_selectedHatchery!.name} (${widget.farmName})',
+              'Expédier $summary vers ${_selectedHatchery!.name} (${widget.farmName})',
               style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Stock OAC disponible : ${_stock?.currentStockOac ?? 0}',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
             ),
             const SizedBox(height: 12),
             Container(
@@ -137,7 +157,7 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
       farmName: widget.farmName,
       hatcheryId: _selectedHatchery!.id!,
       hatcheryName: _selectedHatchery!.name,
-      oacCount: oacCount,
+      counts: counts,
     );
     if (!mounted) return;
     if (result.error != null) {
@@ -152,9 +172,12 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
     setState(() {
       _saving = false;
       _success = true;
-      _message = 'Expédition envoyée : $oacCount OAC vers ${_selectedHatchery!.name}, en attente de validation par l\'admin.';
-      _oacController.clear();
+      _message = 'Expédition envoyée : $summary vers ${_selectedHatchery!.name}, en attente de validation par l\'admin.';
+      for (final c in _controllers.values) {
+        c.clear();
+      }
     });
+    await _load();
   }
 
   Widget _chip(String label, String value) {
@@ -174,40 +197,29 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final stockOac = _stock?.currentStockOac ?? 0;
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: dailyReportAppBar(widget.farmName, subtitle: 'Expédition d\'œufs à couver'),
+      appBar: dailyReportAppBar(widget.farmName, subtitle: 'Expédition d\'œufs'),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: DailyReportColors.green700))
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                DailyReportStatTile(
-                  value: '$stockOac',
-                  label: 'OAC disponibles (stock actuel)',
-                  color: DailyReportColors.purple600,
-                  icon: Icons.egg_rounded,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  "Le cumul de production (${_stock?.totalOac ?? 0} OAC au total) n'est jamais diminué par une expédition. "
-                  "Une expédition envoyée reste \"en attente\" et ne fait baisser le stock qu'une fois validée par l'admin.",
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
-                ),
-                const SizedBox(height: 10),
-                // Seul l'OAC s'expédie ici (vers un couvoir) : les autres catégories ne
-                // diminuent jamais, leur cumul EST déjà leur stock — affichées pour que le
-                // rédacteur voie l'état complet de sa production, pas seulement l'OAC.
+                const DailyReportSectionLabel('Stock disponible', icon: Icons.egg_rounded),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    _chip('PO en stock', '${_stock?.totalPo ?? 0}'),
-                    _chip('DJ en stock', '${_stock?.totalDj ?? 0}'),
-                    _chip('CAS en stock', '${_stock?.totalCas ?? 0}'),
-                    _chip('SAL en stock', '${_stock?.totalSal ?? 0}'),
+                    for (final t in eggTypes)
+                      _chip('${eggTypeLabels[t]} en stock', '${_stock?.stockFor(t) ?? 0}'),
                   ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  "Le cumul de production n'est jamais diminué par une expédition. Une expédition "
+                  "envoyée reste \"en attente\" et ne fait baisser le stock qu'une fois validée par l'admin.",
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
@@ -228,6 +240,13 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
                 ),
                 const SizedBox(height: 18),
                 const DailyReportSectionLabel('Nouvelle expédition', icon: Icons.local_shipping_rounded),
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 10),
+                  child: Text(
+                    "Une même expédition peut mélanger plusieurs catégories — remplissez la ou les quantités concernées.",
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+                  ),
+                ),
                 DailyReportCard(
                   children: [
                     if (_hatcheries.isEmpty)
@@ -244,16 +263,24 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
                         onChanged: (v) => setState(() => _selectedHatchery = v),
                       ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _oacController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Quantité OAC', border: OutlineInputBorder()),
-                    ),
+                    for (final t in eggTypes) ...[
+                      TextField(
+                        controller: _controllers[t],
+                        keyboardType: TextInputType.number,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          labelText: 'Quantité ${eggTypeLabels[t]}',
+                          helperText: '${_stock?.stockFor(t) ?? 0} disponible(s)',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ],
                 ),
                 if (_message != null)
                   Container(
-                    margin: const EdgeInsets.only(top: 12),
+                    margin: const EdgeInsets.only(top: 4),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: _success ? DailyReportColors.green100 : DailyReportColors.yellow100,

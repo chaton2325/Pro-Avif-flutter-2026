@@ -45,7 +45,15 @@ class CurrentEggStock {
   final int totalCas;
   final int totalSal;
   final int totalShippedOac;
+  final int totalShippedPo;
+  final int totalShippedDj;
+  final int totalShippedCas;
+  final int totalShippedSal;
   final int currentStockOac;
+  final int currentStockPo;
+  final int currentStockDj;
+  final int currentStockCas;
+  final int currentStockSal;
   final bool hasReports;
 
   CurrentEggStock({
@@ -58,9 +66,44 @@ class CurrentEggStock {
     this.totalCas = 0,
     this.totalSal = 0,
     this.totalShippedOac = 0,
+    this.totalShippedPo = 0,
+    this.totalShippedDj = 0,
+    this.totalShippedCas = 0,
+    this.totalShippedSal = 0,
     this.currentStockOac = 0,
+    this.currentStockPo = 0,
+    this.currentStockDj = 0,
+    this.currentStockCas = 0,
+    this.currentStockSal = 0,
     this.hasReports = false,
   });
+
+  /// Stock net disponible pour la catégorie donnée ('oac'|'po'|'dj'|'cas'|'sal') — à utiliser
+  /// partout où l'écran doit s'adapter à la catégorie choisie par l'utilisateur (ex. formulaire
+  /// de nouvelle expédition), plutôt que de dupliquer un switch sur chaque champ.
+  int stockFor(String eggType) => switch (eggType) {
+    'po' => currentStockPo,
+    'dj' => currentStockDj,
+    'cas' => currentStockCas,
+    'sal' => currentStockSal,
+    _ => currentStockOac,
+  };
+
+  int totalFor(String eggType) => switch (eggType) {
+    'po' => totalPo,
+    'dj' => totalDj,
+    'cas' => totalCas,
+    'sal' => totalSal,
+    _ => totalOac,
+  };
+
+  int shippedFor(String eggType) => switch (eggType) {
+    'po' => totalShippedPo,
+    'dj' => totalShippedDj,
+    'cas' => totalShippedCas,
+    'sal' => totalShippedSal,
+    _ => totalShippedOac,
+  };
 
   factory CurrentEggStock.fromMap(Map<String, dynamic> map) {
     return CurrentEggStock(
@@ -75,7 +118,15 @@ class CurrentEggStock {
       totalCas: (map['totalCas'] as num?)?.toInt() ?? 0,
       totalSal: (map['totalSal'] as num?)?.toInt() ?? 0,
       totalShippedOac: (map['totalShippedOac'] as num?)?.toInt() ?? 0,
+      totalShippedPo: (map['totalShippedPo'] as num?)?.toInt() ?? 0,
+      totalShippedDj: (map['totalShippedDj'] as num?)?.toInt() ?? 0,
+      totalShippedCas: (map['totalShippedCas'] as num?)?.toInt() ?? 0,
+      totalShippedSal: (map['totalShippedSal'] as num?)?.toInt() ?? 0,
       currentStockOac: (map['currentStockOac'] as num?)?.toInt() ?? 0,
+      currentStockPo: (map['currentStockPo'] as num?)?.toInt() ?? 0,
+      currentStockDj: (map['currentStockDj'] as num?)?.toInt() ?? 0,
+      currentStockCas: (map['currentStockCas'] as num?)?.toInt() ?? 0,
+      currentStockSal: (map['currentStockSal'] as num?)?.toInt() ?? 0,
       hasReports: map['hasReports'] as bool? ?? false,
     );
   }

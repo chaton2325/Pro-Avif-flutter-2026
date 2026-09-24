@@ -2633,11 +2633,14 @@ class MongoService {
 
   // ---- Expéditions d'œufs vers un couvoir — diminue le stock actuel (OAC), jamais le cumul ----
 
+  /// `counts` : quantité par catégorie ('oac'|'po'|'dj'|'cas'|'sal') — peut en renseigner
+  /// plusieurs à la fois pour une même expédition (ex. {'oac': 50, 'po': 30}). Les entrées à 0
+  /// ou absentes sont simplement omises.
   Future<({EggShipment? shipment, String? error})> createEggShipment({
     required String farmName,
     required String hatcheryId,
     required String hatcheryName,
-    required int oacCount,
+    required Map<String, int> counts,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/egg-shipments'),
@@ -2646,7 +2649,8 @@ class MongoService {
         'farmName': farmName,
         'hatcheryId': hatcheryId,
         'hatcheryName': hatcheryName,
-        'oacCount': oacCount,
+        for (final entry in counts.entries)
+          if (entry.value > 0) eggTypeCountFields[entry.key]!: entry.value,
         'performedBy': _redacteurName,
       }),
     );
@@ -2695,9 +2699,12 @@ class MongoService {
     return 0;
   }
 
+  /// `costPerEgg` : coût de revient par œuf (FCFA), PAR CATÉGORIE — ex. {'oac': 25, 'po': 10} —
+  /// une clé par catégorie présente dans l'expédition (OAC/PO/DJ/CAS/SAL n'ont pas la même
+  /// valeur, jamais un prix unique appliqué à tout le mélange).
   Future<({EggShipment? shipment, String? error})> validateEggShipment(
     String id, {
-    double? costPerEgg,
+    Map<String, double>? costPerEgg,
     double? indirectCosts,
     String? motif,
   }) async {

@@ -36,10 +36,14 @@ class BuildingTrackingItem {
   final int cumulativeDj;
   final int cumulativeCas;
   final int cumulativeSal;
-  // Stock d'OAC RÉELLEMENT disponible (cumulativeOac - déjà expédié vers un couvoir) —
-  // contrairement à PO/DJ/CAS/SAL qui ne sont jamais décrémentés (leur cumul EST leur stock),
-  // OAC diminue à chaque expédition validée : cumulativeOac seul surestimerait ce qu'il reste.
+  // Stock RÉELLEMENT disponible par catégorie (cumulative* - déjà expédié) : les 5 catégories
+  // sont expédiables, cumulative* seul surestimerait ce qu'il reste dès qu'une expédition a été
+  // validée.
   final int currentStockOac;
+  final int currentStockPo;
+  final int currentStockDj;
+  final int currentStockCas;
+  final int currentStockSal;
   final double? layingRatePercent;
   final double? feedConversionRatio;
 
@@ -73,6 +77,10 @@ class BuildingTrackingItem {
     this.cumulativeCas = 0,
     this.cumulativeSal = 0,
     this.currentStockOac = 0,
+    this.currentStockPo = 0,
+    this.currentStockDj = 0,
+    this.currentStockCas = 0,
+    this.currentStockSal = 0,
     this.layingRatePercent,
     this.feedConversionRatio,
   }) : currentClinic = currentClinic ?? SexCount();
@@ -127,6 +135,10 @@ class BuildingTrackingItem {
       cumulativeCas: (map['cumulativeCas'] as num?)?.toInt() ?? 0,
       cumulativeSal: (map['cumulativeSal'] as num?)?.toInt() ?? 0,
       currentStockOac: (map['currentStockOac'] as num?)?.toInt() ?? 0,
+      currentStockPo: (map['currentStockPo'] as num?)?.toInt() ?? 0,
+      currentStockDj: (map['currentStockDj'] as num?)?.toInt() ?? 0,
+      currentStockCas: (map['currentStockCas'] as num?)?.toInt() ?? 0,
+      currentStockSal: (map['currentStockSal'] as num?)?.toInt() ?? 0,
       layingRatePercent: (map['layingRatePercent'] as num?)?.toDouble(),
       feedConversionRatio: (map['feedConversionRatio'] as num?)?.toDouble(),
     );

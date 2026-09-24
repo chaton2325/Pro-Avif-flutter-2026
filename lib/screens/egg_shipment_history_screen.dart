@@ -114,7 +114,9 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
   }
 
   Future<void> _validate(EggShipment s) async {
-    final costController = TextEditingController();
+    // Un champ "coût de revient par œuf" PAR CATÉGORIE présente dans l'expédition — OAC/PO/
+    // DJ/CAS/SAL n'ont pas la même valeur, jamais un prix unique appliqué à tout le mélange.
+    final costControllers = {for (final e in s.categoryCounts) e.key: TextEditingController()};
     final indirectController = TextEditingController();
     final motifController = TextEditingController();
     final confirmed = await showDialog<bool>(
@@ -128,21 +130,23 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Valider ${s.oacCount} OAC vers ${s.hatcheryName} (${s.farmName}) va diminuer le stock d\'œufs '
-                'disponible de cette ferme. Cette action est définitive.',
+                'Valider ${s.summaryLabel} vers ${s.hatcheryName} (${s.farmName}) va diminuer le stock '
+                'd\'œufs disponible de cette ferme. Cette action est définitive.',
                 style: const TextStyle(fontSize: 13.5),
               ),
               const SizedBox(height: 16),
-              TextField(
-                controller: costController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Coût de revient par œuf (FCFA)',
-                  border: OutlineInputBorder(),
-                  hintText: 'Ex: 25.50',
+              for (final e in s.categoryCounts) ...[
+                TextField(
+                  controller: costControllers[e.key],
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Coût de revient par œuf ${eggTypeLabels[e.key]} (FCFA)',
+                    border: const OutlineInputBorder(),
+                    hintText: 'Ex: 25.50',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 12),
+              ],
               TextField(
                 controller: indirectController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -176,7 +180,10 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final costPerEgg = double.tryParse(costController.text);
+    final costPerEgg = {
+      for (final entry in costControllers.entries)
+        entry.key: double.tryParse(entry.value.text) ?? 0,
+    };
     final indirectCosts = double.tryParse(indirectController.text);
     final motif = motifController.text.trim().isEmpty ? null : motifController.text.trim();
     final result = await runBlocking(context, () => _mongoService.validateEggShipment(
@@ -205,7 +212,7 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${s.oacCount} OAC vers ${s.hatcheryName} (${s.farmName}) — le stock ne sera pas impacté.',
+              '${s.summaryLabel} vers ${s.hatcheryName} (${s.farmName}) — le stock ne sera pas impacté.',
               style: const TextStyle(fontSize: 13.5),
             ),
             const SizedBox(height: 12),
@@ -375,7 +382,7 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
           ),
         ),
         const SizedBox(height: 10),
-        Text('${s.oacCount} OAC', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: color)),
+        Text(s.summaryLabel, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: color)),
         if (s.isValidated) ...[
           const SizedBox(height: 4),
           Text(
@@ -389,7 +396,7 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
               style: TextStyle(color: Colors.blue.shade700, fontSize: 11, fontStyle: FontStyle.italic),
             ),
           ],
-          if (s.costPerEgg != null || s.indirectCosts != null || s.totalCost != null) ...[
+          if ((s.costPerEgg != null && s.costPerEgg!.isNotEmpty) || s.indirectCosts != null || s.totalCost != null) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(10),
@@ -401,7 +408,11 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (s.costPerEgg != null)
-                    Text('Coût/œuf: ${s.costPerEgg!.toStringAsFixed(0)} FCFA', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: DailyReportColors.green900)),
+                    for (final e in s.costPerEgg!.entries)
+                      Text(
+                        'Coût/œuf ${eggTypeLabels[e.key] ?? e.key}: ${e.value.toStringAsFixed(0)} FCFA',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: DailyReportColors.green900),
+                      ),
                   if (s.indirectCosts != null)
                     Text('Charges indirectes: ${s.indirectCosts!.toStringAsFixed(0)} FCFA', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: DailyReportColors.green900)),
                   if (s.totalCost != null)

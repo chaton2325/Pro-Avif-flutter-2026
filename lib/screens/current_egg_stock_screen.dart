@@ -69,22 +69,10 @@ class _CurrentEggStockScreenState extends State<CurrentEggStockScreen> {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  DailyReportStatTile(
-                    value: '${s.currentStockOac}',
-                    label: 'OAC disponibles pour expédition',
-                    color: DailyReportColors.purple600,
-                    icon: Icons.egg_rounded,
-                  ),
-                  const SizedBox(height: 6),
+                  const DailyReportSectionLabel('Stock disponible pour expédition', icon: Icons.egg_rounded),
                   Text(
-                    "Seul l'OAC part vers un couvoir : ${s.totalOac} produits au total dont "
-                    "${s.totalShippedOac} déjà expédié(s), il en reste ${s.currentStockOac}.",
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
-                  ),
-                  const SizedBox(height: 18),
-                  const DailyReportSectionLabel('Stock des autres catégories', icon: Icons.egg_alt_rounded),
-                  Text(
-                    "Rien ne les décrémente jamais (pas d'expédition pour PO/DJ/CAS/SAL) : leur cumul de production EST leur stock actuel.",
+                    "Les 5 catégories peuvent être expédiées vers un couvoir — ce stock tient compte "
+                    "de ce qui a déjà été validé (voir \"Nouvelle expédition d'œufs\").",
                     style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
                   ),
                   const SizedBox(height: 10),
@@ -92,6 +80,25 @@ class _CurrentEggStockScreenState extends State<CurrentEggStockScreen> {
                     spacing: 10,
                     runSpacing: 10,
                     children: [
+                      _totalTile('OAC', s.currentStockOac, DailyReportColors.green700),
+                      _totalTile('PO', s.currentStockPo, DailyReportColors.green600),
+                      _totalTile('DJ', s.currentStockDj, DailyReportColors.yellow600),
+                      _totalTile('CAS', s.currentStockCas, Colors.deepOrange),
+                      _totalTile('SAL', s.currentStockSal, DailyReportColors.purple600),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  const DailyReportSectionLabel('Cumul de production (ne diminue jamais)', icon: Icons.stacked_line_chart_rounded),
+                  Text(
+                    "Le cumul de production total, jamais décrémenté par une expédition — voir le stock ci-dessus pour ce qu'il reste réellement.",
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _totalTile('OAC', s.totalOac, DailyReportColors.green700),
                       _totalTile('PO', s.totalPo, DailyReportColors.green600),
                       _totalTile('DJ', s.totalDj, DailyReportColors.yellow600),
                       _totalTile('CAS', s.totalCas, Colors.deepOrange),
@@ -99,7 +106,7 @@ class _CurrentEggStockScreenState extends State<CurrentEggStockScreen> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  const DailyReportSectionLabel('Stock par salle', icon: Icons.meeting_room_rounded),
+                  const DailyReportSectionLabel('Cumul par salle', icon: Icons.meeting_room_rounded),
                   if (s.rooms.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20),
