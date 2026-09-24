@@ -7,6 +7,10 @@ class User {
   final bool isActive;
   final String language; // 'fr' or 'en'
   final int scalePrecision; // e.g., 1, 2, 3 decimal places
+  // Module Rapport Journalier — un rédacteur (role='user') ne voit "Expédier des œufs" sur son
+  // accueil que si ce champ est true (voir AdminDailyReportUsersScreen). Sans effet pour
+  // 'admin'/'validateur'. Défaut true pour ne rien changer aux comptes déjà en place.
+  final bool canCreateEggShipments;
 
   User({
     this.id,
@@ -17,6 +21,7 @@ class User {
     this.isActive = true,
     this.language = 'fr',
     this.scalePrecision = 2,
+    this.canCreateEggShipments = true,
   });
 
   Map<String, dynamic> toMap() {
@@ -29,6 +34,7 @@ class User {
       'isActive': isActive,
       'language': language,
       'scalePrecision': scalePrecision,
+      'canCreateEggShipments': canCreateEggShipments,
     };
   }
 
@@ -49,6 +55,7 @@ class User {
       isActive: map['isActive'] as bool? ?? true,
       language: map['language'] as String? ?? 'fr',
       scalePrecision: map['scalePrecision'] as int? ?? 2,
+      canCreateEggShipments: map['canCreateEggShipments'] as bool? ?? true,
     );
   }
 }

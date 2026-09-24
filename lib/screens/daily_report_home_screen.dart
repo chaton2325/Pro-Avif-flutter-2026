@@ -14,6 +14,8 @@ import 'current_egg_stock_screen.dart';
 import 'farm_feed_stock_view_screen.dart';
 import 'feed_reception_screen.dart';
 import 'egg_shipment_screen.dart';
+import 'egg_shipment_history_screen.dart';
+import 'inventory_screen.dart';
 
 /// Accueil du rapport du jour (maquette écran 02) : statut, motif de renvoi éventuel, bouton
 /// principal adaptatif — point d'entrée du parcours rédacteur.
@@ -241,79 +243,133 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 26),
-                      Badge(
-                        isLabelVisible: _pendingReceptions > 0,
-                        label: Text('$_pendingReceptions'),
-                        backgroundColor: Colors.red.shade600,
-                        alignment: const Alignment(1.04, -1.04),
-                        child: DailyReportMenuTile(
-                          icon: Icons.local_shipping_outlined,
-                          color: DailyReportColors.yellow600,
-                          title: "Réception d'aliments",
-                          subtitle: "Livraisons de l'usine à confirmer",
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => FeedReceptionScreen(farmName: _farm!.name),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DailyReportMenuTile(
-                        icon: Icons.inventory_2_outlined,
-                        color: DailyReportColors.yellow500,
-                        title: 'Stock aliments',
-                        subtitle: 'Ce qui reste, par aliment',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => FarmFeedStockViewScreen(farmName: _farm!.name),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DailyReportMenuTile(
-                        icon: Icons.groups_outlined,
-                        color: DailyReportColors.green600,
-                        title: 'Effectifs en cours',
-                        subtitle: 'Effectif actuel, par salle',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CurrentHeadcountScreen(farmName: _farm!.name),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DailyReportMenuTile(
-                        icon: Icons.egg_outlined,
-                        color: DailyReportColors.purple600,
-                        title: 'Stock œufs',
-                        subtitle: 'Cumuls OAC/PO/DJ/CAS/SAL, par salle',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CurrentEggStockScreen(farmName: _farm!.name),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DailyReportMenuTile(
-                        icon: Icons.local_shipping_rounded,
-                        color: DailyReportColors.purple600,
-                        title: 'Expédier des œufs',
-                        subtitle: 'Œufs à couver (OAC) vers un couvoir',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => EggShipmentScreen(farmName: _farm!.name),
-                          ),
-                        ),
-                      ),
+                      _actionsGrid(context),
                     ],
                   ),
                 ),
+    );
+  }
+
+  /// Actions du rédacteur en boutons carrés, deux par ligne (même esprit que "ACTIONS RAPIDES"
+  /// du module Pesées, voir _buildQuickAction dans user_dashboard.dart) plutôt qu'empilées en
+  /// pleine largeur — Wrap + largeur calculée (LayoutBuilder) pour qu'un nombre impair de
+  /// tuiles (ex. "Expédier des œufs" masqué sans la permission) laisse simplement la dernière
+  /// tuile seule sur sa ligne, jamais étirée.
+  Widget _actionsGrid(BuildContext context) {
+    final tiles = [
+      (
+        icon: Icons.local_shipping_outlined,
+        color: DailyReportColors.yellow600,
+        title: "Réception d'aliments",
+        subtitle: "Livraisons de l'usine à confirmer",
+        badgeCount: _pendingReceptions,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => FeedReceptionScreen(farmName: _farm!.name)),
+        ),
+      ),
+      (
+        icon: Icons.inventory_2_outlined,
+        color: DailyReportColors.yellow500,
+        title: 'Stock aliments',
+        subtitle: 'Ce qui reste, par aliment',
+        badgeCount: 0,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => FarmFeedStockViewScreen(farmName: _farm!.name)),
+        ),
+      ),
+      (
+        icon: Icons.groups_outlined,
+        color: DailyReportColors.green600,
+        title: 'Effectifs en cours',
+        subtitle: 'Effectif actuel, par salle',
+        badgeCount: 0,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CurrentHeadcountScreen(farmName: _farm!.name)),
+        ),
+      ),
+      (
+        icon: Icons.egg_outlined,
+        color: DailyReportColors.purple600,
+        title: 'Stock œufs',
+        subtitle: 'Cumuls OAC/PO/DJ/CAS/SAL, par salle',
+        badgeCount: 0,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CurrentEggStockScreen(farmName: _farm!.name)),
+        ),
+      ),
+      if (widget.user.canCreateEggShipments)
+        (
+          icon: Icons.local_shipping_rounded,
+          color: DailyReportColors.purple600,
+          title: 'Expédier des œufs',
+          subtitle: 'Œufs à couver (OAC) vers un couvoir',
+          badgeCount: 0,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => EggShipmentScreen(farmName: _farm!.name)),
+          ),
+        ),
+      // Toujours visible, contrairement à "Expédier des œufs" ci-dessus : voir l'historique
+      // est une simple consultation (isAdmin: false → jamais de bouton Valider/Rejeter ici),
+      // ça ne devrait pas dépendre de la permission de CRÉER une expédition — sinon un
+      // rédacteur sans cette permission n'a plus aucun moyen de consulter ce qui a déjà été
+      // expédié pour sa ferme.
+      (
+        icon: Icons.history_rounded,
+        color: DailyReportColors.purple600,
+        title: 'Historique expéditions',
+        subtitle: "Expéditions déjà envoyées",
+        badgeCount: 0,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => EggShipmentHistoryScreen(farmName: _farm!.name)),
+        ),
+      ),
+      (
+        icon: Icons.fact_check_outlined,
+        color: DailyReportColors.green700,
+        title: 'Inventaire',
+        subtitle: 'Corriger le stock (aliment ou œufs)',
+        badgeCount: 0,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => InventoryScreen(farm: _farm!)),
+        ),
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 12.0;
+        final tileWidth = (constraints.maxWidth - spacing) / 2;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final t in tiles)
+              SizedBox(
+                width: tileWidth,
+                child: Badge(
+                  isLabelVisible: t.badgeCount > 0,
+                  label: Text('${t.badgeCount}'),
+                  backgroundColor: Colors.red.shade600,
+                  alignment: const Alignment(1.02, -1.05),
+                  child: DailyReportSquareMenuTile(
+                    icon: t.icon,
+                    color: t.color,
+                    title: t.title,
+                    subtitle: t.subtitle,
+                    onTap: t.onTap,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

@@ -123,8 +123,14 @@ class EggShipment {
       rejectedAt: parseCameroonTime(map['rejectedAt']?.toString()),
       rejectedBy: map['rejectedBy'] as String?,
       rejectionReason: map['rejectionReason'] as String?,
-      costPerEgg: (map['costPerEgg'] as Map<String, dynamic>?)
-          ?.map((k, v) => MapEntry(k, (v as num).toDouble())),
+      // Le backend convertit déjà l'ancien format (un simple nombre, avant le passage au coût
+      // par catégorie) en {'oac': valeur} — ce switch est une deuxième protection si jamais du
+      // JSON brut arrivait ici sans passer par ce backend (ex. cache local).
+      costPerEgg: switch (map['costPerEgg']) {
+        Map<String, dynamic> m => m.map((k, v) => MapEntry(k, (v as num).toDouble())),
+        num n => {'oac': n.toDouble()},
+        _ => null,
+      },
       indirectCosts: (map['indirectCosts'] as num?)?.toDouble(),
       motif: map['motif'] as String?,
       totalCost: (map['totalCost'] as num?)?.toDouble(),

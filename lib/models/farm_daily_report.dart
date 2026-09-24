@@ -488,6 +488,18 @@ class FarmDailyReport {
 
   bool get isEditable => kEditableReportStatuses.contains(status);
 
+  /// Taux de ponte du jour, toutes salles confondues (PO du jour / effectif femelles au début
+  /// de ce jour, en %) — même formule que BuildingTrackingItem.layingRatePercent (Suivi
+  /// Bâtiment), recalculée ici pour l'afficher dans le récapitulatif du rapport lui-même
+  /// (rédacteur avant envoi, validateur avant validation), pas seulement dans Suivi Bâtiment.
+  /// null tant qu'aucune femelle n'est déclarée en début de journée (division évitée plutôt
+  /// que masquée par un 0 trompeur).
+  double? get layingRatePercent {
+    final totalPo = production.fold<int>(0, (a, p) => a + p.po);
+    final totalStartFemale = startCounts.fold<int>(0, (a, r) => a + r.femaleCount);
+    return totalStartFemale > 0 ? totalPo / totalStartFemale * 100 : null;
+  }
+
   String get statusLabel => switch (status) {
     'brouillon' => 'À compléter',
     'en_attente_validation' => 'En attente de validation',

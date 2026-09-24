@@ -42,6 +42,7 @@ import '../models/daily_report_notification.dart';
 import '../models/cumul.dart';
 import '../models/hatchery.dart';
 import '../models/egg_shipment.dart';
+import '../models/inventory_request.dart';
 import './session_storage.dart';
 
 /// Une ligne de comptage d'inventaire : [batchId] null = comptage global d'une matière,
@@ -179,6 +180,7 @@ class MongoService {
       isActive: !user.isActive,
       language: user.language,
       scalePrecision: user.scalePrecision,
+      canCreateEggShipments: user.canCreateEggShipments,
     );
     await updateUser(updatedUser);
   }
@@ -2741,6 +2743,109 @@ class MongoService {
       return (shipment: null, error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue');
     } catch (_) {
       return (shipment: null, error: 'Erreur inconnue');
+    }
+  }
+
+  // ---- Inventaire (correction du stock aliment/œufs, voir routers/inventory_requests.py) ----
+
+  /// autoValidate=true : réservé à l'admin, applique la correction dans le même appel (aucune
+  /// étape d'attente). Le rédacteur laisse autoValidate à false : la demande reste
+  /// "en_attente_validation" tant que l'admin ne l'a pas traitée.
+  Future<({InventoryRequest? request, String? error})> createInventoryRequest({
+    required String farmName,
+    required String type, // 'aliment' | 'oeufs'
+    List<FeedStartingQuantity> feedQuantities = const [],
+    List<RoomEggStock> eggRooms = const [],
+    String? note,
+    bool autoValidate = false,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/inventory-requests'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'farmName': farmName,
+        'type': type,
+        'feedQuantities': feedQuantities.map((q) => q.toMap()).toList(),
+        'eggRooms': eggRooms.map((r) => r.toMap()).toList(),
+        if (note != null) 'note': note,
+        'performedBy': _redacteurName,
+        'autoValidate': autoValidate,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return (request: InventoryRequest.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (request: null, error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue');
+    } catch (_) {
+      return (request: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<InventoryRequestPagedResult> getInventoryRequests({
+    String? farmName,
+    String? type,
+    String? status,
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/inventory-requests').replace(
+      queryParameters: {
+        if (farmName != null) 'farmName': farmName,
+        if (type != null) 'type': type,
+        if (status != null) 'status': status,
+        'skip': '$skip',
+        'limit': '$limit',
+      },
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return InventoryRequestPagedResult.fromMap(jsonDecode(response.body));
+    }
+    return InventoryRequestPagedResult(data: []);
+  }
+
+  // Pas de farmName = toutes fermes confondues (bulle de notification admin).
+  Future<int> getPendingInventoryRequestsCount({String? farmName}) async {
+    final uri = Uri.parse('$baseUrl/inventory-requests/pending-count').replace(
+      queryParameters: farmName != null ? {'farmName': farmName} : null,
+    );
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body)['count'] as num?)?.toInt() ?? 0;
+    }
+    return 0;
+  }
+
+  Future<({InventoryRequest? request, String? error})> validateInventoryRequest(String id) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/inventory-requests/$id/validate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'performedBy': _redacteurName}),
+    );
+    if (response.statusCode == 200) {
+      return (request: InventoryRequest.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (request: null, error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue');
+    } catch (_) {
+      return (request: null, error: 'Erreur inconnue');
+    }
+  }
+
+  Future<({InventoryRequest? request, String? error})> rejectInventoryRequest(String id, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/inventory-requests/$id/reject'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'reason': reason, 'performedBy': _redacteurName}),
+    );
+    if (response.statusCode == 200) {
+      return (request: InventoryRequest.fromMap(jsonDecode(response.body)), error: null);
+    }
+    try {
+      return (request: null, error: jsonDecode(response.body)['detail']?.toString() ?? 'Erreur inconnue');
+    } catch (_) {
+      return (request: null, error: 'Erreur inconnue');
     }
   }
 

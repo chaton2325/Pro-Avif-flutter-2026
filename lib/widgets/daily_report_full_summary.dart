@@ -91,6 +91,8 @@ class DailyReportFullSummary extends StatelessWidget {
     final totalFemaleEnd = report.endCounts.fold<int>(0, (a, r) => a + r.femaleCount) + report.clinicEnd.femaleCount;
     final totalMaleEnd = report.endCounts.fold<int>(0, (a, r) => a + r.maleCount) + report.clinicEnd.maleCount;
 
+    final layingRate = report.layingRatePercent;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -99,12 +101,25 @@ class DailyReportFullSummary extends StatelessWidget {
             Expanded(
               child: DailyReportStatTile(
                 value: '$totalFemaleProd',
-                label: 'Prod. totale',
+                label: 'Prod. totale (PO)',
                 color: DailyReportColors.green700,
                 icon: Icons.egg_outlined,
               ),
             ),
             const SizedBox(width: 10),
+            Expanded(
+              child: DailyReportStatTile(
+                value: layingRate != null ? '${layingRate.toStringAsFixed(1)}%' : '—',
+                label: 'Taux de ponte',
+                color: DailyReportColors.purple600,
+                icon: Icons.percent_rounded,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
             Expanded(
               child: DailyReportStatTile(
                 value: '$totalFemaleEnd F · $totalMaleEnd M',
@@ -506,7 +521,7 @@ class DailyReportFullSummary extends StatelessWidget {
               _prodMetric('DJ', '${p.dj}'),
               _prodMetric('CAS', '${p.cas}'),
               _prodMetric('SAL', '${p.sal}'),
-              _prodMetric('TP', '${p.tpPercent.toStringAsFixed(1)}%'),
+              _prodMetric('Taux de ponte', '${p.tpPercent.toStringAsFixed(1)}%'),
               _prodMetric('%DE', '${p.dePercent.toStringAsFixed(1)}%'),
               if (p.ecartPercent != null) _prodMetric('Écart', '${p.ecartPercent!.toStringAsFixed(1)}%'),
               _prodMetric('Cumul OAC', '${p.cumulativeOac}'),

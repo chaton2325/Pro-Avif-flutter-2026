@@ -357,22 +357,23 @@ class DailyReportMenuTile extends StatelessWidget {
   }
 }
 
-/// Tuile de menu en grille (2 par ligne) : même identité que DailyReportMenuTile (médaillon
-/// dégradé + ombre colorée) mais empilée verticalement pour tenir dans une cellule de grille
-/// étroite plutôt qu'en pleine largeur.
-class DailyReportGridMenuTile extends StatelessWidget {
+/// Bouton carré (icône centrée au-dessus, libellé en dessous, sans chevron) — même identité
+/// que DailyReportMenuTile (médaillon dégradé + ombre colorée) mais empilé verticalement pour
+/// un rendu deux par ligne façon "actions rapides" (voir _buildQuickAction, module Pesées /
+/// user_dashboard.dart), plutôt que la ligne pleine largeur de DailyReportMenuTile.
+class DailyReportSquareMenuTile extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final VoidCallback onTap;
 
-  const DailyReportGridMenuTile({
+  const DailyReportSquareMenuTile({
     super.key,
     required this.icon,
     required this.color,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.onTap,
   });
 
@@ -380,52 +381,50 @@ class DailyReportGridMenuTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
             boxShadow: [
-              BoxShadow(color: color.withValues(alpha: 0.14), blurRadius: 6, offset: const Offset(0, 3)),
+              BoxShadow(color: color.withValues(alpha: 0.14), blurRadius: 14, offset: const Offset(0, 7)),
             ],
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(colors: [color, color.withValues(alpha: 0.7)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4))],
                 ),
-                child: Icon(icon, color: Colors.white, size: 17),
+                child: Icon(icon, color: Colors.white, size: 26),
               ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 9.5, height: 1.15),
-                    ),
-                  ],
+              const SizedBox(height: 10),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  subtitle!,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 10, height: 1.2),
                 ),
-              ),
+              ],
             ],
           ),
         ),

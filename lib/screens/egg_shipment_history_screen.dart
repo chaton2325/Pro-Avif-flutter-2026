@@ -260,14 +260,15 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(
+            // Wrap plutôt que Row : 4 chips + espacements peuvent dépasser la largeur d'un
+            // écran étroit (Row ferait alors déborder au lieu de passer à la ligne).
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
               children: [
                 _filterChip('Toutes', _StatusFilter.all),
-                const SizedBox(width: 6),
                 _filterChip('En attente', _StatusFilter.pending),
-                const SizedBox(width: 6),
                 _filterChip('Validées', _StatusFilter.validated),
-                const SizedBox(width: 6),
                 _filterChip('Rejetées', _StatusFilter.rejected),
               ],
             ),
@@ -396,7 +397,11 @@ class _EggShipmentHistoryScreenState extends State<EggShipmentHistoryScreen> {
               style: TextStyle(color: Colors.blue.shade700, fontSize: 11, fontStyle: FontStyle.italic),
             ),
           ],
-          if ((s.costPerEgg != null && s.costPerEgg!.isNotEmpty) || s.indirectCosts != null || s.totalCost != null) ...[
+          // Coût de revient réservé à l'admin et à qui valide les expéditions (isAdmin ici,
+          // porté par la personne qui saisit ce coût à la validation) — jamais montré au
+          // rédacteur, qui ne fait que consulter ses propres expéditions.
+          if (widget.isAdmin &&
+              ((s.costPerEgg != null && s.costPerEgg!.isNotEmpty) || s.indirectCosts != null || s.totalCost != null)) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(10),

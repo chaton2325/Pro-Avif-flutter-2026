@@ -142,6 +142,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final passwordController = TextEditingController();
     String selectedRole = 'user';
     String? selectedFarmId;
+    bool canCreateEggShipments = true;
 
     showDialog(
       context: context,
@@ -214,6 +215,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   onChanged: (val) =>
                       setDialogState(() => selectedFarmId = val),
                 ),
+                // Uniquement pertinent pour un rédacteur : l'admin voit toutes les fermes, le
+                // validateur ne crée jamais d'expédition — inutile de les distraire avec ce
+                // réglage.
+                if (selectedRole == 'user') ...[
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    activeColor: Colors.orange,
+                    title: const Text(
+                      "Peut créer des expéditions d'œufs",
+                      style: TextStyle(fontSize: 13.5),
+                    ),
+                    subtitle: const Text(
+                      'Rapport Journalier → Expédier des œufs',
+                      style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                    ),
+                    value: canCreateEggShipments,
+                    onChanged: (v) => setDialogState(() => canCreateEggShipments = v ?? true),
+                  ),
+                ],
               ],
             ),
           ),
@@ -233,6 +255,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     password: passwordController.text.trim(),
                     role: selectedRole,
                     farmId: selectedFarmId,
+                    canCreateEggShipments: canCreateEggShipments,
                   ),
                 );
                 _refreshData();
@@ -252,6 +275,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final passwordController = TextEditingController();
     String selectedRole = user.role;
     String? selectedFarmId = user.farmId;
+    bool canCreateEggShipments = user.canCreateEggShipments;
 
     if (selectedFarmId != null && !_farms.any((f) => f.id == selectedFarmId)) {
       selectedFarmId = null;
@@ -333,6 +357,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   onChanged: (val) =>
                       setDialogState(() => selectedFarmId = val),
                 ),
+                if (selectedRole == 'user') ...[
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    activeColor: Colors.orange,
+                    title: const Text(
+                      "Peut créer des expéditions d'œufs",
+                      style: TextStyle(fontSize: 13.5),
+                    ),
+                    subtitle: const Text(
+                      'Rapport Journalier → Expédier des œufs',
+                      style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                    ),
+                    value: canCreateEggShipments,
+                    onChanged: (v) => setDialogState(() => canCreateEggShipments = v ?? true),
+                  ),
+                ],
               ],
             ),
           ),
@@ -357,6 +399,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   isActive: user.isActive,
                   language: user.language,
                   scalePrecision: user.scalePrecision,
+                  canCreateEggShipments: canCreateEggShipments,
                 );
                 await _mongoService.updateUser(updatedUser);
                 _refreshData();
