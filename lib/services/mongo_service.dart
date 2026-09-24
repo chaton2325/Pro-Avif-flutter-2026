@@ -374,7 +374,16 @@ class MongoService {
       if (accountType == 'user') {
         currentUser = User.fromMap(data['user']);
       } else {
-        currentUsineUser = UsineUser.fromMap(data['user']);
+        // `modules` est renvoyé par /auth/login comme clé top-level (calculée à partir
+        // des permissions des postes affectés), pas dans `user` lui-même — il faut la
+        // fusionner avant de construire le UsineUser, sinon fromMap retombe sur son
+        // défaut ['usine'] et le choix de module (voir UsineModuleChoiceScreen) n'apparaît
+        // jamais.
+        final usineUserMap = Map<String, dynamic>.from(data['user'] as Map);
+        if (data['modules'] != null) {
+          usineUserMap['modules'] = data['modules'];
+        }
+        currentUsineUser = UsineUser.fromMap(usineUserMap);
       }
       return accountType;
     } else if (response.statusCode == 403) {

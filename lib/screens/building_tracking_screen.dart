@@ -69,6 +69,21 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> with Si
       (i.mortalityRatePercent >= _mortalityCritical ||
           (i.securityStockDays != null && i.securityStockDays! < _stockDaysCritical));
 
+  /// Le bloc "Œufs" (stock OAC/PO/DJ/CAS/SAL) doit apparaître dès qu'il y a quelque chose à
+  /// montrer — pas seulement quand un rapport journalier a déjà été validé pour le lot en
+  /// cours (item.hasReports) : une ferme dont le lot vient de démarrer a déjà un stock de
+  /// départ saisi par l'admin (lot_egg_stocks), affiché ici en repli, et c'est justement ce
+  /// stock que "Nouvelle expédition d'œufs" (GET /current-egg-stock) montre déjà sans
+  /// attendre le premier rapport — Suivi Bâtiment doit rester cohérent avec cet écran.
+  bool _hasEggStock(BuildingTrackingItem i) =>
+      i.cumulativeOac > 0 ||
+      i.currentStockOac > 0 ||
+      i.cumulativePo > 0 ||
+      i.cumulativeDj > 0 ||
+      i.cumulativeCas > 0 ||
+      i.cumulativeSal > 0 ||
+      i.currentEggRooms.isNotEmpty;
+
   List<BuildingTrackingItem> get _visible {
     var list = _items;
     if (_searchQuery.trim().isNotEmpty) {
@@ -546,15 +561,25 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> with Si
                             : DailyReportColors.green600,
                 trailing: item.securityStockDays != null ? 'Autonomie ${item.securityStockDays!.toStringAsFixed(1)} j' : 'Autonomie —',
               ),
-              if (item.hasReports && item.cumulativePo > 0) ...[
+              if (item.currentFeedRooms.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [for (final r in item.currentFeedRooms) _feedCumulChip(r)],
+                ),
+              ],
+              if (_hasEggStock(item)) ...[
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     Icon(Icons.egg_rounded, size: 14, color: Colors.grey.shade600),
                     const SizedBox(width: 6),
-                    Text('Ponte', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.grey.shade600)),
-                    const Spacer(),
-                    Text('PO cumulé ${item.cumulativePo}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                    Text('Œufs', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.grey.shade600)),
+                    if (!item.hasReports) ...[
+                      const SizedBox(width: 6),
+                      Text('(stock de départ)', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade400)),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -564,9 +589,19 @@ class _BuildingTrackingScreenState extends State<BuildingTrackingScreen> with Si
                   children: [
                     _statChip('Taux de ponte', item.layingRatePercent != null ? '${item.layingRatePercent!.toStringAsFixed(1)}%' : '—'),
                     _statChip('Indice conso.', item.feedConversionRatio != null ? '${item.feedConversionRatio!.toStringAsFixed(2)} kg/œuf' : '—'),
-                    _statChip('OAC cumulé', '${item.cumulativeOac}'),
-                    _statChip('DJ+CAS cumulés', '${item.cumulativeDj + item.cumulativeCas}'),
+                    _statChip('OAC en stock', '${item.currentStockOac}'),
+                    _statChip('PO en stock', '${item.cumulativePo}'),
+                    _statChip('DJ+CAS en stock', '${item.cumulativeDj + item.cumulativeCas}'),
+                    _statChip('SAL en stock', '${item.cumulativeSal}'),
                   ],
+                ),
+              ],
+              if (item.currentEggRooms.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [for (final r in item.currentEggRooms) _eggCumulChip(r)],
                 ),
               ],
             ],

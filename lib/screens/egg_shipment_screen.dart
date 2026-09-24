@@ -157,6 +157,21 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
     });
   }
 
+  Widget _chip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(text: '$label  ', style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+            TextSpan(text: value, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: DailyReportColors.green900)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final stockOac = _stock?.currentStockOac ?? 0;
@@ -179,6 +194,20 @@ class _EggShipmentScreenState extends State<EggShipmentScreen> {
                   "Le cumul de production (${_stock?.totalOac ?? 0} OAC au total) n'est jamais diminué par une expédition. "
                   "Une expédition envoyée reste \"en attente\" et ne fait baisser le stock qu'une fois validée par l'admin.",
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+                ),
+                const SizedBox(height: 10),
+                // Seul l'OAC s'expédie ici (vers un couvoir) : les autres catégories ne
+                // diminuent jamais, leur cumul EST déjà leur stock — affichées pour que le
+                // rédacteur voie l'état complet de sa production, pas seulement l'OAC.
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _chip('PO en stock', '${_stock?.totalPo ?? 0}'),
+                    _chip('DJ en stock', '${_stock?.totalDj ?? 0}'),
+                    _chip('CAS en stock', '${_stock?.totalCas ?? 0}'),
+                    _chip('SAL en stock', '${_stock?.totalSal ?? 0}'),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(

@@ -1,3 +1,4 @@
+import 'cumul.dart' show RoomFeedCumul, RoomEggCumul;
 import 'farm_daily_report.dart';
 import 'lot_headcount.dart';
 
@@ -25,12 +26,20 @@ class BuildingTrackingItem {
   final String? lastReportDate;
   final List<RoomHeadcount> currentRooms;
   final SexCount currentClinic;
+  // Mêmes cumuls (Aliment consommé / Production d'œufs) que ci-dessus, mais détaillés salle par
+  // salle plutôt que seulement totalisés ferme — pour la vue d'ensemble de Suivi Bâtiment.
+  final List<RoomFeedCumul> currentFeedRooms;
+  final List<RoomEggCumul> currentEggRooms;
   final bool hasReports;
   final int cumulativeOac;
   final int cumulativePo;
   final int cumulativeDj;
   final int cumulativeCas;
   final int cumulativeSal;
+  // Stock d'OAC RÉELLEMENT disponible (cumulativeOac - déjà expédié vers un couvoir) —
+  // contrairement à PO/DJ/CAS/SAL qui ne sont jamais décrémentés (leur cumul EST leur stock),
+  // OAC diminue à chaque expédition validée : cumulativeOac seul surestimerait ce qu'il reste.
+  final int currentStockOac;
   final double? layingRatePercent;
   final double? feedConversionRatio;
 
@@ -55,12 +64,15 @@ class BuildingTrackingItem {
     this.lastReportDate,
     this.currentRooms = const [],
     SexCount? currentClinic,
+    this.currentFeedRooms = const [],
+    this.currentEggRooms = const [],
     this.hasReports = false,
     this.cumulativeOac = 0,
     this.cumulativePo = 0,
     this.cumulativeDj = 0,
     this.cumulativeCas = 0,
     this.cumulativeSal = 0,
+    this.currentStockOac = 0,
     this.layingRatePercent,
     this.feedConversionRatio,
   }) : currentClinic = currentClinic ?? SexCount();
@@ -102,12 +114,19 @@ class BuildingTrackingItem {
           .map((r) => RoomHeadcount.fromMap(r as Map<String, dynamic>))
           .toList(),
       currentClinic: SexCount.fromMap(map['currentClinic'] as Map<String, dynamic>?),
+      currentFeedRooms: (map['currentFeedRooms'] as List<dynamic>? ?? [])
+          .map((r) => RoomFeedCumul.fromMap(r as Map<String, dynamic>))
+          .toList(),
+      currentEggRooms: (map['currentEggRooms'] as List<dynamic>? ?? [])
+          .map((r) => RoomEggCumul.fromMap(r as Map<String, dynamic>))
+          .toList(),
       hasReports: map['hasReports'] as bool? ?? false,
       cumulativeOac: (map['cumulativeOac'] as num?)?.toInt() ?? 0,
       cumulativePo: (map['cumulativePo'] as num?)?.toInt() ?? 0,
       cumulativeDj: (map['cumulativeDj'] as num?)?.toInt() ?? 0,
       cumulativeCas: (map['cumulativeCas'] as num?)?.toInt() ?? 0,
       cumulativeSal: (map['cumulativeSal'] as num?)?.toInt() ?? 0,
+      currentStockOac: (map['currentStockOac'] as num?)?.toInt() ?? 0,
       layingRatePercent: (map['layingRatePercent'] as num?)?.toDouble(),
       feedConversionRatio: (map['feedConversionRatio'] as num?)?.toDouble(),
     );
