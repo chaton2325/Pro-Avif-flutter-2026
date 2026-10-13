@@ -1111,6 +1111,21 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     );
   }
 
+  String _unitLabel(String? unit) {
+    final u = (unit ?? '').trim();
+    return u.isEmpty || u.toLowerCase() == 'doses' ? 'Quantité' : u;
+  }
+
+  /// Dose saisie + unité du référentiel (« 5 » + « g » -> « 5 g »). Une saisie qui contient
+  /// déjà du texte (ex. « 2 sachets ») est conservée telle quelle.
+  String? _doseWithUnit(String raw, String unit) {
+    final text = raw.trim().replaceAll(',', '.');
+    if (text.isEmpty) return null;
+    final isNumeric = double.tryParse(text) != null;
+    final showUnit = unit.trim().isNotEmpty && unit.trim().toLowerCase() != 'doses';
+    return isNumeric && showUnit ? '$text ${unit.trim()}' : text;
+  }
+
   void _addTreatmentDialog(String type) {
     final typeRefs = _references.where((r) => r.type == type).toList();
     TreatmentReference? selectedRef = typeRefs.isNotEmpty ? typeRefs.first : null;
@@ -1147,7 +1162,12 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 ),
               TextField(
                 controller: doseController,
-                decoration: const InputDecoration(labelText: 'Dose'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  // Le libellé est directement l'unité du produit choisi (g, ml…), sans le mot
+                  // « Dose » ni parenthèses ; « Quantité » si aucune unité exploitable.
+                  labelText: _unitLabel(selectedRef?.unit),
+                ),
               ),
               const SizedBox(height: 8),
               Row(
@@ -1190,9 +1210,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                             referenceId: selectedRef!.id!,
                             type: selectedRef!.type,
                             name: selectedRef!.name,
-                            dose: doseController.text.trim().isEmpty
-                                ? null
-                                : doseController.text.trim(),
+                            dose: _doseWithUnit(
+                              doseController.text,
+                              selectedRef!.unit,
+                            ),
                             date: selectedDate,
                           ),
                         );
