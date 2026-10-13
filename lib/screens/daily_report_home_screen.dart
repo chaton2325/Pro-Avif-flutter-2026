@@ -9,6 +9,7 @@ import '../widgets/daily_report_widgets.dart';
 import 'daily_report_form_screen.dart';
 import 'daily_report_notifications_screen.dart';
 import 'daily_report_summary_screen.dart';
+import 'admin_room_transfers_screen.dart' show AdminRoomTransferEditScreen;
 import 'current_headcount_screen.dart';
 import 'current_egg_stock_screen.dart';
 import 'farm_feed_stock_view_screen.dart';
@@ -289,6 +290,19 @@ class _DailyReportHomeScreenState extends State<DailyReportHomeScreen> {
           context,
           MaterialPageRoute(builder: (_) => CurrentHeadcountScreen(farmName: _farm!.name)),
         ),
+      ),
+      // Le rédacteur déplace lui-même des sujets entre les salles de sa ferme (rapport du
+      // jour) ; l'admin le consulte dans Suivi bâtiment > Transferts de sujets.
+      (
+        icon: Icons.swap_horiz_rounded,
+        color: DailyReportColors.blue600,
+        title: 'Déplacer des sujets',
+        subtitle: 'Transfert entre salles, rapport du jour',
+        badgeCount: 0,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => AdminRoomTransferEditScreen(farm: _farm!)),
+        ).then((_) => _load()),
       ),
       (
         icon: Icons.egg_outlined,

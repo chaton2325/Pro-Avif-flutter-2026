@@ -5,6 +5,7 @@ import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/blocking_loader.dart';
 import '../widgets/daily_report_full_summary.dart';
+import '../widgets/daily_report_pdf_button.dart';
 import '../widgets/daily_report_widgets.dart';
 
 const List<String> kRejectReasonChips = [
@@ -199,6 +200,11 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
         padding: const EdgeInsets.all(16),
         children: [
           DailyReportFullSummary(report: _report, isProduction: _isProduction),
+          // Export PDF : disponible (validateur et admin) une fois le rapport validé.
+          if (_report.status == 'valide') ...[
+            const SizedBox(height: 10),
+            DailyReportPdfButton(report: _report),
+          ],
           const SizedBox(height: 16),
           if (_canAct) ...[
             const DailyReportSectionLabel('Renvoyer — motif', icon: Icons.reply_rounded),

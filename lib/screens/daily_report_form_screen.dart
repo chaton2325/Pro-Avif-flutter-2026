@@ -461,7 +461,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     }
     final ok = await _saveStep(3);
     if (!ok || !mounted) return;
-    Navigator.push(
+    final result = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (_) => DailyReportSummaryScreen(
@@ -471,6 +471,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
         ),
       ),
     );
+    // « Modifier le rapport » depuis le récapitulatif : retour à l'étape 1, données conservées.
+    if (result == 'edit' && mounted && _pageController.hasClients) {
+      _goToStep(0);
+    }
   }
 
   void _back() {
@@ -1156,7 +1160,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
             const Divider(),
             _readonlyRow(
               'Total · TP · Écart',
-              '${_report.production[i].po} · ${_report.production[i].tpPercent}% · '
+              '${_report.production[i].oac + _report.production[i].po + _report.production[i].dj + _report.production[i].cas + _report.production[i].sal} · ${_report.production[i].tpPercent}% · '
                   '${_report.production[i].ecartPercent ?? "—"}',
             ),
             _readonlyRow(

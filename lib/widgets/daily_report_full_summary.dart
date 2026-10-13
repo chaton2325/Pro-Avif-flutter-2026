@@ -89,7 +89,7 @@ class DailyReportFullSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalFemaleProd = report.production.fold<int>(0, (a, p) => a + p.po);
+    final totalFemaleProd = report.production.fold<int>(0, (a, p) => a + p.oac + p.po + p.dj + p.cas + p.sal);
     final totalFemaleEnd = report.endCounts.fold<int>(0, (a, r) => a + r.femaleCount) + report.clinicEnd.femaleCount;
     final totalMaleEnd = report.endCounts.fold<int>(0, (a, r) => a + r.maleCount) + report.clinicEnd.maleCount;
 
@@ -104,7 +104,7 @@ class DailyReportFullSummary extends StatelessWidget {
               Expanded(
                 child: DailyReportStatTile(
                   value: '$totalFemaleProd',
-                  label: 'Prod. totale (PO)',
+                  label: 'Œufs produits (total)',
                   color: DailyReportColors.green700,
                   icon: Icons.egg_outlined,
                 ),
@@ -575,6 +575,7 @@ class DailyReportFullSummary extends StatelessWidget {
               _prodMetric('DJ', '${p.dj}'),
               _prodMetric('CAS', '${p.cas}'),
               _prodMetric('SAL', '${p.sal}'),
+              _prodMetric('Total œufs', '${p.oac + p.po + p.dj + p.cas + p.sal}'),
               _prodMetric('Taux de ponte', '${p.tpPercent.toStringAsFixed(1)}%'),
               _prodMetric('%DE', '${p.dePercent.toStringAsFixed(1)}%'),
               if (p.ecartPercent != null) _prodMetric('Écart', '${p.ecartPercent!.toStringAsFixed(1)}%'),

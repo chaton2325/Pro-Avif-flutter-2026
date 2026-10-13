@@ -495,9 +495,10 @@ class FarmDailyReport {
   /// null tant qu'aucune femelle n'est déclarée en début de journée (division évitée plutôt
   /// que masquée par un 0 trompeur).
   double? get layingRatePercent {
-    final totalPo = production.fold<int>(0, (a, p) => a + p.po);
+    // Tous les œufs produits (OAC + PO + DJ + CAS + SAL) / femelles au début de la journée.
+    final totalEggs = production.fold<int>(0, (a, p) => a + p.oac + p.po + p.dj + p.cas + p.sal);
     final totalStartFemale = startCounts.fold<int>(0, (a, r) => a + r.femaleCount);
-    return totalStartFemale > 0 ? totalPo / totalStartFemale * 100 : null;
+    return totalStartFemale > 0 ? totalEggs / totalStartFemale * 100 : null;
   }
 
   String get statusLabel => switch (status) {

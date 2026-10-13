@@ -317,7 +317,7 @@ class _BuildingDashboardScreenState extends State<BuildingDashboardScreen> {
           color: DailyReportColors.purple600,
           value: item.layingRatePercent != null ? '${item.layingRatePercent!.toStringAsFixed(1)}%' : '—',
           label: 'Taux de ponte',
-          sub: 'PO / femelles',
+          sub: 'œufs produits / femelles',
         ),
         _kpi(
           icon: Icons.scale_rounded,

@@ -4,6 +4,7 @@ import '../models/user.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_full_summary.dart';
+import '../widgets/daily_report_pdf_button.dart';
 import '../widgets/daily_report_widgets.dart';
 
 /// Récapitulatif & envoi (maquette écran 07) : tout ce qui est affiché ici vient du serveur
@@ -79,6 +80,12 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           DailyReportFullSummary(report: _report, isProduction: _isProduction),
+          // Export PDF : uniquement une fois le rapport validé par le validateur.
+          if (_report.status == 'valide') ...[
+            const SizedBox(height: 8),
+            DailyReportPdfButton(report: _report),
+            const SizedBox(height: 8),
+          ],
           const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.all(14),
@@ -109,6 +116,25 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
             ),
           ],
           const SizedBox(height: 20),
+          // Retour au formulaire (à l'étape 1) : les données déjà saisies sont conservées, le
+          // formulaire reste ouvert derrière ce récapitulatif.
+          if (!widget.readOnly) ...[
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: _submitting ? null : () => Navigator.pop(context, 'edit'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: DailyReportColors.green700,
+                  side: const BorderSide(color: DailyReportColors.green600, width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                icon: const Icon(Icons.edit_rounded, size: 18),
+                label: const Text('Modifier le rapport', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           if (!widget.readOnly)
             Container(
               width: double.infinity,

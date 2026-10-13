@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/farm_daily_report.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/daily_report_pdf_button.dart';
 import '../widgets/daily_report_widgets.dart';
 
 const _pageSize = 20;
@@ -153,6 +154,8 @@ class _BuildingTrackingDayByDayScreenState extends State<BuildingTrackingDayByDa
                       ? Colors.red
                       : DailyReportColors.yellow600,
             ),
+            // Export PDF (rapports validés uniquement, géré par le bouton lui-même).
+            DailyReportPdfButton(report: r, compact: true),
           ],
         ),
         const SizedBox(height: 10),
