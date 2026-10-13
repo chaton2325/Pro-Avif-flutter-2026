@@ -61,6 +61,15 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   late List<RoomProduction> _production;
   // Bâtiment en production ? Sinon l'étape 3 n'affiche que l'eau (défaut : non).
   bool _isProduction = false;
+  // Champs dont la valeur « 0 » a été confirmée volontairement (0 est une valeur, pas un oubli).
+  // Conservé par rapport pour la session : on revient sur le rapport sans tout perdre.
+  static final Map<String, Set<String>> _confirmedByReport = {};
+  // Incrémenté par « Confirmer ces champs à 0 » pour que les champs texte réaffichent « 0 ».
+  int _zeroEpoch = 0;
+  // Résolu à la demande (pas un champ `late`) : un hot reload sur un écran déjà ouvert ne
+  // rejoue pas initState et ferait planter un champ jamais initialisé.
+  Set<String> get _confirmed =>
+      _confirmedByReport.putIfAbsent(widget.report.id, () => <String>{});
   double? _waterLiters;
   late List<TreatmentEntry> _treatments;
   // Question posée avant de proposer la saisie : tant que la réponse est "Non" (ou pas encore
@@ -159,6 +168,21 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     // "Oui" et montrer ce qui existe déjà, pas repartir de "Non" comme si de rien n'était.
     _medicamentDone = _treatments.any((t) => t.type == 'medicament');
     _vaccinDone = _treatments.any((t) => t.type == 'vaccin');
+    if (_medicamentDone) _confirmed.add('q:med');
+    if (_vaccinDone) _confirmed.add('q:vac');
+    if (widget.report.status != 'brouillon') {
+      // Déjà envoyé au validateur : tout a été renseigné, rien à signaler en rouge.
+      _confirmed.addAll(['q:med', 'q:vac']);
+      for (final m in _mortality) {
+        _confirmed.addAll(['m:${m.roomName}:f', 'm:${m.roomName}:m', 'c:${m.roomName}']);
+      }
+      _confirmed.addAll(['m:Clinique:f', 'm:Clinique:m']);
+      for (final pr in _production) {
+        for (final f in ['oac', 'po', 'dj', 'cas', 'sal']) {
+          _confirmed.add('p:${pr.roomName}:$f');
+        }
+      }
+    }
     _staffStatuses = List.of(_report.staffStatuses);
     _observation = _report.observation;
     _loadReferentials();
@@ -196,6 +220,142 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       }
       _loadingRefs = false;
     });
+  }
+
+  // ---- Champs non renseignés ----
+  // Règle : un champ numérique est « renseigné » s'il est > 0 OU si l'utilisateur a confirmé 0
+  // (tapé dessus, modifié, ou « Confirmer à 0 »). Un rapport déjà envoyé (à corriger) est
+  // considéré entièrement renseigné.
+
+  bool _zeroUnconfirmed(String key, int value) => value == 0 && !_confirmed.contains(key);
+
+  bool _consumptionMissing(String roomName) =>
+      !_confirmed.contains('c:$roomName') &&
+      !_consumption.any((c) => c.roomName == roomName && c.quantityKg > 0);
+
+  List<({int step, String label, String? key})> _missingFields() {
+    final out = <({int step, String label, String? key})>[];
+    for (final m in _mortality) {
+      if (_zeroUnconfirmed('m:${m.roomName}:f', m.femaleCount)) {
+        out.add((step: 1, label: '${m.roomName} · mortalité femelles', key: 'm:${m.roomName}:f'));
+      }
+      if (_zeroUnconfirmed('m:${m.roomName}:m', m.maleCount)) {
+        out.add((step: 1, label: '${m.roomName} · mortalité mâles', key: 'm:${m.roomName}:m'));
+      }
+    }
+    if (_zeroUnconfirmed('m:Clinique:f', _clinicMortality.femaleCount)) {
+      out.add((step: 1, label: 'Clinique · mortalité femelles', key: 'm:Clinique:f'));
+    }
+    if (_zeroUnconfirmed('m:Clinique:m', _clinicMortality.maleCount)) {
+      out.add((step: 1, label: 'Clinique · mortalité mâles', key: 'm:Clinique:m'));
+    }
+    for (final r in _report.startCounts) {
+      if (_consumptionMissing(r.roomName)) {
+        out.add((step: 1, label: '${r.roomName} · consommation d\'aliment', key: 'c:${r.roomName}'));
+      }
+    }
+    if (_isProduction) {
+      for (final p in _production) {
+        final values = {'oac': p.oac, 'po': p.po, 'dj': p.dj, 'cas': p.cas, 'sal': p.sal};
+        values.forEach((field, v) {
+          final key = 'p:${p.roomName}:$field';
+          if (_zeroUnconfirmed(key, v)) {
+            out.add((step: 2, label: '${p.roomName} · ${field.toUpperCase()}', key: key));
+          }
+        });
+      }
+    }
+    if (_waterLiters == null) {
+      out.add((step: 2, label: 'Eau consommée', key: null));
+    }
+    if (!_confirmed.contains('q:med')) {
+      out.add((step: 3, label: 'Service médicament : oui ou non ?', key: null));
+    }
+    if (!_confirmed.contains('q:vac')) {
+      out.add((step: 3, label: 'Vaccin : oui ou non ?', key: null));
+    }
+    return out;
+  }
+
+  int _missingCount(int step) => _missingFields().where((m) => m.step == step).length;
+
+  /// Bandeau en tête de chaque étape : combien de champs restent à renseigner (en rouge),
+  /// ou une confirmation verte. Le bouton confirme « 0 » pour les quantités non saisies.
+  Widget _stepBanner(int step) {
+    final missing = _missingFields().where((m) => m.step == step).toList();
+    if (missing.isEmpty) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: DailyReportColors.green100,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.check_circle_rounded, size: 18, color: DailyReportColors.green700),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Tout est renseigné sur cette étape',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: DailyReportColors.green900),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final confirmable = missing.where((m) => m.key != null).toList();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        border: Border.all(color: Colors.red.shade200),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.error_outline_rounded, size: 18, color: Colors.red.shade700),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${missing.length} champ${missing.length > 1 ? "s" : ""} à renseigner (en rouge)',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: Colors.red.shade800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '0 est une valeur : saisissez 0 (ou touchez le chiffre) si rien à déclarer.',
+            style: TextStyle(fontSize: 11.5, color: Colors.red.shade700),
+          ),
+          if (confirmable.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: Colors.red.shade800,
+                ),
+                onPressed: () => setState(() {
+                  for (final m in confirmable) {
+                    _confirmed.add(m.key!);
+                  }
+                  _zeroEpoch++;
+                }),
+                child: const Text('Confirmer ces champs à 0'),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   /// Sauvegarde les champs d'UNE étape précise (PATCH ciblé) et recharge les champs AUTO
@@ -252,6 +412,53 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   }
 
   Future<void> _finishAndReview() async {
+    final missing = _missingFields();
+    if (missing.isNotEmpty) {
+      const stepNames = {1: 'Aliment & mortalité', 2: 'Production & eau', 3: 'Traitements'};
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.error_outline_rounded, color: Colors.red.shade700),
+              const SizedBox(width: 8),
+              Expanded(child: Text('${missing.length} champ${missing.length > 1 ? "s" : ""} non renseigné${missing.length > 1 ? "s" : ""}')),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const Text(
+                  '0 est une valeur : un champ resté vide est considéré comme oublié.',
+                  style: TextStyle(fontSize: 12.5),
+                ),
+                const SizedBox(height: 10),
+                for (final step in [1, 2, 3])
+                  if (missing.any((m) => m.step == step)) ...[
+                    Text(stepNames[step]!, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+                    for (final m in missing.where((m) => m.step == step))
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8, top: 2),
+                        child: Text('• ${m.label}', style: TextStyle(fontSize: 12, color: Colors.red.shade700)),
+                      ),
+                    const SizedBox(height: 8),
+                  ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Compléter')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuer quand même')),
+          ],
+        ),
+      );
+      if (go != true) {
+        if (mounted) _goToStep(missing.first.step);
+        return;
+      }
+    }
     final ok = await _saveStep(3);
     if (!ok || !mounted) return;
     Navigator.push(
@@ -297,7 +504,9 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       backgroundColor: DailyReportColors.surface,
       appBar: dailyReportAppBar(
         (_step == 2 && !_isProduction) ? 'Eau' : _stepTitles[_step],
-        subtitle: 'Étape ${_step + 1} / 4',
+        // Entête : l'étape en cours + le total de champs encore à renseigner (tout le rapport).
+        subtitle: 'Étape ${_step + 1} / 4'
+            '${_missingFields().isEmpty ? " · tout est renseigné" : " · ${_missingFields().length} à renseigner"}',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: _back,
@@ -309,6 +518,15 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
             child: Row(
               children: List.generate(4, (i) {
                 final active = i <= _step;
+                // Étape déjà passée avec des champs non renseignés : rouge ; complète : vert.
+                final missingHere = i == 0 ? 0 : _missingCount(i);
+                final barColor = i == 0
+                    ? (active ? DailyReportColors.yellow500 : Colors.white.withValues(alpha: 0.25))
+                    : missingHere == 0
+                        ? const Color(0xFF7CE38B)
+                        : (i < _step
+                            ? Colors.red.shade400
+                            : (active ? DailyReportColors.yellow500 : Colors.white.withValues(alpha: 0.25)));
                 // Cliquable : sans bouton Retour/Suivant, c'est le seul moyen de sauter
                 // directement à une étape sans glisser plusieurs fois de suite.
                 return Expanded(
@@ -318,9 +536,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                       height: 5,
                       margin: EdgeInsets.only(right: i < 3 ? 5 : 0),
                       decoration: BoxDecoration(
-                        color: active
-                            ? DailyReportColors.yellow500
-                            : Colors.white.withValues(alpha: 0.25),
+                        color: barColor,
                         borderRadius: BorderRadius.circular(3),
                       ),
                     ),
@@ -363,15 +579,24 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                       ),
                       SingleChildScrollView(
                         padding: const EdgeInsets.all(16),
-                        child: _buildAlimentMortaliteStep(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [_stepBanner(1), _buildAlimentMortaliteStep()],
+                        ),
                       ),
                       SingleChildScrollView(
                         padding: const EdgeInsets.all(16),
-                        child: _buildProductionEauStep(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [_stepBanner(2), _buildProductionEauStep()],
+                        ),
                       ),
                       SingleChildScrollView(
                         padding: const EdgeInsets.all(16),
-                        child: _buildTraitementsPersonnelStep(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [_stepBanner(3), _buildTraitementsPersonnelStep()],
+                        ),
                       ),
                     ],
                   ),
@@ -696,6 +921,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
           _numberField(
             label: 'Litres consommés',
             value: _waterLiters,
+            missing: _waterLiters == null,
             onChanged: (v) => setState(() => _waterLiters = v),
           ),
         ]),
@@ -783,6 +1009,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   child: _stepperField(
                     label: 'Femelles',
                     value: _mortality[i].femaleCount,
+                    fieldKey: 'm:${_mortality[i].roomName}:f',
                     onChanged: (v) => setState(
                       () => _mortality[i] = _mortality[i].copyWith(
                         femaleCount: v,
@@ -795,6 +1022,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   child: _stepperField(
                     label: 'Mâles',
                     value: _mortality[i].maleCount,
+                    fieldKey: 'm:${_mortality[i].roomName}:m',
                     onChanged: (v) => setState(
                       () =>
                           _mortality[i] = _mortality[i].copyWith(maleCount: v),
@@ -815,6 +1043,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 child: _stepperField(
                   label: 'Femelles',
                   value: _clinicMortality.femaleCount,
+                  fieldKey: 'm:Clinique:f',
                   onChanged: (v) => setState(
                     () => _clinicMortality = SexCount(
                       femaleCount: v,
@@ -828,6 +1057,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 child: _stepperField(
                   label: 'Mâles',
                   value: _clinicMortality.maleCount,
+                  fieldKey: 'm:Clinique:m',
                   onChanged: (v) => setState(
                     () => _clinicMortality = SexCount(
                       femaleCount: _clinicMortality.femaleCount,
@@ -867,6 +1097,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   child: _intField(
                     'OAC',
                     _production[i].oac,
+                    fieldKey: 'p:${_production[i].roomName}:oac',
                     (v) => setState(
                       () => _production[i] = _production[i].copyWith(oac: v),
                     ),
@@ -877,6 +1108,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   child: _intField(
                     'PO',
                     _production[i].po,
+                    fieldKey: 'p:${_production[i].roomName}:po',
                     (v) => setState(
                       () => _production[i] = _production[i].copyWith(po: v),
                     ),
@@ -891,6 +1123,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   child: _intField(
                     'DJ',
                     _production[i].dj,
+                    fieldKey: 'p:${_production[i].roomName}:dj',
                     (v) => setState(
                       () => _production[i] = _production[i].copyWith(dj: v),
                     ),
@@ -901,6 +1134,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   child: _intField(
                     'CAS',
                     _production[i].cas,
+                    fieldKey: 'p:${_production[i].roomName}:cas',
                     (v) => setState(
                       () => _production[i] = _production[i].copyWith(cas: v),
                     ),
@@ -911,6 +1145,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   child: _intField(
                     'SAL',
                     _production[i].sal,
+                    fieldKey: 'p:${_production[i].roomName}:sal',
                     (v) => setState(
                       () => _production[i] = _production[i].copyWith(sal: v),
                     ),
@@ -936,6 +1171,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
           _numberField(
             label: 'Litres consommés',
             value: _waterLiters,
+            missing: _waterLiters == null,
             onChanged: (v) => setState(() => _waterLiters = v),
           ),
         ]),
@@ -969,7 +1205,9 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
           _treatmentYesNoRow(
             'Un service médicament a été fait ?',
             _medicamentDone,
+            answered: _confirmed.contains('q:med'),
             (v) => setState(() {
+              _confirmed.add('q:med');
               _medicamentDone = v;
               if (!v) _treatments.removeWhere((t) => t.type == 'medicament');
             }),
@@ -988,7 +1226,9 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
           _treatmentYesNoRow(
             'Un vaccin a été fait ?',
             _vaccinDone,
+            answered: _confirmed.contains('q:vac'),
             (v) => setState(() {
+              _confirmed.add('q:vac');
               _vaccinDone = v;
               if (!v) _treatments.removeWhere((t) => t.type == 'vaccin');
             }),
@@ -1072,24 +1312,33 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     );
   }
 
-  Widget _treatmentYesNoRow(String question, bool value, ValueChanged<bool> onChanged) {
+  Widget _treatmentYesNoRow(String question, bool value, ValueChanged<bool> onChanged, {bool answered = true}) {
     return Row(
       children: [
-        Expanded(child: Text(question, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5))),
+        Expanded(
+          child: Text(
+            answered ? question : '$question  (à répondre)',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13.5,
+              color: answered ? null : Colors.red.shade700,
+            ),
+          ),
+        ),
         const SizedBox(width: 8),
         ChoiceChip(
           label: const Text('Oui'),
-          selected: value,
+          selected: answered && value,
           selectedColor: DailyReportColors.green600,
-          labelStyle: TextStyle(color: value ? Colors.white : Colors.black87, fontSize: 12, fontWeight: FontWeight.w700),
+          labelStyle: TextStyle(color: answered && value ? Colors.white : Colors.black87, fontSize: 12, fontWeight: FontWeight.w700),
           onSelected: (_) => onChanged(true),
         ),
         const SizedBox(width: 6),
         ChoiceChip(
           label: const Text('Non'),
-          selected: !value,
+          selected: answered && !value,
           selectedColor: Colors.grey.shade500,
-          labelStyle: TextStyle(color: !value ? Colors.white : Colors.black87, fontSize: 12, fontWeight: FontWeight.w700),
+          labelStyle: TextStyle(color: answered && !value ? Colors.white : Colors.black87, fontSize: 12, fontWeight: FontWeight.w700),
           onSelected: (_) => onChanged(false),
         ),
       ],
@@ -1259,15 +1508,14 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     required String label,
     double? value,
     required ValueChanged<double?> onChanged,
+    bool missing = false,
+    Key? fieldWidgetKey,
   }) {
     return TextFormField(
+      key: fieldWidgetKey,
       initialValue: value?.toString() ?? '',
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(
-        labelText: label,
-        isDense: true,
-        border: const OutlineInputBorder(),
-      ),
+      decoration: _fieldDecoration(label, missing: missing),
       onChanged: (v) => onChanged(double.tryParse(v.replaceAll(',', '.'))),
     );
   }
@@ -1402,24 +1650,26 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                 Expanded(
                   child: _numberField(
                     label: 'Femelles (kg)',
-                    value: entry.femaleQuantityKg ?? 0,
-                    onChanged: (v) => setState(
-                      () => _consumption[i] = entry.copyWith(
-                        femaleQuantityKg: v ?? 0,
-                      ),
-                    ),
+                    value: _consumptionMissing(entry.roomName) ? null : (entry.femaleQuantityKg ?? 0),
+                    missing: _consumptionMissing(entry.roomName),
+                    fieldWidgetKey: ValueKey('c:${entry.roomName}:$i:f:$_zeroEpoch'),
+                    onChanged: (v) => setState(() {
+                      if (v != null) _confirmed.add('c:${entry.roomName}');
+                      _consumption[i] = entry.copyWith(femaleQuantityKg: v ?? 0);
+                    }),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: _numberField(
                     label: 'Mâles (kg)',
-                    value: entry.maleQuantityKg ?? 0,
-                    onChanged: (v) => setState(
-                      () => _consumption[i] = entry.copyWith(
-                        maleQuantityKg: v ?? 0,
-                      ),
-                    ),
+                    value: _consumptionMissing(entry.roomName) ? null : (entry.maleQuantityKg ?? 0),
+                    missing: _consumptionMissing(entry.roomName),
+                    fieldWidgetKey: ValueKey('c:${entry.roomName}:$i:m:$_zeroEpoch'),
+                    onChanged: (v) => setState(() {
+                      if (v != null) _confirmed.add('c:${entry.roomName}');
+                      _consumption[i] = entry.copyWith(maleQuantityKg: v ?? 0);
+                    }),
                   ),
                 ),
               ],
@@ -1430,31 +1680,78 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     );
   }
 
-  Widget _intField(String label, int value, ValueChanged<int> onChanged) {
+  /// [fieldKey] : si fourni, le champ est rouge tant qu'il vaut 0 sans avoir été confirmé ;
+  /// toute saisie (même 0) le confirme.
+  Widget _intField(String label, int value, ValueChanged<int> onChanged, {String? fieldKey}) {
+    final missing = fieldKey != null && _zeroUnconfirmed(fieldKey, value);
     return TextFormField(
-      initialValue: value.toString(),
+      // Pas de « 0 » automatique : vide = pas encore renseigné ; 0 doit être saisi.
+      key: fieldKey != null ? ValueKey('$fieldKey:$_zeroEpoch') : null,
+      initialValue: missing ? '' : value.toString(),
       keyboardType: TextInputType.number,
-      decoration: InputDecoration(
-        labelText: label,
-        isDense: true,
-        border: const OutlineInputBorder(),
-      ),
-      onChanged: (v) => onChanged(int.tryParse(v) ?? 0),
+      decoration: _fieldDecoration(label, missing: missing),
+      onChanged: (v) {
+        if (fieldKey != null) {
+          if (v.trim().isEmpty) {
+            _confirmed.remove(fieldKey);
+          } else {
+            _confirmed.add(fieldKey);
+          }
+        }
+        onChanged(int.tryParse(v) ?? 0);
+      },
     );
   }
 
+  InputDecoration _fieldDecoration(String label, {bool missing = false}) {
+    return InputDecoration(
+      labelText: label,
+      isDense: true,
+      filled: missing,
+      fillColor: missing ? Colors.red.shade50 : null,
+      labelStyle: missing ? TextStyle(color: Colors.red.shade700) : null,
+      border: const OutlineInputBorder(),
+      enabledBorder: missing
+          ? OutlineInputBorder(borderSide: BorderSide(color: Colors.red.shade300, width: 1.5))
+          : null,
+    );
+  }
+
+  /// [fieldKey] : si fourni, trois états — rouge (0 non confirmé = oubli possible), vert avec
+  /// coche (0 confirmé), jaune (valeur > 0). Toucher le chiffre confirme 0.
   Widget _stepperField({
     required String label,
     required int value,
     required ValueChanged<int> onChanged,
+    String? fieldKey,
   }) {
     final active = value > 0;
+    final missing = fieldKey != null && _zeroUnconfirmed(fieldKey, value);
+    final confirmedZero = fieldKey != null && value == 0 && _confirmed.contains(fieldKey);
+    void emit(int v) {
+      if (fieldKey != null) _confirmed.add(fieldKey);
+      onChanged(v);
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: active ? DailyReportColors.yellow100 : DailyReportColors.surface,
+        color: missing
+            ? Colors.red.shade50
+            : confirmedZero
+                ? DailyReportColors.green100
+                : active
+                    ? DailyReportColors.yellow100
+                    : DailyReportColors.surface,
         border: Border.all(
-          color: active ? DailyReportColors.yellow500 : Colors.grey.shade300,
+          color: missing
+              ? Colors.red.shade300
+              : confirmedZero
+                  ? DailyReportColors.green600
+                  : active
+                      ? DailyReportColors.yellow500
+                      : Colors.grey.shade300,
+          width: missing ? 1.5 : 1,
         ),
         borderRadius: BorderRadius.circular(10),
       ),
@@ -1464,7 +1761,11 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: missing ? Colors.red.shade700 : null,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
@@ -1482,18 +1783,26 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                       ? DailyReportColors.green700
                       : Colors.grey.shade300,
                 ),
-                onPressed: value > 0 ? () => onChanged(value - 1) : null,
+                onPressed: value > 0 ? () => emit(value - 1) : null,
               ),
-              SizedBox(
-                width: 26,
-                child: Text(
-                  '$value',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: active
-                        ? DailyReportColors.yellow600
-                        : DailyReportColors.green900,
+              // Toucher le chiffre = confirmer « 0 » sans avoir à faire +/−.
+              GestureDetector(
+                onTap: fieldKey != null && value == 0
+                    ? () => setState(() => _confirmed.add(fieldKey))
+                    : null,
+                child: SizedBox(
+                  width: 30,
+                  child: Text(
+                    missing ? '–' : '$value',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: missing
+                          ? Colors.red.shade700
+                          : active
+                              ? DailyReportColors.yellow600
+                              : DailyReportColors.green900,
+                    ),
                   ),
                 ),
               ),
@@ -1505,7 +1814,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
                   size: 22,
                   color: DailyReportColors.green700,
                 ),
-                onPressed: () => onChanged(value + 1),
+                onPressed: () => emit(value + 1),
               ),
             ],
           ),
