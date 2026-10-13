@@ -5,17 +5,14 @@ import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
 import 'admin_cumuls_screen.dart';
-import 'admin_farm_staff_screen.dart';
 import 'admin_feed_receptions_screen.dart';
 import 'admin_farm_feed_stocks_screen.dart';
 import 'admin_lot_headcounts_screen.dart';
 import 'admin_lot_egg_stocks_screen.dart';
 import 'admin_room_transfers_screen.dart';
-import 'admin_treatment_references_screen.dart';
 import 'admin_egg_shipments_screen.dart';
 import 'admin_inventory_screen.dart';
-import 'admin_daily_report_users_screen.dart';
-import 'admin_hatcheries_screen.dart';
+import 'admin_daily_report_settings_tab.dart';
 import 'building_tracking_screen.dart';
 import 'validator_overview_screen.dart';
 
@@ -40,6 +37,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
   int _pendingReceptions = 0;
   int _pendingEggShipments = 0;
   int _pendingInventoryRequests = 0;
+  int _tab = 0; // 0 = Accueil, 1 = Paramètres
 
   @override
   void initState() {
@@ -163,44 +161,23 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
         badgeCount: _pendingInventoryRequests,
         builder: (BuildContext c) => const AdminInventoryScreen(),
       ),
-      (
-        icon: Icons.medical_services_rounded,
-        color: DailyReportColors.blue600,
-        title: 'Vaccins & médicaments',
-        subtitle: 'Référentiel des traitements',
-        badgeCount: 0,
-        builder: (BuildContext c) => const AdminTreatmentReferencesScreen(),
-      ),
-      (
-        icon: Icons.egg_rounded,
-        color: DailyReportColors.blue600,
-        title: 'Couvoirs',
-        subtitle: "Vers où sont expédiés les œufs à couver",
-        badgeCount: 0,
-        builder: (BuildContext c) => const AdminHatcheriesScreen(),
-      ),
-      (
-        icon: Icons.badge_rounded,
-        color: DailyReportColors.green700,
-        title: 'Personnel',
-        subtitle: 'Créer, affecter, gérer par ferme',
-        badgeCount: 0,
-        builder: (BuildContext c) => const AdminFarmStaffScreen(),
-      ),
-      (
-        icon: Icons.admin_panel_settings_rounded,
-        color: DailyReportColors.green900,
-        title: 'Utilisateurs',
-        subtitle: "Comptes rédacteurs & validateurs, accès expéditions",
-        badgeCount: 0,
-        builder: (BuildContext c) => const AdminDailyReportUsersScreen(),
-      ),
     ];
 
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
-      appBar: dailyReportAppBar('Rapport Journalier', subtitle: 'Espace administrateur'),
-      body: ListView(
+      appBar: dailyReportAppBar(
+        'Rapport Journalier',
+        subtitle: _tab == 0 ? 'Espace administrateur' : 'Paramètres',
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Accueil'),
+          NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Paramètres'),
+        ],
+      ),
+      body: _tab == 1 ? const AdminDailyReportSettingsTab() : ListView(
         padding: const EdgeInsets.all(12),
         children: [
           _welcomeCard(),

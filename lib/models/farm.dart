@@ -2,11 +2,14 @@ class Farm {
   final String? id;
   final String name;
   final List<String> rooms;
+  // Par défaut un bâtiment n'est pas en production (rapport journalier : eau seule).
+  final bool isProduction;
 
   Farm({
     this.id,
     required this.name,
     this.rooms = const [],
+    this.isProduction = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -14,6 +17,7 @@ class Farm {
       'id': id,
       'name': name,
       'rooms': rooms,
+      'isProduction': isProduction,
     };
   }
 
@@ -24,6 +28,7 @@ class Farm {
       // Dédoublonnage défensif : une salle en double dans les données ferait planter
       // tout DropdownButtonFormField basé sur farm.rooms (valeur non unique).
       rooms: List<String>.from(map['rooms'] ?? []).toSet().toList(),
+      isProduction: map['isProduction'] == true,
     );
   }
 

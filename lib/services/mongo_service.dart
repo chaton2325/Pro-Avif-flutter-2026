@@ -61,6 +61,7 @@ class LicenseBlockedException implements Exception {
 }
 
 //Base en local : "http://192.168.1.187:8010"
+//Base en production : "https://proavif.mirhosty.com"
 class MongoService {
   static final MongoService _instance = MongoService._internal();
   final String baseUrl = "http://192.168.1.187:8010";
@@ -287,6 +288,16 @@ class MongoService {
     if (farm.id == null) return;
     await deleteFarm(farm.id!);
     await addFarm(farm);
+  }
+
+  /// Bascule un bâtiment en production (ou non) sans toucher à son id.
+  Future<bool> setFarmProduction(String id, bool isProduction) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/farms/$id/production'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'isProduction': isProduction}),
+    );
+    return response.statusCode == 200;
   }
 
   Future<void> deleteFarm(String id) async {

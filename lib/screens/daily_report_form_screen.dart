@@ -59,6 +59,8 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
   late List<RoomHeadcount> _mortality;
   late SexCount _clinicMortality;
   late List<RoomProduction> _production;
+  // Bâtiment en production ? Sinon l'étape 3 n'affiche que l'eau (défaut : non).
+  bool _isProduction = false;
   double? _waterLiters;
   late List<TreatmentEntry> _treatments;
   // Question posée avant de proposer la saisie : tant que la réponse est "Non" (ou pas encore
@@ -175,8 +177,10 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       ..retainWhere((f) => f.isActive)
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     final feedStock = await _mongoService.getFarmFeedStock(_report.farmName);
+    final farm = await _mongoService.getFarmById(_report.farmId);
     if (!mounted) return;
     setState(() {
+      _isProduction = farm?.isProduction ?? false;
       _references = refs;
       _formulas = formulas;
       _stockFormulaIds = {
@@ -217,7 +221,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
       consumptionByRoom: step == 1 ? _consumption : null,
       mortalityByRoom: step == 1 ? _mortality : null,
       clinicMortality: step == 1 ? _clinicMortality : null,
-      production: step == 2 ? _production : null,
+      production: step == 2 && _isProduction ? _production : null,
       waterLiters: step == 2 ? _waterLiters : null,
       treatments: step == 3 ? _treatments : null,
       staffStatuses: step == 3 ? _staffStatuses : null,
@@ -292,7 +296,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     return Scaffold(
       backgroundColor: DailyReportColors.surface,
       appBar: dailyReportAppBar(
-        _stepTitles[_step],
+        (_step == 2 && !_isProduction) ? 'Eau' : _stepTitles[_step],
         subtitle: 'Étape ${_step + 1} / 4',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -723,6 +727,12 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
             'Clinique',
             'F: ${_report.clinicStart.femaleCount}   M: ${_report.clinicStart.maleCount}',
           ),
+          const Divider(),
+          _readonlyRow(
+            'Total',
+            'F: ${_report.startCounts.fold<int>(_report.clinicStart.femaleCount, (s, r) => s + r.femaleCount)}'
+                '   M: ${_report.startCounts.fold<int>(_report.clinicStart.maleCount, (s, r) => s + r.maleCount)}',
+          ),
         ]),
       ],
     );
@@ -847,6 +857,7 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_isProduction)
         for (var i = 0; i < _production.length; i++) ...[
           _sectionTitle('Production — ${_production[i].roomName}'),
           _card([
@@ -1426,17 +1437,18 @@ class _DailyReportFormScreenState extends State<DailyReportFormScreen> {
         ),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      // Libellé au-dessus, boutons dessous : en demi-largeur, la ligne unique
+      // débordait et le « + » du champ de gauche passait sous le champ voisin.
+      child: Column(
         children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis,
-            ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
           ),
+          const SizedBox(height: 2),
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
