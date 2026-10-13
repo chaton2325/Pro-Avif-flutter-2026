@@ -266,3 +266,102 @@ class TransferHistoryPagedResult {
     );
   }
 }
+
+/// Récapitulatif d'un lot (en cours ou passé) d'un bâtiment, tel qu'au dernier rapport validé
+/// de ce lot — GET /daily-reports/building-tracking/{farmId}/lots.
+class BuildingLotSummary {
+  final String lotNumber;
+  final bool isCurrent;
+  final int initialFemale;
+  final int initialMale;
+  final int currentFemale;
+  final int currentMale;
+  final int reportCount;
+  final String? firstReportDate;
+  final String? lastReportDate;
+  final int? ageDays;
+  final int? ageWeeks;
+  final int cumulativeMortalityFemale;
+  final int cumulativeMortalityMale;
+  final double cumulativeConsumedKg;
+  final int cumulativeOac;
+  final int cumulativePo;
+  final int cumulativeDj;
+  final int cumulativeCas;
+  final int cumulativeSal;
+  final double? feedConversionRatio;
+
+  BuildingLotSummary({
+    required this.lotNumber,
+    this.isCurrent = false,
+    this.initialFemale = 0,
+    this.initialMale = 0,
+    this.currentFemale = 0,
+    this.currentMale = 0,
+    this.reportCount = 0,
+    this.firstReportDate,
+    this.lastReportDate,
+    this.ageDays,
+    this.ageWeeks,
+    this.cumulativeMortalityFemale = 0,
+    this.cumulativeMortalityMale = 0,
+    this.cumulativeConsumedKg = 0,
+    this.cumulativeOac = 0,
+    this.cumulativePo = 0,
+    this.cumulativeDj = 0,
+    this.cumulativeCas = 0,
+    this.cumulativeSal = 0,
+    this.feedConversionRatio,
+  });
+
+  int get initialTotal => initialFemale + initialMale;
+  int get currentTotal => currentFemale + currentMale;
+  int get cumulativeMortalityTotal => cumulativeMortalityFemale + cumulativeMortalityMale;
+  double get mortalityRatePercent => initialTotal > 0 ? cumulativeMortalityTotal / initialTotal * 100 : 0;
+
+  /// Forme attendue par les écrans de détail existants (courbes hebdomadaires du lot).
+  BuildingTrackingItem toTrackingItem({required String farmId, required String farmName}) {
+    return BuildingTrackingItem(
+      farmId: farmId,
+      farmName: farmName,
+      lotNumber: lotNumber,
+      ageDays: ageDays,
+      ageWeeks: ageWeeks,
+      initialFemale: initialFemale,
+      initialMale: initialMale,
+      currentFemale: currentFemale,
+      currentMale: currentMale,
+      cumulativeMortalityFemale: cumulativeMortalityFemale,
+      cumulativeMortalityMale: cumulativeMortalityMale,
+      cumulativeConsumedKg: cumulativeConsumedKg,
+      lastReportDate: lastReportDate,
+      hasReports: reportCount > 0,
+    );
+  }
+
+  factory BuildingLotSummary.fromMap(Map<String, dynamic> map) {
+    int i(String k) => (map[k] as num?)?.toInt() ?? 0;
+    return BuildingLotSummary(
+      lotNumber: map['lotNumber'] as String? ?? '',
+      isCurrent: map['isCurrent'] as bool? ?? false,
+      initialFemale: i('initialFemale'),
+      initialMale: i('initialMale'),
+      currentFemale: i('currentFemale'),
+      currentMale: i('currentMale'),
+      reportCount: i('reportCount'),
+      firstReportDate: map['firstReportDate'] as String?,
+      lastReportDate: map['lastReportDate'] as String?,
+      ageDays: (map['ageDays'] as num?)?.toInt(),
+      ageWeeks: (map['ageWeeks'] as num?)?.toInt(),
+      cumulativeMortalityFemale: i('cumulativeMortalityFemale'),
+      cumulativeMortalityMale: i('cumulativeMortalityMale'),
+      cumulativeConsumedKg: (map['cumulativeConsumedKg'] as num?)?.toDouble() ?? 0,
+      cumulativeOac: i('cumulativeOac'),
+      cumulativePo: i('cumulativePo'),
+      cumulativeDj: i('cumulativeDj'),
+      cumulativeCas: i('cumulativeCas'),
+      cumulativeSal: i('cumulativeSal'),
+      feedConversionRatio: (map['feedConversionRatio'] as num?)?.toDouble(),
+    );
+  }
+}

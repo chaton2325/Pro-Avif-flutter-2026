@@ -300,6 +300,16 @@ class MongoService {
     return response.statusCode == 200;
   }
 
+  /// Définit le lot en cours d'une ferme (null = retour au calcul automatique par pesée).
+  Future<bool> setFarmCurrentLot(String id, String? lotNumber) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/farms/$id/current-lot'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'lotNumber': lotNumber}),
+    );
+    return response.statusCode == 200;
+  }
+
   Future<void> deleteFarm(String id) async {
     await http.delete(Uri.parse('$baseUrl/farms/$id'));
   }
@@ -3115,6 +3125,18 @@ class MongoService {
       final data = jsonDecode(response.body);
       return (data['items'] as List<dynamic>? ?? [])
           .map((i) => BuildingTrackingItem.fromMap(i as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  /// Récapitulatif par lot (en cours + passés) d'un bâtiment.
+  Future<List<BuildingLotSummary>> getBuildingLots(String farmId) async {
+    final response = await http.get(Uri.parse('$baseUrl/daily-reports/building-tracking/$farmId/lots'));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['lots'] as List<dynamic>? ?? [])
+          .map((l) => BuildingLotSummary.fromMap(l as Map<String, dynamic>))
           .toList();
     }
     return [];

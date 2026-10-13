@@ -287,49 +287,60 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
     );
   }
 
+  /// Axes communs aux deux courbes : repères de semaine en bas, valeurs masquées à gauche
+  /// (le détail s'affiche au toucher d'un point).
+  FlTitlesData _lineTitles() => FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles: AxisTitles(sideTitles: _weekAxisTitles().sideTitles),
+      );
+
+  LineChartBarData _line(List<double> values, Color color) => LineChartBarData(
+        spots: [for (int i = 0; i < values.length; i++) FlSpot(i.toDouble(), values[i])],
+        isCurved: true,
+        curveSmoothness: 0.25,
+        preventCurveOverShooting: true,
+        color: color,
+        barWidth: 3,
+        dotData: FlDotData(
+          show: values.length <= 24,
+          getDotPainter: (spot, percent, bar, index) =>
+              FlDotCirclePainter(radius: 3, color: Colors.white, strokeWidth: 2, strokeColor: color),
+        ),
+        belowBarData: BarAreaData(show: true, color: color.withValues(alpha: 0.10)),
+      );
+
   Widget _consumptionChartCard() {
     if (_weeklyPoints.isEmpty || _weeklyPoints.every((p) => _consumedFor(p) <= 0)) {
       return _emptyChartCard();
     }
-    final maxY = _weeklyPoints.map(_consumedFor).reduce((a, b) => a > b ? a : b);
+    final values = _weeklyPoints.map(_consumedFor).toList();
+    final maxY = values.reduce((a, b) => a > b ? a : b);
     return DailyReportCard(
       accentColor: _consumptionColor,
       children: [
         SizedBox(
-          height: 180,
-          child: BarChart(
-            BarChartData(
+          height: 190,
+          child: LineChart(
+            LineChartData(
+              minY: 0,
               maxY: maxY <= 0 ? 1 : maxY * 1.25,
               gridData: const FlGridData(show: false),
               borderData: FlBorderData(show: false),
-              barTouchData: BarTouchData(
-                touchTooltipData: BarTouchTooltipData(
-                  getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem(
-                    'S${_weeklyPoints[group.x.toInt()].ageWeeks} · ${rod.toY.toStringAsFixed(1)} kg',
-                    const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
-                  ),
+              titlesData: _lineTitles(),
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipItems: (spots) => [
+                    for (final t in spots)
+                      LineTooltipItem(
+                        'S${_weeklyPoints[t.x.toInt()].ageWeeks} · ${t.y.toStringAsFixed(1)} kg',
+                        const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
+                      ),
+                  ],
                 ),
               ),
-              titlesData: FlTitlesData(
-                leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                bottomTitles: AxisTitles(sideTitles: _weekAxisTitles().sideTitles),
-              ),
-              barGroups: [
-                for (int i = 0; i < _weeklyPoints.length; i++)
-                  BarChartGroupData(
-                    x: i,
-                    barRods: [
-                      BarChartRodData(
-                        toY: _consumedFor(_weeklyPoints[i]),
-                        color: _consumptionColor,
-                        width: 10,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ],
-                  ),
-              ],
+              lineBarsData: [_line(values, _consumptionColor)],
             ),
           ),
         ),
@@ -342,9 +353,9 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
     if (_weeklyPoints.isEmpty || !hasData) {
       return _emptyChartCard();
     }
-    final maxY = _weeklyPoints
-        .map((p) => (_femaleMortalityFor(p) + _maleMortalityFor(p)).toDouble())
-        .reduce((a, b) => a > b ? a : b);
+    final female = _weeklyPoints.map((p) => _femaleMortalityFor(p).toDouble()).toList();
+    final male = _weeklyPoints.map((p) => _maleMortalityFor(p).toDouble()).toList();
+    final maxY = [...female, ...male].reduce((a, b) => a > b ? a : b);
     return DailyReportCard(
       accentColor: _mortalityMaleColor,
       children: [
@@ -357,53 +368,41 @@ class _BuildingTrackingDetailScreenState extends State<BuildingTrackingDetailScr
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 180,
-          child: BarChart(
-            BarChartData(
+          height: 190,
+          child: LineChart(
+            LineChartData(
+              minY: 0,
               maxY: maxY <= 0 ? 1 : maxY * 1.25,
               gridData: const FlGridData(show: false),
               borderData: FlBorderData(show: false),
-              barTouchData: BarTouchData(
-                touchTooltipData: BarTouchTooltipData(
-                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                    final p = _weeklyPoints[group.x.toInt()];
-                    return BarTooltipItem(
-                      'S${p.ageWeeks}\nFemelles : ${_femaleMortalityFor(p)}\nMâles : ${_maleMortalityFor(p)}',
-                      const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
-                    );
+              titlesData: _lineTitles(),
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipItems: (spots) {
+                    final week = _weeklyPoints[spots.first.x.toInt()].ageWeeks;
+                    return [
+                      for (var i = 0; i < spots.length; i++)
+                        LineTooltipItem(
+                          i == 0 ? 'S$week\n' : '',
+                          const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
+                          children: [
+                            TextSpan(
+                              text: '${spots[i].barIndex == 0 ? "Femelles" : "Mâles"} : ${spots[i].y.toInt()}',
+                              style: TextStyle(
+                                color: spots[i].barIndex == 0 ? Colors.red.shade200 : Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ];
                   },
                 ),
               ),
-              titlesData: FlTitlesData(
-                leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                bottomTitles: AxisTitles(sideTitles: _weekAxisTitles().sideTitles),
-              ),
-              barGroups: [
-                for (int i = 0; i < _weeklyPoints.length; i++)
-                  BarChartGroupData(
-                    x: i,
-                    barRods: [
-                      BarChartRodData(
-                        toY: (_femaleMortalityFor(_weeklyPoints[i]) + _maleMortalityFor(_weeklyPoints[i])).toDouble(),
-                        width: 10,
-                        borderRadius: BorderRadius.circular(3),
-                        rodStackItems: [
-                          BarChartRodStackItem(
-                            0,
-                            _femaleMortalityFor(_weeklyPoints[i]).toDouble(),
-                            _mortalityFemaleColor,
-                          ),
-                          BarChartRodStackItem(
-                            _femaleMortalityFor(_weeklyPoints[i]).toDouble(),
-                            (_femaleMortalityFor(_weeklyPoints[i]) + _maleMortalityFor(_weeklyPoints[i])).toDouble(),
-                            _mortalityMaleColor,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+              lineBarsData: [
+                _line(female, _mortalityFemaleColor),
+                _line(male, _mortalityMaleColor),
               ],
             ),
           ),

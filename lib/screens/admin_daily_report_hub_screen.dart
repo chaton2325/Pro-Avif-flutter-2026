@@ -4,15 +4,12 @@ import 'package:intl/intl.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
-import 'admin_cumuls_screen.dart';
 import 'admin_feed_receptions_screen.dart';
-import 'admin_farm_feed_stocks_screen.dart';
-import 'admin_lot_headcounts_screen.dart';
-import 'admin_lot_egg_stocks_screen.dart';
 import 'admin_room_transfers_screen.dart';
 import 'admin_egg_shipments_screen.dart';
 import 'admin_inventory_screen.dart';
 import 'admin_daily_report_settings_tab.dart';
+import 'admin_daily_report_starting_values_tab.dart';
 import 'building_tracking_screen.dart';
 import 'validator_overview_screen.dart';
 
@@ -37,7 +34,7 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
   int _pendingReceptions = 0;
   int _pendingEggShipments = 0;
   int _pendingInventoryRequests = 0;
-  int _tab = 0; // 0 = Accueil, 1 = Paramètres
+  int _tab = 0; // 0 = Accueil, 1 = Valeurs de départ, 2 = Paramètres
 
   @override
   void initState() {
@@ -106,38 +103,6 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
         builder: (BuildContext c) => const AdminFeedReceptionsScreen(),
       ),
       (
-        icon: Icons.groups_rounded,
-        color: DailyReportColors.green600,
-        title: 'Effectifs de départ',
-        subtitle: "Saisir l'effectif initial d'un lot",
-        badgeCount: 0,
-        builder: (BuildContext c) => const AdminLotHeadcountsScreen(),
-      ),
-      (
-        icon: Icons.grain_rounded,
-        color: DailyReportColors.yellow500,
-        title: 'Aliments de départ',
-        subtitle: "Saisir le stock d'aliment initial d'une ferme",
-        badgeCount: 0,
-        builder: (BuildContext c) => const AdminFarmFeedStocksScreen(),
-      ),
-      (
-        icon: Icons.egg_rounded,
-        color: DailyReportColors.purple600,
-        title: "Stock d'œufs de départ",
-        subtitle: "Saisir OAC/PO/DJ/CAS/SAL initiaux d'un lot",
-        badgeCount: 0,
-        builder: (BuildContext c) => const AdminLotEggStocksScreen(),
-      ),
-      (
-        icon: Icons.stacked_line_chart_rounded,
-        color: DailyReportColors.purple600,
-        title: 'Cumuls de départ',
-        subtitle: "S'ajoutent au cumul existant — aliments et œufs",
-        badgeCount: 0,
-        builder: (BuildContext c) => const AdminCumulsScreen(),
-      ),
-      (
         icon: Icons.swap_horiz_rounded,
         color: DailyReportColors.purple600,
         title: 'Transferts de sujets',
@@ -167,17 +132,22 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
       backgroundColor: DailyReportColors.surface,
       appBar: dailyReportAppBar(
         'Rapport Journalier',
-        subtitle: _tab == 0 ? 'Espace administrateur' : 'Paramètres',
+        subtitle: const ['Espace administrateur', 'Valeurs de départ', 'Paramètres'][_tab],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Accueil'),
+          NavigationDestination(icon: Icon(Icons.flag_rounded), label: 'Valeurs de départ'),
           NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Paramètres'),
         ],
       ),
-      body: _tab == 1 ? const AdminDailyReportSettingsTab() : ListView(
+      body: _tab == 2
+          ? const AdminDailyReportSettingsTab()
+          : _tab == 1
+              ? const AdminDailyReportStartingValuesTab()
+              : ListView(
         padding: const EdgeInsets.all(12),
         children: [
           _welcomeCard(),
