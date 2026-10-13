@@ -57,12 +57,28 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
   // Clé composite "salle|champ" (salle vide pour un flag global) — un Set suffit, pas besoin
   // d'égalité sur RejectionFlag lui-même.
   final Set<String> _selectedFlagKeys = {};
+  // Bâtiment en production ? Sinon on ne propose pas de flagger OAC/PO/DJ/CAS/SAL (rien à
+  // corriger là, le rédacteur n'a pas de saisie de production pour ce bâtiment).
+  bool _isProduction = true;
+
+  static const _productionFields = {'oac', 'po', 'dj', 'cas', 'sal'};
 
   @override
   void initState() {
     super.initState();
     _report = widget.report;
+    _loadFarm();
   }
+
+  Future<void> _loadFarm() async {
+    final farm = await _mongoService.getFarmById(_report.farmId);
+    if (!mounted || farm == null) return;
+    setState(() => _isProduction = farm.isProduction);
+  }
+
+  List<({String field, String label})> get _roomFlagFields => kRoomFlagFields
+      .where((f) => _isProduction || !_productionFields.contains(f.field))
+      .toList();
 
   bool get _canAct => _report.status == 'en_attente_validation';
 
@@ -182,7 +198,7 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          DailyReportFullSummary(report: _report),
+          DailyReportFullSummary(report: _report, isProduction: _isProduction),
           const SizedBox(height: 16),
           if (_canAct) ...[
             const DailyReportSectionLabel('Renvoyer — motif', icon: Icons.reply_rounded),
@@ -308,7 +324,7 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: kRoomFlagFields.map((f) {
+            children: _roomFlagFields.map((f) {
               final selected = _selectedFlagKeys.contains(_flagKey(roomName, f.field));
               return ChoiceChip(
                 label: Text(f.label),

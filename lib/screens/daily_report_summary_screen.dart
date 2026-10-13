@@ -34,12 +34,20 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
   final MongoService _mongoService = MongoService();
   late FarmDailyReport _report;
   bool _submitting = false;
+  bool _isProduction = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
     _report = widget.report;
+    _loadFarm();
+  }
+
+  Future<void> _loadFarm() async {
+    final farm = await _mongoService.getFarmById(_report.farmId);
+    if (!mounted || farm == null) return;
+    setState(() => _isProduction = farm.isProduction);
   }
 
   Future<void> _submit() async {
@@ -70,7 +78,7 @@ class _DailyReportSummaryScreenState extends State<DailyReportSummaryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          DailyReportFullSummary(report: _report),
+          DailyReportFullSummary(report: _report, isProduction: _isProduction),
           const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.all(14),

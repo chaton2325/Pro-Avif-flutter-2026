@@ -42,7 +42,16 @@ const Map<String, Color> _kStaffStatusColors = {
 class DailyReportFullSummary extends StatelessWidget {
   final FarmDailyReport report;
 
-  const DailyReportFullSummary({super.key, required this.report});
+  /// Le bâtiment est-il en production ? Sinon la production (œufs) n'est pas affichée, sauf si
+  /// le rapport en contient déjà (bâtiment repassé hors production après coup : jamais cacher
+  /// une donnée saisie).
+  final bool isProduction;
+
+  const DailyReportFullSummary({super.key, required this.report, this.isProduction = true});
+
+  bool get _showProduction =>
+      isProduction ||
+      report.production.any((p) => p.oac + p.po + p.dj + p.cas + p.sal > 0);
 
   List<RoomConsumptionEntry> _consumptionFor(String roomName) =>
       report.aliment.consumptionByRoom.where((c) => c.roomName == roomName).toList();
@@ -71,13 +80,6 @@ class DailyReportFullSummary extends StatelessWidget {
     return null;
   }
 
-  RoomHeadcount? _mortalityFor(String roomName) {
-    for (final m in report.mortality.byRoom) {
-      if (m.roomName == roomName) return m;
-    }
-    return null;
-  }
-
   RoomProduction? _productionFor(String roomName) {
     for (final p in report.production) {
       if (p.roomName == roomName) return p;
@@ -96,28 +98,30 @@ class DailyReportFullSummary extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: DailyReportStatTile(
-                value: '$totalFemaleProd',
-                label: 'Prod. totale (PO)',
-                color: DailyReportColors.green700,
-                icon: Icons.egg_outlined,
+        if (_showProduction) ...[
+          Row(
+            children: [
+              Expanded(
+                child: DailyReportStatTile(
+                  value: '$totalFemaleProd',
+                  label: 'Prod. totale (PO)',
+                  color: DailyReportColors.green700,
+                  icon: Icons.egg_outlined,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: DailyReportStatTile(
-                value: layingRate != null ? '${layingRate.toStringAsFixed(1)}%' : '—',
-                label: 'Taux de ponte',
-                color: DailyReportColors.purple600,
-                icon: Icons.percent_rounded,
+              const SizedBox(width: 10),
+              Expanded(
+                child: DailyReportStatTile(
+                  value: layingRate != null ? '${layingRate.toStringAsFixed(1)}%' : '—',
+                  label: 'Taux de ponte',
+                  color: DailyReportColors.purple600,
+                  icon: Icons.percent_rounded,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
         Row(
           children: [
             Expanded(
@@ -142,29 +146,7 @@ class DailyReportFullSummary extends StatelessWidget {
         const SizedBox(height: 18),
 
         DailyReportSectionLabel('Effectifs par salle', icon: Icons.groups_rounded),
-        DailyReportCard(children: [
-          for (final start in report.startCounts) ...[
-            _roomHeadcountBlock(
-              start.roomName,
-              start.femaleCount,
-              start.maleCount,
-              _endCountFor(start.roomName)?.femaleCount ?? start.femaleCount,
-              _endCountFor(start.roomName)?.maleCount ?? start.maleCount,
-              _mortalityFor(start.roomName)?.femaleCount ?? 0,
-              _mortalityFor(start.roomName)?.maleCount ?? 0,
-            ),
-            const Divider(),
-          ],
-          _roomHeadcountBlock(
-            'Clinique',
-            report.clinicStart.femaleCount,
-            report.clinicStart.maleCount,
-            report.clinicEnd.femaleCount,
-            report.clinicEnd.maleCount,
-            report.mortality.clinic.femaleCount,
-            report.mortality.clinic.maleCount,
-          ),
-        ]),
+        DailyReportCard(children: [_headcountTable()]),
 
         const SizedBox(height: 16),
         DailyReportSectionLabel('Aliment', icon: Icons.grain_rounded),
@@ -256,12 +238,13 @@ class DailyReportFullSummary extends StatelessWidget {
         ],
 
         const SizedBox(height: 16),
-        DailyReportSectionLabel('Production', icon: Icons.egg_outlined),
+        DailyReportSectionLabel(_showProduction ? 'Production' : 'Eau', icon: Icons.egg_outlined),
         DailyReportCard(children: [
-          for (final start in report.startCounts) ...[
-            _productionBlock(start.roomName),
-            const Divider(),
-          ],
+          if (_showProduction)
+            for (final start in report.startCounts) ...[
+              _productionBlock(start.roomName),
+              const Divider(),
+            ],
           _row('Eau consommée', '${report.waterLiters ?? 0} L'),
         ]),
 
@@ -344,35 +327,106 @@ class DailyReportFullSummary extends StatelessWidget {
     );
   }
 
-  /// Effectif début → fin d'une salle, avec la mortalité du jour affichée juste en dessous
-  /// en rouge quand elle explique la baisse — pour ne pas avoir à aller chercher la raison
-  /// dans la carte Mortalité plus bas.
-  Widget _roomHeadcountBlock(String roomName, int startF, int startM, int endF, int endM, int mortF, int mortM) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  /// Tableau « Début de journée / Restant » par salle (+ clinique et total), femelles et mâles
+  /// côte à côte : plus lisible qu'une flèche « A → B » sur une seule ligne. La mortalité du
+  /// jour n'est pas répétée ici, elle a sa propre carte (Mortalité).
+  Widget _headcountTable() {
+    final rows = <({String name, int sF, int sM, int eF, int eM})>[
+      for (final start in report.startCounts)
+        (
+          name: start.roomName,
+          sF: start.femaleCount,
+          sM: start.maleCount,
+          eF: _endCountFor(start.roomName)?.femaleCount ?? start.femaleCount,
+          eM: _endCountFor(start.roomName)?.maleCount ?? start.maleCount,
+        ),
+      (
+        name: 'Clinique',
+        sF: report.clinicStart.femaleCount,
+        sM: report.clinicStart.maleCount,
+        eF: report.clinicEnd.femaleCount,
+        eM: report.clinicEnd.maleCount,
+      ),
+    ];
+    final totalSF = rows.fold<int>(0, (a, r) => a + r.sF);
+    final totalSM = rows.fold<int>(0, (a, r) => a + r.sM);
+    final totalEF = rows.fold<int>(0, (a, r) => a + r.eF);
+    final totalEM = rows.fold<int>(0, (a, r) => a + r.eM);
+
+    // Femelles en rose, mâles (coqs) en bleu — teinte claire en fond de colonne, foncée pour le texte.
+    const femaleColor = Color(0xFFC2185B);
+    const femaleBg = Color(0xFFFCE4EC);
+    const maleColor = Color(0xFF1565C0);
+    const maleBg = Color(0xFFE3F2FD);
+
+    Widget cell(
+      String text, {
+      bool bold = false,
+      bool header = false,
+      TextAlign align = TextAlign.center,
+      Color? color,
+      Color? background,
+    }) {
+      return Container(
+        color: background,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+        child: Text(
+          text,
+          textAlign: align,
+          style: TextStyle(
+            fontSize: header ? 11.5 : 12.5,
+            fontWeight: bold || header ? FontWeight.w800 : FontWeight.w600,
+            color: color ?? (header ? DailyReportColors.green900 : Colors.black87),
+          ),
+        ),
+      );
+    }
+
+    TableRow dataRow(String name, int sF, int sM, int eF, int eM, {bool total = false}) {
+      return TableRow(
+        decoration: BoxDecoration(
+          color: total ? DailyReportColors.green100 : null,
+          border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+        ),
         children: [
-          Row(
+          cell(name, bold: true, align: TextAlign.left),
+          cell('$sF', bold: total, color: femaleColor, background: femaleBg),
+          cell('$eF', bold: true, color: femaleColor, background: femaleBg),
+          cell('$sM', bold: total, color: maleColor, background: maleBg),
+          cell('$eM', bold: true, color: maleColor, background: maleBg),
+        ],
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Table(
+        columnWidths: const {
+          0: FlexColumnWidth(2.2),
+          1: FlexColumnWidth(1),
+          2: FlexColumnWidth(1),
+          3: FlexColumnWidth(1),
+          4: FlexColumnWidth(1),
+        },
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        children: [
+          // Une seule ligne d'en-tête ; les colonnes d'un même sexe se suivent (début puis
+          // restant) pour comparer d'un coup d'œil.
+          TableRow(
+            decoration: BoxDecoration(
+              color: DailyReportColors.green100,
+              border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+            ),
             children: [
-              Expanded(child: Text(roomName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-              Text(
-                '$startF F · $startM M  →  $endF F · $endM M',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
-              ),
+              cell('Salle', header: true, align: TextAlign.left),
+              cell('Début F', header: true, color: femaleColor, background: femaleBg),
+              cell('Restant F', header: true, color: femaleColor, background: femaleBg),
+              cell('Début M', header: true, color: maleColor, background: maleBg),
+              cell('Restant M', header: true, color: maleColor, background: maleBg),
             ],
           ),
-          if (mortF > 0 || mortM > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  '− $mortF F · $mortM M (mortalité)',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: Colors.red.shade700),
-                ),
-              ),
-            ),
+          for (final r in rows) dataRow(r.name, r.sF, r.sM, r.eF, r.eM),
+          dataRow('Total', totalSF, totalSM, totalEF, totalEM, total: true),
         ],
       ),
     );
