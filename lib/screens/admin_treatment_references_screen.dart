@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/treatment_reference.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
+import '../widgets/blocking_loader.dart';
 import '../widgets/daily_report_widgets.dart';
 
 enum _TypeFilter { all, vaccin, medicament }
@@ -124,27 +125,34 @@ class _AdminTreatmentReferencesScreenState
               ),
               onPressed: () async {
                 if (nameController.text.trim().isEmpty) return;
-                if (existing == null) {
-                  await _mongoService.createTreatmentReference(
-                    TreatmentReference(
-                      type: type,
-                      name: nameController.text.trim(),
-                      unit: unitController.text.trim().isEmpty
-                          ? 'doses'
-                          : unitController.text.trim(),
-                    ),
-                  );
-                } else {
-                  await _mongoService.updateTreatmentReference(
-                    TreatmentReference(
-                      id: existing.id,
-                      type: type,
-                      name: nameController.text.trim(),
-                      unit: unitController.text.trim(),
-                      isActive: existing.isActive,
-                    ),
-                  );
-                }
+                // Modale bloquante : l'écran reste inutilisable (et un double appui
+                // impossible) tant que l'enregistrement n'est pas terminé.
+                // Au moins 1 s : sur un réseau rapide la modale ne ferait que clignoter.
+                final minDisplay = Future<void>.delayed(const Duration(seconds: 1));
+                await runBlocking(context, () async {
+                  if (existing == null) {
+                    await _mongoService.createTreatmentReference(
+                      TreatmentReference(
+                        type: type,
+                        name: nameController.text.trim(),
+                        unit: unitController.text.trim().isEmpty
+                            ? 'doses'
+                            : unitController.text.trim(),
+                      ),
+                    );
+                  } else {
+                    await _mongoService.updateTreatmentReference(
+                      TreatmentReference(
+                        id: existing.id,
+                        type: type,
+                        name: nameController.text.trim(),
+                        unit: unitController.text.trim(),
+                        isActive: existing.isActive,
+                      ),
+                    );
+                  }
+                  await minDisplay;
+                });
                 if (!context.mounted) return;
                 Navigator.pop(context);
                 _load();
