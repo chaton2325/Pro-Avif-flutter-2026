@@ -129,14 +129,122 @@ class _ValidatorReportDetailScreenState extends State<ValidatorReportDetailScree
     return confirmed == true;
   }
 
-  Future<void> _validate() async {
-    final confirmed = await _confirm(
-      'Valider ce rapport ?',
-      'Êtes-vous sûr de vouloir valider le rapport de ${_report.farmName} du ${_report.date} ? '
-          "Cette action est définitive — le rapport ne pourra plus être modifié.",
-      color: DailyReportColors.green700,
-      confirmLabel: 'Valider',
+  /// Points d'attention relevés sur le rapport avant validation : jamais bloquants (c'est au
+  /// validateur de juger), mais affichés en tête de l'avertissement pour ne pas valider « à
+  /// l'aveugle ».
+  List<String> _validationAnomalies() {
+    final r = _report;
+    final out = <String>[];
+    if (r.aliment.totalConsumedKg <= 0) {
+      out.add("Aucune consommation d'aliment déclarée.");
+    }
+    if (r.aliment.stockAfterKg < 0) {
+      out.add("Le stock d'aliment deviendrait négatif (${r.aliment.stockAfterKg.toStringAsFixed(1)} kg).");
+    }
+    if (r.waterLiters == null || r.waterLiters! <= 0) {
+      out.add("Eau consommée non renseignée ou à 0.");
+    }
+    final eggs = r.production.fold<int>(0, (a, p) => a + p.oac + p.po + p.dj + p.cas + p.sal);
+    if (_isProduction && eggs == 0) {
+      out.add("Bâtiment en production mais aucun œuf déclaré.");
+    }
+    final startFemales = r.startCounts.fold<int>(0, (a, e) => a + e.femaleCount);
+    final startMales = r.startCounts.fold<int>(0, (a, e) => a + e.maleCount);
+    final mortF = r.mortality.totalFemale;
+    final mortM = r.mortality.totalMale;
+    if ((startFemales > 0 && mortF / startFemales * 100 >= 1) ||
+        (startMales > 0 && mortM / startMales * 100 >= 1)) {
+      out.add("Mortalité élevée aujourd'hui : $mortF F · $mortM M.");
+    }
+    return out;
+  }
+
+  Future<bool> _confirmValidation() async {
+    final anomalies = _validationAnomalies();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 26),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text('Avertissement avant validation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5)),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Rapport de ${_report.farmName} du ${_report.date}.',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  border: Border.all(color: Colors.orange.shade200),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  "La validation est DÉFINITIVE : le rapport ne pourra plus être modifié ni renvoyé "
+                  "au rédacteur. Elle débite le stock d'aliment de la ferme et met à jour les "
+                  "effectifs, cumuls et statistiques du lot.",
+                  style: TextStyle(fontSize: 12.5),
+                ),
+              ),
+              if (anomalies.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Points à vérifier :',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: Colors.red.shade700),
+                ),
+                const SizedBox(height: 4),
+                for (final a in anomalies)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.error_outline_rounded, size: 15, color: Colors.red.shade600),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text(a, style: TextStyle(fontSize: 12.5, color: Colors.red.shade800))),
+                      ],
+                    ),
+                  ),
+              ],
+              const SizedBox(height: 12),
+              const Text(
+                'Avez-vous bien relu toutes les sections ? En cas de doute, renvoyez le rapport '
+                'avec un motif plutôt que de le valider.',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Revoir')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: anomalies.isEmpty ? DailyReportColors.green700 : Colors.orange.shade800,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(anomalies.isEmpty ? 'Valider définitivement' : 'Valider malgré tout'),
+          ),
+        ],
+      ),
     );
+    return result == true;
+  }
+
+  Future<void> _validate() async {
+    final confirmed = await _confirmValidation();
     if (!confirmed || !mounted) return;
 
     setState(() {

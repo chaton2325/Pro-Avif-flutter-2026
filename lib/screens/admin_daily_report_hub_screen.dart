@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
@@ -134,20 +135,13 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
         'Rapport Journalier',
         subtitle: const ['Espace administrateur', 'Valeurs de départ', 'Paramètres'][_tab],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Accueil'),
-          NavigationDestination(icon: Icon(Icons.flag_rounded), label: 'Valeurs de départ'),
-          NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Paramètres'),
-        ],
-      ),
-      body: _tab == 2
-          ? const AdminDailyReportSettingsTab()
-          : _tab == 1
-              ? const AdminDailyReportStartingValuesTab()
-              : ListView(
+      bottomNavigationBar: _bottomNav(),
+      // IndexedStack : chaque onglet garde son état (défilement, données chargées) quand on
+      // passe de l'un à l'autre, au lieu d'être reconstruit à chaque fois.
+      body: IndexedStack(
+        index: _tab,
+        children: [
+          ListView(
         padding: const EdgeInsets.all(12),
         children: [
           _welcomeCard(),
@@ -189,6 +183,84 @@ class _AdminDailyReportHubScreenState extends State<AdminDailyReportHubScreen> {
             },
           ),
         ],
+      ),
+          const AdminDailyReportStartingValuesTab(),
+          const AdminDailyReportSettingsTab(),
+        ],
+      ),
+    );
+  }
+
+  /// Barre de navigation du bas : icône pleine + pastille verte sur l'onglet actif, icône
+  /// contour sinon, pastille rouge du nombre d'éléments en attente sur « Accueil ».
+  Widget _bottomNav() {
+    final pending = _pendingReceptions + _pendingEggShipments + _pendingInventoryRequests;
+    Widget icon(IconData data, {int badge = 0}) => Badge(
+          isLabelVisible: badge > 0,
+          label: Text(badge > 99 ? '99+' : '$badge'),
+          backgroundColor: Colors.red.shade600,
+          child: Icon(data),
+        );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: DailyReportColors.green900.withValues(alpha: 0.10),
+            blurRadius: 14,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          height: 68,
+          indicatorColor: DailyReportColors.green100,
+          indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(
+                size: 24,
+                color: states.contains(WidgetState.selected)
+                    ? DailyReportColors.green700
+                    : DailyReportColors.grey500,
+              )),
+          labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
+                fontSize: 11.5,
+                fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w600,
+                color: states.contains(WidgetState.selected)
+                    ? DailyReportColors.green900
+                    : DailyReportColors.grey500,
+              )),
+        ),
+        child: NavigationBar(
+          selectedIndex: _tab,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          onDestinationSelected: (i) {
+            if (i != _tab) {
+              HapticFeedback.selectionClick();
+              setState(() => _tab = i);
+            }
+          },
+          destinations: [
+            NavigationDestination(
+              icon: icon(Icons.dashboard_outlined, badge: pending),
+              selectedIcon: icon(Icons.dashboard_rounded, badge: pending),
+              label: 'Accueil',
+            ),
+            NavigationDestination(
+              icon: icon(Icons.flag_outlined),
+              selectedIcon: icon(Icons.flag_rounded),
+              label: 'Valeurs de départ',
+            ),
+            NavigationDestination(
+              icon: icon(Icons.settings_outlined),
+              selectedIcon: icon(Icons.settings_rounded),
+              label: 'Paramètres',
+            ),
+          ],
+        ),
       ),
     );
   }
