@@ -7,8 +7,8 @@ import '../widgets/daily_report_widgets.dart';
 
 const _pageSize = 20;
 
-/// Historique des ajouts au cumul d'œufs de départ, pour une ferme + un lot — page séparée et
-/// paginée. Un ajout n'écrase jamais rien : journal d'additions successives, par salle (voir
+/// Historique des saisies au cumul d'œufs de départ, pour une ferme + un lot — page séparée et
+/// paginée. Chaque saisie remplace la valeur précédente, qui reste ici : journal des saisies successives (chacune remplace la précédente), par salle (voir
 /// POST /cumuls/eggs/add côté backend).
 class LotEggCumulHistoryScreen extends StatefulWidget {
   final String farmName;
@@ -82,7 +82,7 @@ class _LotEggCumulHistoryScreenState extends State<LotEggCumulHistoryScreen> {
                               children: [
                                 Icon(Icons.history_rounded, size: 40, color: Colors.grey.shade400),
                                 const SizedBox(height: 10),
-                                Text('Aucun ajout enregistré', style: TextStyle(color: Colors.grey.shade500)),
+                                Text('Aucune saisie enregistrée', style: TextStyle(color: Colors.grey.shade500)),
                               ],
                             ),
                           ),
@@ -131,7 +131,7 @@ class _LotEggCumulHistoryScreenState extends State<LotEggCumulHistoryScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Ajouté le $dateStr${h.performedBy != null ? ' par ${h.performedBy}' : ''}',
+                'Défini le $dateStr${h.performedBy != null ? ' par ${h.performedBy}' : ''}',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
             ),
@@ -144,7 +144,7 @@ class _LotEggCumulHistoryScreenState extends State<LotEggCumulHistoryScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'OAC +${h.oac} · PO +${h.po} · DJ +${h.dj} · CAS +${h.cas} · SAL +${h.sal}',
+          'OAC ${h.oac} · PO ${h.po} · DJ ${h.dj} · CAS ${h.cas} · SAL ${h.sal}',
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: DailyReportColors.purple600),
         ),
       ],

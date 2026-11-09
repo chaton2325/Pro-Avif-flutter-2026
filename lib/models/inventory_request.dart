@@ -16,7 +16,13 @@ class InventoryRequest {
   final String type; // 'aliment' | 'oeufs'
   final List<FeedStartingQuantity> feedQuantities;
   final String? lotNumber;
-  final List<RoomEggStock> eggRooms;
+  final List<RoomEggStock> eggRooms; // anciennes demandes saisies par salle
+  // Stock GLOBAL du batiment compte (oeufs).
+  final int oac;
+  final int po;
+  final int dj;
+  final int cas;
+  final int sal;
   final String? note;
   final String status; // 'en_attente_validation' | 'valide' | 'rejetee'
   final String? performedBy;
@@ -34,6 +40,11 @@ class InventoryRequest {
     this.feedQuantities = const [],
     this.lotNumber,
     this.eggRooms = const [],
+    this.oac = 0,
+    this.po = 0,
+    this.dj = 0,
+    this.cas = 0,
+    this.sal = 0,
     this.note,
     this.status = 'en_attente_validation',
     this.performedBy,
@@ -67,6 +78,16 @@ class InventoryRequest {
           .map((q) => '${q.quantityKg} kg ${q.formulaName}')
           .join(' + ');
     }
+    if (oac > 0 || po > 0 || dj > 0 || cas > 0 || sal > 0) {
+      return [
+        if (oac > 0) '$oac OAC',
+        if (po > 0) '$po PO',
+        if (dj > 0) '$dj DJ',
+        if (cas > 0) '$cas CAS',
+        if (sal > 0) '$sal SAL',
+      ].join(' · ');
+    }
+    // Ancienne demande saisie salle par salle.
     return eggRooms
         .where((r) => r.oac > 0 || r.po > 0 || r.dj > 0 || r.cas > 0 || r.sal > 0)
         .map((r) {
@@ -94,6 +115,11 @@ class InventoryRequest {
       eggRooms: (map['eggRooms'] as List<dynamic>? ?? [])
           .map((r) => RoomEggStock.fromMap(r as Map<String, dynamic>))
           .toList(),
+      oac: (map['oac'] as num?)?.toInt() ?? 0,
+      po: (map['po'] as num?)?.toInt() ?? 0,
+      dj: (map['dj'] as num?)?.toInt() ?? 0,
+      cas: (map['cas'] as num?)?.toInt() ?? 0,
+      sal: (map['sal'] as num?)?.toInt() ?? 0,
       note: map['note'] as String?,
       status: map['status'] as String? ?? 'en_attente_validation',
       performedBy: map['performedBy'] as String?,

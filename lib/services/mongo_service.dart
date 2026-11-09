@@ -64,7 +64,7 @@ class LicenseBlockedException implements Exception {
 //Base en production : "https://proavif.mirhosty.com"
 class MongoService {
   static final MongoService _instance = MongoService._internal();
-  final String baseUrl = "https://proavif.mirhosty.com";
+  final String baseUrl = "http://192.168.1.187:8010";
   User? currentUser;
   String? connectionError;
   bool _isConnected = false;
@@ -2776,7 +2776,11 @@ class MongoService {
     required String farmName,
     required String type, // 'aliment' | 'oeufs'
     List<FeedStartingQuantity> feedQuantities = const [],
-    List<RoomEggStock> eggRooms = const [],
+    int oac = 0,
+    int po = 0,
+    int dj = 0,
+    int cas = 0,
+    int sal = 0,
     String? note,
     bool autoValidate = false,
   }) async {
@@ -2787,7 +2791,11 @@ class MongoService {
         'farmName': farmName,
         'type': type,
         'feedQuantities': feedQuantities.map((q) => q.toMap()).toList(),
-        'eggRooms': eggRooms.map((r) => r.toMap()).toList(),
+        'oac': oac,
+        'po': po,
+        'dj': dj,
+        'cas': cas,
+        'sal': sal,
         if (note != null) 'note': note,
         'performedBy': _redacteurName,
         'autoValidate': autoValidate,

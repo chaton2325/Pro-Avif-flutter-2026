@@ -17,12 +17,12 @@ class _FarmEggStockStatus {
   _FarmEggStockStatus({required this.farm, this.lotNumber, this.eggStock});
 }
 
-int _totalPo(LotEggStock s) => s.rooms.fold<int>(0, (a, r) => a + r.po);
+int _totalPo(LotEggStock s) => s.po;
 
-/// Stock d'œufs de départ d'un lot, par salle (réservé à l'admin) : saisi une seule fois à la
-/// mise en place du lot — une pondeuse peut déjà être en ponte avant que ce lot ne soit suivi
-/// ici. Le rapport journalier reprend ensuite tout seul les cumuls à partir de cette valeur
-/// (voir routers/lot_egg_stocks.py + daily_reports.py côté backend).
+/// Stock d'œufs de départ d'un lot, GLOBAL au bâtiment (réservé à l'admin) : une seule saisie
+/// par bâtiment, sans détail par salle — une pondeuse peut déjà être en ponte avant que ce lot
+/// ne soit suivi ici. Les rapports journaliers en partent pour le stock d'œufs du bâtiment ;
+/// les cumuls, eux, restent par salle (voir routers/lot_egg_stocks.py + daily_reports.py).
 ///
 /// Liste des fermes avec leur statut (stock défini ou non pour le lot en cours) — tapoter une
 /// ferme ouvre l'écran de saisie dédié (AdminLotEggStockEditScreen).
@@ -212,26 +212,21 @@ class _AdminLotEggStockEditScreenState extends State<AdminLotEggStockEditScreen>
   List<String> _lotNumbers = [];
   String? _selectedLot;
   bool _loadingLots = true;
-  // room -> field -> controller
-  final Map<String, Map<String, TextEditingController>> _controllers = {};
+  // field -> controller (stock global du bâtiment, pas de détail par salle)
+  final Map<String, TextEditingController> _controllers = {};
   bool _saving = false;
   String? _message;
   bool _success = false;
   LotEggStock? _existingEggStock;
 
-  int _totalFor(String field) => widget.farm.rooms.fold<int>(
-        0,
-        (a, r) => a + (int.tryParse(_controllers[r]![field]!.text) ?? 0),
-      );
+  int _valueOf(String field) => int.tryParse(_controllers[field]!.text) ?? 0;
 
   @override
   void initState() {
     super.initState();
     _selectedLot = widget.initialLotNumber;
-    for (final room in widget.farm.rooms) {
-      _controllers[room] = {
-        for (final f in _kEggFields) f: TextEditingController(text: '0')..addListener(_onChanged),
-      };
+    for (final f in _kEggFields) {
+      _controllers[f] = TextEditingController(text: '0')..addListener(_onChanged);
     }
     _loadLots();
   }
@@ -255,19 +250,15 @@ class _AdminLotEggStockEditScreenState extends State<AdminLotEggStockEditScreen>
 
   @override
   void dispose() {
-    for (final fields in _controllers.values) {
-      for (final c in fields.values) {
-        c.dispose();
-      }
+    for (final c in _controllers.values) {
+      c.dispose();
     }
     super.dispose();
   }
 
   void _resetControllers() {
-    for (final room in widget.farm.rooms) {
-      for (final f in _kEggFields) {
-        _controllers[room]![f]!.text = '0';
-      }
+    for (final f in _kEggFields) {
+      _controllers[f]!.text = '0';
     }
   }
 
@@ -330,15 +321,11 @@ class _AdminLotEggStockEditScreenState extends State<AdminLotEggStockEditScreen>
     }
     setState(() {
       _existingEggStock = existing;
-      for (final r in existing.rooms) {
-        final c = _controllers[r.roomName];
-        if (c == null) continue;
-        c['oac']!.text = r.oac.toString();
-        c['po']!.text = r.po.toString();
-        c['dj']!.text = r.dj.toString();
-        c['cas']!.text = r.cas.toString();
-        c['sal']!.text = r.sal.toString();
-      }
+      _controllers['oac']!.text = existing.oac.toString();
+      _controllers['po']!.text = existing.po.toString();
+      _controllers['dj']!.text = existing.dj.toString();
+      _controllers['cas']!.text = existing.cas.toString();
+      _controllers['sal']!.text = existing.sal.toString();
       _message = 'Valeurs existantes chargées — modification possible.';
     });
   }
@@ -397,23 +384,18 @@ class _AdminLotEggStockEditScreenState extends State<AdminLotEggStockEditScreen>
     final eggStock = LotEggStock(
       farmName: widget.farm.name,
       lotNumber: _selectedLot!.trim(),
-      rooms: widget.farm.rooms
-          .map((r) => RoomEggStock(
-                roomName: r,
-                oac: int.tryParse(_controllers[r]!['oac']!.text) ?? 0,
-                po: int.tryParse(_controllers[r]!['po']!.text) ?? 0,
-                dj: int.tryParse(_controllers[r]!['dj']!.text) ?? 0,
-                cas: int.tryParse(_controllers[r]!['cas']!.text) ?? 0,
-                sal: int.tryParse(_controllers[r]!['sal']!.text) ?? 0,
-              ))
-          .toList(),
+      oac: _valueOf('oac'),
+      po: _valueOf('po'),
+      dj: _valueOf('dj'),
+      cas: _valueOf('cas'),
+      sal: _valueOf('sal'),
     );
     final result = await _mongoService.upsertLotEggStock(eggStock);
     if (!mounted) return;
     setState(() {
       _saving = false;
       _success = result.error == null;
-      _message = result.error ?? 'Enregistré : PO ${_totalFor('po')}';
+      _message = result.error ?? 'Enregistré : PO ${_valueOf('po')}';
       if (result.eggStock != null) _existingEggStock = result.eggStock;
     });
   }
@@ -459,25 +441,32 @@ class _AdminLotEggStockEditScreenState extends State<AdminLotEggStockEditScreen>
             _historyButton(),
           ],
           const SizedBox(height: 4),
-          const DailyReportSectionLabel('Nouvelle saisie', icon: Icons.edit_note_rounded),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
+          const DailyReportSectionLabel('Nouvelle saisie — stock du bâtiment', icon: Icons.edit_note_rounded),
+          DailyReportCard(
             children: [
-              for (final f in _kEggFields)
-                SizedBox(
-                  width: 100,
-                  child: DailyReportStatTile(
-                    value: '${_totalFor(f)}',
-                    label: 'Total ${_kEggFieldLabels[f]}',
-                    color: DailyReportColors.green700,
-                  ),
-                ),
+              Row(
+                children: [
+                  const Icon(Icons.warehouse_outlined, size: 18, color: DailyReportColors.green700),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(widget.farm.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Stock global du bâtiment — pas de détail par salle.",
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final f in _kEggFields)
+                    SizedBox(width: 90, child: _numberField(_kEggFieldLabels[f]!, _controllers[f]!)),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 18),
-          const DailyReportSectionLabel('Par salle', icon: Icons.meeting_room_rounded),
-          for (final room in widget.farm.rooms) _roomCard(room),
           if (_message != null)
             Container(
               margin: const EdgeInsets.only(top: 4, bottom: 12),
@@ -544,17 +533,9 @@ class _AdminLotEggStockEditScreenState extends State<AdminLotEggStockEditScreen>
           ),
         ],
         const SizedBox(height: 10),
-        for (final r in existing.rooms)
-          if (r.oac + r.po + r.dj + r.cas + r.sal > 0) _existingRow(r),
-        const Divider(height: 18),
-        Row(
-          children: [
-            const Expanded(child: Text('Total PO', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-            Text(
-              '${_totalPo(existing)}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: DailyReportColors.green700),
-            ),
-          ],
+        Text(
+          'OAC ${existing.oac} · PO ${existing.po} · DJ ${existing.dj} · CAS ${existing.cas} · SAL ${existing.sal}',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: DailyReportColors.green700),
         ),
       ],
     );
@@ -579,47 +560,6 @@ class _AdminLotEggStockEditScreenState extends State<AdminLotEggStockEditScreen>
           minimumSize: const Size(double.infinity, 42),
         ),
       ),
-    );
-  }
-
-  Widget _existingRow(RoomEggStock r) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Expanded(child: Text(r.roomName, style: const TextStyle(fontSize: 13))),
-          Text(
-            'OAC ${r.oac} · PO ${r.po} · DJ ${r.dj} · CAS ${r.cas} · SAL ${r.sal}',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _roomCard(String room) {
-    return DailyReportCard(
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.meeting_room_outlined, size: 18, color: DailyReportColors.green700),
-            const SizedBox(width: 8),
-            Text(room, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final f in _kEggFields)
-              SizedBox(
-                width: 90,
-                child: _numberField(_kEggFieldLabels[f]!, _controllers[room]![f]!),
-              ),
-          ],
-        ),
-      ],
     );
   }
 

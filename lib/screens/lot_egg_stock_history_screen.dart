@@ -121,7 +121,6 @@ class _LotEggStockHistoryScreenState extends State<LotEggStockHistoryScreen> {
   Widget _entryCard(LotEggStockHistoryEntry h) {
     final recordedStr = h.recordedAt != null ? DateFormat('dd/MM/yyyy à HH:mm').format(h.recordedAt!) : null;
     final replacedStr = DateFormat('dd/MM/yyyy à HH:mm').format(h.replacedAt);
-    final totalPo = h.rooms.fold<int>(0, (a, r) => a + r.po);
     return DailyReportCard(
       accentColor: DailyReportColors.yellow500,
       margin: const EdgeInsets.only(bottom: 10),
@@ -148,34 +147,11 @@ class _LotEggStockHistoryScreenState extends State<LotEggStockHistoryScreen> {
           ),
         ),
         const SizedBox(height: 10),
-        for (final r in h.rooms)
-          if (r.oac + r.po + r.dj + r.cas + r.sal > 0) _row(r),
-        const Divider(height: 16),
-        Row(
-          children: [
-            const Expanded(child: Text('Total PO', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
-            Text(
-              '$totalPo',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: DailyReportColors.green700),
-            ),
-          ],
+        Text(
+          'OAC ${h.oac} · PO ${h.po} · DJ ${h.dj} · CAS ${h.cas} · SAL ${h.sal}',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: DailyReportColors.green700),
         ),
       ],
-    );
-  }
-
-  Widget _row(RoomEggStock r) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Expanded(child: Text(r.roomName, style: const TextStyle(fontSize: 12.5))),
-          Text(
-            'OAC ${r.oac} · PO ${r.po} · DJ ${r.dj} · CAS ${r.cas} · SAL ${r.sal}',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
-          ),
-        ],
-      ),
     );
   }
 }

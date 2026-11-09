@@ -7,9 +7,9 @@ import '../widgets/daily_report_widgets.dart';
 
 const _pageSize = 20;
 
-/// Historique des ajouts à la valeur de DÉPART du cumul de consommation aliment, pour une
+/// Historique des saisies à la valeur de DÉPART du cumul de consommation aliment, pour une
 /// ferme + un lot — page séparée et paginée, même pattern que LotEggCumulHistoryScreen. Un
-/// ajout n'écrase jamais rien : journal d'additions successives, par salle (voir
+/// ajout n'écrase jamais rien : journal des saisies successives (chacune remplace la précédente), par salle (voir
 /// POST /cumuls/feed/add côté backend). Le cumul ACTUEL (incrémenté par les rapports validés)
 /// ne se trouve pas ici — voir l'onglet "Cumuls" de Suivi Bâtiment.
 class FarmFeedCumulHistoryScreen extends StatefulWidget {
@@ -84,7 +84,7 @@ class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen>
                               children: [
                                 Icon(Icons.history_rounded, size: 40, color: Colors.grey.shade400),
                                 const SizedBox(height: 10),
-                                Text('Aucun ajout enregistré', style: TextStyle(color: Colors.grey.shade500)),
+                                Text('Aucune saisie enregistrée', style: TextStyle(color: Colors.grey.shade500)),
                               ],
                             ),
                           ),
@@ -133,7 +133,7 @@ class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen>
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Ajouté le $dateStr${h.performedBy != null ? ' par ${h.performedBy}' : ''}',
+                'Défini le $dateStr${h.performedBy != null ? ' par ${h.performedBy}' : ''}',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
             ),
@@ -146,7 +146,7 @@ class _FarmFeedCumulHistoryScreenState extends State<FarmFeedCumulHistoryScreen>
         ),
         const SizedBox(height: 10),
         Text(
-          'F +${h.femaleKg} kg · M +${h.maleKg} kg',
+          'F ${h.femaleKg} kg · M ${h.maleKg} kg',
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: DailyReportColors.purple600),
         ),
       ],

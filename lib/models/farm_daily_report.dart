@@ -269,7 +269,14 @@ class RoomProduction {
   final int sal;
   final double tpPercent;
   final double? ecartPercent;
-  final double dePercent;
+  /// Déclassés = PO + DJ + CAS + SAL (tout sauf OAC).
+  int get declassed => po + dj + cas + sal;
+  /// %DE = déclassés / total des œufs de la salle. Calculé ici depuis les comptes bruts pour
+  /// que les rapports déjà figés (en attente / validés) affichent aussi la bonne valeur.
+  double get dePercent {
+    final total = oac + declassed;
+    return total > 0 ? declassed / total * 100 : 0;
+  }
   final int cumulativeOac;
   final int cumulativePo;
   final int cumulativeDj;
@@ -285,7 +292,6 @@ class RoomProduction {
     this.sal = 0,
     this.tpPercent = 0,
     this.ecartPercent,
-    this.dePercent = 0,
     this.cumulativeOac = 0,
     this.cumulativePo = 0,
     this.cumulativeDj = 0,
@@ -321,7 +327,6 @@ class RoomProduction {
       sal: (map['sal'] as num?)?.toInt() ?? 0,
       tpPercent: (map['tpPercent'] as num?)?.toDouble() ?? 0,
       ecartPercent: (map['ecartPercent'] as num?)?.toDouble(),
-      dePercent: (map['dePercent'] as num?)?.toDouble() ?? 0,
       cumulativeOac: (map['cumulativeOac'] as num?)?.toInt() ?? 0,
       cumulativePo: (map['cumulativePo'] as num?)?.toInt() ?? 0,
       cumulativeDj: (map['cumulativeDj'] as num?)?.toInt() ?? 0,
@@ -345,7 +350,6 @@ class RoomProduction {
     sal: sal ?? this.sal,
     tpPercent: tpPercent,
     ecartPercent: ecartPercent,
-    dePercent: dePercent,
     cumulativeOac: cumulativeOac,
     cumulativePo: cumulativePo,
     cumulativeDj: cumulativeDj,
@@ -422,6 +426,58 @@ class StaffStatusEntry {
 
 const kEditableReportStatuses = {'brouillon', 'a_corriger'};
 
+/// Stock d'aliment restant d'UN aliment (photo prise à la validation du rapport).
+class FeedStockItem {
+  final String formulaName;
+  final double quantityKg;
+
+  FeedStockItem({required this.formulaName, this.quantityKg = 0});
+
+  factory FeedStockItem.fromMap(Map<String, dynamic> map) => FeedStockItem(
+        formulaName: map['formulaName'] as String? ?? '',
+        quantityKg: (map['quantityKg'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+/// Une expédition d'œufs faite ce jour-là (destination = couvoir), recopiée dans le rapport.
+class ReportEggShipment {
+  final String hatcheryName;
+  final int oac;
+  final int po;
+  final int dj;
+  final int cas;
+  final int sal;
+  final String status; // 'valide' | 'en_attente_validation'
+
+  ReportEggShipment({
+    required this.hatcheryName,
+    this.oac = 0,
+    this.po = 0,
+    this.dj = 0,
+    this.cas = 0,
+    this.sal = 0,
+    this.status = 'valide',
+  });
+
+  int get total => oac + po + dj + cas + sal;
+  bool get isPending => status == 'en_attente_validation';
+
+  factory ReportEggShipment.fromMap(Map<String, dynamic> map) => ReportEggShipment(
+        hatcheryName: map['hatcheryName'] as String? ?? '',
+        oac: (map['oacCount'] as num?)?.toInt() ?? 0,
+        po: (map['poCount'] as num?)?.toInt() ?? 0,
+        dj: (map['djCount'] as num?)?.toInt() ?? 0,
+        cas: (map['casCount'] as num?)?.toInt() ?? 0,
+        sal: (map['salCount'] as num?)?.toInt() ?? 0,
+        status: map['status'] as String? ?? 'valide',
+      );
+}
+
+Map<String, int> _intMap(dynamic raw) {
+  if (raw is! Map) return const {};
+  return {for (final e in raw.entries) e.key.toString(): (e.value as num?)?.toInt() ?? 0};
+}
+
 class FarmDailyReport {
   final String id;
   final String farmId;
@@ -442,6 +498,14 @@ class FarmDailyReport {
   final List<TreatmentEntry> treatments;
   final List<StaffStatusEntry> staffStatuses;
   final String? observation;
+  // Stock d'œufs GLOBAL du bâtiment (clés oac/po/dj/cas/sal) : brut jusqu'à ce rapport ; expédié et
+  // restant ne sont renseignés qu'à la validation (vides sur un ancien rapport validé).
+  final Map<String, int> eggStock;
+  final Map<String, int> eggStockShipped;
+  final Map<String, int> eggStockRemaining;
+  final List<FeedStockItem> feedStockQuantities;
+  // Expéditions d'œufs faites ce jour-là (avec destination).
+  final List<ReportEggShipment> eggShipments;
   final String status;
   final DateTime? submittedAt;
   final String? submittedBy;
@@ -472,6 +536,11 @@ class FarmDailyReport {
     this.treatments = const [],
     this.staffStatuses = const [],
     this.observation,
+    this.eggStock = const {},
+    this.eggStockShipped = const {},
+    this.eggStockRemaining = const {},
+    this.feedStockQuantities = const [],
+    this.eggShipments = const [],
     this.status = 'brouillon',
     this.submittedAt,
     this.submittedBy,
@@ -487,6 +556,13 @@ class FarmDailyReport {
        mortality = mortality ?? DailyReportMortality();
 
   bool get isEditable => kEditableReportStatuses.contains(status);
+
+  /// %DE du jour, toutes salles confondues : (PO + DJ + CAS + SAL) / tous les œufs. null si aucun œuf.
+  double? get declassedPercent {
+    final declassed = production.fold<int>(0, (a, p) => a + p.declassed);
+    final total = production.fold<int>(0, (a, p) => a + p.oac) + declassed;
+    return total > 0 ? declassed / total * 100 : null;
+  }
 
   /// Taux de ponte du jour, toutes salles confondues (PO du jour / effectif femelles au début
   /// de ce jour, en %) — même formule que BuildingTrackingItem.layingRatePercent (Suivi
@@ -542,6 +618,15 @@ class FarmDailyReport {
           .map((s) => StaffStatusEntry.fromMap(s as Map<String, dynamic>))
           .toList(),
       observation: map['observation'] as String?,
+      eggStock: _intMap(map['eggStock']),
+      eggStockShipped: _intMap(map['eggStockShipped']),
+      eggStockRemaining: _intMap(map['eggStockRemaining']),
+      feedStockQuantities: (map['feedStockQuantities'] as List<dynamic>? ?? [])
+          .map((q) => FeedStockItem.fromMap(q as Map<String, dynamic>))
+          .toList(),
+      eggShipments: (map['eggShipments'] as List<dynamic>? ?? [])
+          .map((e) => ReportEggShipment.fromMap(e as Map<String, dynamic>))
+          .toList(),
       status: map['status'] as String? ?? 'brouillon',
       submittedAt: parseCameroonTime(map['submittedAt']?.toString()),
       submittedBy: map['submittedBy'] as String?,

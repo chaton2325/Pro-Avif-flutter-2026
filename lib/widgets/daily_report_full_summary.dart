@@ -121,6 +121,13 @@ class DailyReportFullSummary extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
+          DailyReportStatTile(
+            value: report.declassedPercent != null ? '${report.declassedPercent!.toStringAsFixed(1)}%' : '—',
+            label: '% DE (PO + DJ + CAS + SAL)',
+            color: DailyReportColors.purple600,
+            icon: Icons.percent_rounded,
+          ),
+          const SizedBox(height: 10),
         ],
         Row(
           children: [
@@ -147,37 +154,6 @@ class DailyReportFullSummary extends StatelessWidget {
 
         DailyReportSectionLabel('Effectifs par salle', icon: Icons.groups_rounded),
         DailyReportCard(children: [_headcountTable()]),
-
-        const SizedBox(height: 16),
-        DailyReportSectionLabel('Aliment', icon: Icons.grain_rounded),
-        DailyReportCard(children: [
-          _row('Reçu aujourd\'hui', '${report.aliment.receivedTotalKg} kg'),
-          if (report.aliment.receivedDetail.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 6),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: report.aliment.receivedTotalsByFormula.entries
-                    .map((e) => Chip(label: Text('${e.key} · ${e.value} kg')))
-                    .toList(),
-              ),
-            ),
-          const Divider(),
-          Text('Consommation par salle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Colors.grey.shade700)),
-          const SizedBox(height: 6),
-          for (final start in report.startCounts) _consumptionBlock(start.roomName),
-          if (report.aliment.cumulativeConsumptionByRoom.isNotEmpty) ...[
-            const Divider(),
-            Text('Cumul de consommation par salle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Colors.grey.shade700)),
-            const SizedBox(height: 6),
-            for (final start in report.startCounts) _consumptionCumulBlock(start.roomName),
-          ],
-          const Divider(),
-          _row('Stock avant', '${report.aliment.stockBeforeKg} kg'),
-          _row('Consommé (total)', '${report.aliment.totalConsumedKg} kg'),
-          _row('Stock après', '${report.aliment.stockAfterKg} kg'),
-        ]),
 
         const SizedBox(height: 16),
         DailyReportSectionLabel('Mortalité', icon: Icons.trending_down_rounded),
@@ -226,6 +202,50 @@ class DailyReportFullSummary extends StatelessWidget {
               Text('Aucune mortalité aujourd\'hui.', style: TextStyle(color: Colors.grey.shade500, fontSize: 12.5)),
           ],
         ),
+
+        const SizedBox(height: 16),
+        DailyReportSectionLabel('Aliment', icon: Icons.grain_rounded),
+        DailyReportCard(children: [
+          _row('Reçu aujourd\'hui', '${report.aliment.receivedTotalKg} kg'),
+          if (report.aliment.receivedDetail.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 6),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: report.aliment.receivedTotalsByFormula.entries
+                    .map((e) => Chip(label: Text('${e.key} · ${e.value} kg')))
+                    .toList(),
+              ),
+            ),
+          const Divider(),
+          Text('Consommation par salle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Colors.grey.shade700)),
+          const SizedBox(height: 6),
+          for (final start in report.startCounts) _consumptionBlock(start.roomName),
+          if (report.aliment.cumulativeConsumptionByRoom.isNotEmpty) ...[
+            const Divider(),
+            Text('Cumul de consommation par salle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Colors.grey.shade700)),
+            const SizedBox(height: 6),
+            for (final start in report.startCounts) _consumptionCumulBlock(start.roomName),
+          ],
+          const Divider(),
+          _row('Stock avant', '${report.aliment.stockBeforeKg} kg'),
+          _row('Consommé (total)', '${report.aliment.totalConsumedKg} kg'),
+          _row('Stock après', '${report.aliment.stockAfterKg} kg'),
+        ]),
+
+        if (report.eggShipments.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          DailyReportSectionLabel('Expédition d\'œufs du jour', icon: Icons.local_shipping_outlined),
+          DailyReportCard(children: [
+            for (final e in report.eggShipments) ...[
+              _row(
+                '→ ${e.hatcheryName}${e.isPending ? " (en attente)" : ""}',
+                'OAC ${e.oac} · PO ${e.po} · DJ ${e.dj} · CAS ${e.cas} · SAL ${e.sal}',
+              ),
+            ],
+          ]),
+        ],
 
         if (report.transfers.isNotEmpty) ...[
           const SizedBox(height: 16),

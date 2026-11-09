@@ -55,6 +55,13 @@ class LotEggStockHistoryEntry {
   final String? id;
   final String farmName;
   final String lotNumber;
+  // Stock GLOBAL du batiment (plus de detail par salle) ; rooms ne sert qu'a lire d'anciens
+  // enregistrements.
+  final int oac;
+  final int po;
+  final int dj;
+  final int cas;
+  final int sal;
   final List<RoomEggStock> rooms;
   final DateTime? recordedAt;
   final String? recordedBy;
@@ -65,6 +72,11 @@ class LotEggStockHistoryEntry {
     this.id,
     required this.farmName,
     required this.lotNumber,
+    this.oac = 0,
+    this.po = 0,
+    this.dj = 0,
+    this.cas = 0,
+    this.sal = 0,
     this.rooms = const [],
     this.recordedAt,
     this.recordedBy,
@@ -77,6 +89,11 @@ class LotEggStockHistoryEntry {
       id: map['_id'] as String?,
       farmName: map['farmName'] as String? ?? '',
       lotNumber: map['lotNumber'] as String? ?? '',
+      oac: (map['oac'] as num?)?.toInt() ?? 0,
+      po: (map['po'] as num?)?.toInt() ?? 0,
+      dj: (map['dj'] as num?)?.toInt() ?? 0,
+      cas: (map['cas'] as num?)?.toInt() ?? 0,
+      sal: (map['sal'] as num?)?.toInt() ?? 0,
       rooms: (map['rooms'] as List<dynamic>? ?? [])
           .map((r) => RoomEggStock.fromMap(r as Map<String, dynamic>))
           .toList(),
@@ -104,13 +121,18 @@ class LotEggStockHistoryPagedResult {
   }
 }
 
-/// Stock d'œufs de départ d'un lot, par salle (saisi une seule fois par l'admin à la mise en
-/// place du lot) : les cumuls du rapport journalier (cumulativePo, etc.) repartent de cette
-/// valeur d'origine au lieu de zéro (voir routers/daily_reports.py côté backend).
+/// Stock d'œufs de départ d'un lot, GLOBAL au bâtiment (un seul jeu OAC/PO/DJ/CAS/SAL, saisi
+/// par l'admin) : base du stock d'œufs du bâtiment dans les rapports journaliers (voir
+/// routers/daily_reports.py côté backend). Les cumuls, eux, restent par salle.
 class LotEggStock {
   final String? id;
   final String farmName;
   final String lotNumber;
+  final int oac;
+  final int po;
+  final int dj;
+  final int cas;
+  final int sal;
   final List<RoomEggStock> rooms;
   final String? performedBy;
   final DateTime? updatedAt;
@@ -119,6 +141,11 @@ class LotEggStock {
     this.id,
     required this.farmName,
     required this.lotNumber,
+    this.oac = 0,
+    this.po = 0,
+    this.dj = 0,
+    this.cas = 0,
+    this.sal = 0,
     this.rooms = const [],
     this.performedBy,
     this.updatedAt,
@@ -127,7 +154,11 @@ class LotEggStock {
   Map<String, dynamic> toCreateMap({String? performedBy}) => {
     'farmName': farmName,
     'lotNumber': lotNumber,
-    'rooms': rooms.map((r) => r.toMap()).toList(),
+    'oac': oac,
+    'po': po,
+    'dj': dj,
+    'cas': cas,
+    'sal': sal,
     'performedBy': performedBy,
   };
 
@@ -136,6 +167,11 @@ class LotEggStock {
       id: map['_id'] as String?,
       farmName: map['farmName'] as String? ?? '',
       lotNumber: map['lotNumber'] as String? ?? '',
+      oac: (map['oac'] as num?)?.toInt() ?? 0,
+      po: (map['po'] as num?)?.toInt() ?? 0,
+      dj: (map['dj'] as num?)?.toInt() ?? 0,
+      cas: (map['cas'] as num?)?.toInt() ?? 0,
+      sal: (map['sal'] as num?)?.toInt() ?? 0,
       rooms: (map['rooms'] as List<dynamic>? ?? [])
           .map((r) => RoomEggStock.fromMap(r as Map<String, dynamic>))
           .toList(),

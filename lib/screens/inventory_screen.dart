@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/farm.dart';
 import '../models/farm_feed_stock.dart';
 import '../models/formula.dart';
-import '../models/lot_egg_stock.dart';
 import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
@@ -32,7 +31,8 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
   bool _loading = true;
   List<Formula> _formulas = [];
   final Map<String, TextEditingController> _feedControllers = {};
-  final Map<String, Map<String, TextEditingController>> _eggControllers = {};
+  // Stock d'oeufs GLOBAL du batiment : un seul jeu de champs (pas de detail par salle).
+  final Map<String, TextEditingController> _eggControllers = {};
   final _noteController = TextEditingController();
   bool _saving = false;
   String? _message;
@@ -42,7 +42,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
   // aux controllers) — affichée à côté de chaque champ pour que la personne qui compte
   // physiquement voie ce que le système croit savoir, avant d'entrer son propre comptage.
   final Map<String, double> _currentFeedByFormula = {};
-  final Map<String, Map<String, int>> _currentEggByRoom = {};
+  final Map<String, int> _currentEgg = {};
 
   double get _totalFeedKg => _formulas.fold<double>(
         0,
@@ -51,8 +51,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
 
   double get _currentTotalFeedKg => _currentFeedByFormula.values.fold<double>(0, (a, v) => a + v);
 
-  int _currentEggTotal(String field) =>
-      _currentEggByRoom.values.fold<int>(0, (a, room) => a + (room[field] ?? 0));
+  int _currentEggTotal(String field) => _currentEgg[field] ?? 0;
 
   @override
   void initState() {
@@ -67,10 +66,8 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     for (final c in _feedControllers.values) {
       c.dispose();
     }
-    for (final room in _eggControllers.values) {
-      for (final c in room.values) {
-        c.dispose();
-      }
+    for (final c in _eggControllers.values) {
+      c.dispose();
     }
     _noteController.dispose();
     super.dispose();
@@ -95,18 +92,14 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     // du lot (lot_egg_stocks) qui est figé depuis la mise en place — sinon la personne qui
     // compte physiquement comparerait son comptage à une valeur périmée depuis des jours.
     final currentEggStock = await _mongoService.getCurrentEggStock(widget.farm.name);
-    for (final room in widget.farm.rooms) {
-      final current = currentEggStock.rooms.where((r) => r.roomName == room).firstOrNull;
-      _currentEggByRoom[room] = {
-        'oac': current?.cumulativeOac ?? 0,
-        'po': current?.cumulativePo ?? 0,
-        'dj': current?.cumulativeDj ?? 0,
-        'cas': current?.cumulativeCas ?? 0,
-        'sal': current?.cumulativeSal ?? 0,
-      };
-      _eggControllers[room] = {
-        for (final f in _kEggFields) f: TextEditingController(text: '${_currentEggByRoom[room]![f]}'),
-      };
+    _currentEgg
+      ..['oac'] = currentEggStock.totalOac
+      ..['po'] = currentEggStock.totalPo
+      ..['dj'] = currentEggStock.totalDj
+      ..['cas'] = currentEggStock.totalCas
+      ..['sal'] = currentEggStock.totalSal;
+    for (final f in _kEggFields) {
+      _eggControllers[f] = TextEditingController(text: '${_currentEgg[f] ?? 0}');
     }
 
     if (!mounted) return;
@@ -126,16 +119,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           ))
       .toList();
 
-  List<RoomEggStock> get _eggPayload => widget.farm.rooms
-      .map((room) => RoomEggStock(
-            roomName: room,
-            oac: int.tryParse(_eggControllers[room]!['oac']!.text) ?? 0,
-            po: int.tryParse(_eggControllers[room]!['po']!.text) ?? 0,
-            dj: int.tryParse(_eggControllers[room]!['dj']!.text) ?? 0,
-            cas: int.tryParse(_eggControllers[room]!['cas']!.text) ?? 0,
-            sal: int.tryParse(_eggControllers[room]!['sal']!.text) ?? 0,
-          ))
-      .toList();
+  int _eggValue(String field) => int.tryParse(_eggControllers[field]?.text ?? '0') ?? 0;
 
   Future<void> _submit(String type) async {
     final isFeed = type == 'aliment';
@@ -175,7 +159,11 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
       farmName: widget.farm.name,
       type: type,
       feedQuantities: isFeed ? _feedPayload : const [],
-      eggRooms: isFeed ? const [] : _eggPayload,
+      oac: isFeed ? 0 : _eggValue('oac'),
+      po: isFeed ? 0 : _eggValue('po'),
+      dj: isFeed ? 0 : _eggValue('dj'),
+      cas: isFeed ? 0 : _eggValue('cas'),
+      sal: isFeed ? 0 : _eggValue('sal'),
       note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
       autoValidate: widget.isAdmin,
     );
@@ -399,7 +387,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
       padding: const EdgeInsets.all(16),
       children: [
         _infoBanner(),
-        const DailyReportSectionLabel('Stock actuel (système), toutes salles', icon: Icons.fact_check_outlined),
+        const DailyReportSectionLabel('Stock actuel (système), bâtiment', icon: Icons.fact_check_outlined),
         Wrap(
           spacing: 6,
           runSpacing: 6,
@@ -408,52 +396,38 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           ],
         ),
         const SizedBox(height: 18),
-        const DailyReportSectionLabel('Par salle', icon: Icons.meeting_room_rounded),
-        if (widget.farm.rooms.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Center(child: Text('Aucune salle définie pour cette ferme.', style: TextStyle(color: Colors.grey.shade500))),
-          )
-        else
-          for (final room in widget.farm.rooms)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: DailyReportCard(
-                margin: EdgeInsets.zero,
+        const DailyReportSectionLabel('Comptage du bâtiment', icon: Icons.egg_outlined),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: DailyReportCard(
+            margin: EdgeInsets.zero,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.meeting_room_outlined, size: 18, color: DailyReportColors.green700),
-                      const SizedBox(width: 8),
-                      Text(room, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Actuel — ${[
-                      for (final f in _kEggFields) '${_kEggFieldLabels[f]} ${_currentEggByRoom[room]?[f] ?? 0}',
-                    ].join(' · ')}',
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      for (final f in _kEggFields)
-                        SizedBox(
-                          width: 90,
-                          child: TextField(
-                            controller: _eggControllers[room]![f],
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(labelText: _kEggFieldLabels[f]!, isDense: true, border: const OutlineInputBorder()),
-                          ),
-                        ),
-                    ],
-                  ),
+                  const Icon(Icons.warehouse_outlined, size: 18, color: DailyReportColors.green700),
+                  const SizedBox(width: 8),
+                  Text(widget.farm.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                 ],
               ),
-            ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final f in _kEggFields)
+                    SizedBox(
+                      width: 90,
+                      child: TextField(
+                        controller: _eggControllers[f],
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(labelText: _kEggFieldLabels[f]!, isDense: true, border: const OutlineInputBorder()),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
         _noteAndSubmit('oeufs'),
       ],
     );

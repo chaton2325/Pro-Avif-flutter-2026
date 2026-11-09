@@ -32,14 +32,14 @@ class AdminDailyReportStartingValuesTab extends StatelessWidget {
         icon: Icons.egg_rounded,
         color: DailyReportColors.purple600,
         title: "Stock d'œufs de départ",
-        subtitle: "Saisir OAC/PO/DJ/CAS/SAL initiaux d'un lot",
+        subtitle: "Saisir OAC/PO/DJ/CAS/SAL initiaux du bâtiment (global)",
         builder: (BuildContext c) => const AdminLotEggStocksScreen(),
       ),
       (
         icon: Icons.stacked_line_chart_rounded,
         color: DailyReportColors.purple600,
         title: 'Cumuls de départ',
-        subtitle: "S'ajoutent au cumul existant — aliments et œufs",
+        subtitle: "Remplacent le cumul existant, par salle — aliments, œufs, mortalité",
         builder: (BuildContext c) => const AdminCumulsScreen(),
       ),
     ];

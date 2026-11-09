@@ -4,7 +4,8 @@ import '../services/mongo_service.dart';
 import '../utils/daily_report_colors.dart';
 import '../widgets/daily_report_widgets.dart';
 
-/// Stock d'œufs ACTUEL (cumuls OAC/PO/DJ/CAS/SAL), pour le rédacteur de sa propre ferme
+/// Stock d'œufs ACTUEL du bâtiment (global, sans détail par salle) et cumuls de production
+/// par salle (OAC/PO/DJ/CAS/SAL), pour le rédacteur de sa propre ferme
 /// (bouton "Stock œufs") comme pour l'admin (depuis l'écran de saisie du stock de départ) —
 /// jamais le stock de départ seul. Reprend les cumuls du dernier rapport journalier connu
 /// (routers/daily_reports.py), lecture seule.
@@ -98,11 +99,11 @@ class _CurrentEggStockScreenState extends State<CurrentEggStockScreen> {
                     spacing: 10,
                     runSpacing: 10,
                     children: [
-                      _totalTile('OAC', s.totalOac, DailyReportColors.green700),
-                      _totalTile('PO', s.totalPo, DailyReportColors.green600),
-                      _totalTile('DJ', s.totalDj, DailyReportColors.yellow600),
-                      _totalTile('CAS', s.totalCas, Colors.deepOrange),
-                      _totalTile('SAL', s.totalSal, DailyReportColors.purple600),
+                      _totalTile('OAC', s.rooms.fold<int>(0, (a, r) => a + r.cumulativeOac), DailyReportColors.green700),
+                      _totalTile('PO', s.rooms.fold<int>(0, (a, r) => a + r.cumulativePo), DailyReportColors.green600),
+                      _totalTile('DJ', s.rooms.fold<int>(0, (a, r) => a + r.cumulativeDj), DailyReportColors.yellow600),
+                      _totalTile('CAS', s.rooms.fold<int>(0, (a, r) => a + r.cumulativeCas), Colors.deepOrange),
+                      _totalTile('SAL', s.rooms.fold<int>(0, (a, r) => a + r.cumulativeSal), DailyReportColors.purple600),
                     ],
                   ),
                   const SizedBox(height: 18),

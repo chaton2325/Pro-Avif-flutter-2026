@@ -13,7 +13,7 @@ import 'lot_mortality_cumul_history_screen.dart';
 /// Cumuls — réservé à l'admin.
 /// Œufs : compteur manuel, totalement indépendant du stock actuel (AdminLotEggStocksScreen) —
 /// une ferme peut avoir un stock d'OAC de 10 en salle 1 et un cumul de 100 sur cette même
-/// salle. Chaque saisie ADDITIONNE au cumul déjà existant.
+/// salle. Chaque saisie REMPLACE le cumul déjà existant de la salle.
 /// Aliment : DIFFÉRENT — la consommation cumulée par salle, par ALIMENT (référentiel
 /// "formulas" du module Usine Aliment — RL0, RL1, etc., jamais modifié ici, uniquement lu) et
 /// par sexe (F/M), incrémentée automatiquement par chaque rapport journalier validé. Cet écran
@@ -124,8 +124,8 @@ class _FeedCumulTabState extends State<_FeedCumulTab> {
                   child: const Text(
                     "La consommation cumulée par salle, par aliment et par sexe s'incrémente "
                     "automatiquement à chaque rapport journalier validé. Ici, on ne saisit que la "
-                    "valeur de DÉPART (avant le suivi dans l'appli), qui s'additionne à celle déjà "
-                    "existante.",
+                    "valeur de DÉPART (avant le suivi dans l'appli) : une nouvelle saisie REMPLACE "
+                    "la valeur existante de la salle et de l'aliment concernés.",
                     style: TextStyle(fontSize: 12, color: DailyReportColors.purple600, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -157,8 +157,8 @@ class _FeedCumulTabState extends State<_FeedCumulTab> {
 /// Saisie de la valeur de DÉPART du cumul de consommation aliment, par salle, par ALIMENT
 /// (référentiel "formulas" du module Usine Aliment — RL0, RL1, etc., jamais modifié ici,
 /// uniquement lu comme dans AdminFarmFeedStocksScreen) et par sexe (F/M) — pour une ferme +
-/// un lot. Un ajout à la fois (salle + aliment + F/M) via une boîte de dialogue, ADDITIONNE à
-/// la valeur déjà existante pour cette combinaison, jamais un remplacement.
+/// un lot. Une saisie à la fois (salle + aliment + F/M) via une boîte de dialogue, REMPLACE
+/// la valeur déjà existante pour cette combinaison, jamais une addition.
 class AdminFeedCumulEditScreen extends StatefulWidget {
   final Farm farm;
 
@@ -239,7 +239,7 @@ class _AdminFeedCumulEditScreenState extends State<AdminFeedCumulEditScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Ajouter une valeur de départ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          title: const Text('Définir la valeur de départ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -277,16 +277,18 @@ class _AdminFeedCumulEditScreenState extends State<AdminFeedCumulEditScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: DailyReportColors.purple600, foregroundColor: Colors.white),
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Ajouter'),
+              child: const Text('Enregistrer'),
             ),
           ],
         ),
       ),
     );
     if (confirmed != true || room == null || formula == null || !mounted) return;
+    // La saisie REMPLACE la valeur existante : 0 est une valeur valide, seul un champ vide
+    // des deux côtés est ignoré.
+    if (femaleController.text.trim().isEmpty && maleController.text.trim().isEmpty) return;
     final femaleKg = double.tryParse(femaleController.text.replaceAll(',', '.')) ?? 0;
     final maleKg = double.tryParse(maleController.text.replaceAll(',', '.')) ?? 0;
-    if (femaleKg == 0 && maleKg == 0) return;
 
     final result = await _mongoService.addLotFeedCumul(
       farmName: widget.farm.name,
@@ -365,7 +367,7 @@ class _AdminFeedCumulEditScreenState extends State<AdminFeedCumulEditScreen> {
           OutlinedButton.icon(
             onPressed: _selectedLot == null ? null : _openAddDialog,
             icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('Ajouter une valeur de départ'),
+            label: const Text('Définir une valeur de départ'),
             style: OutlinedButton.styleFrom(
               foregroundColor: DailyReportColors.purple600,
               side: const BorderSide(color: DailyReportColors.purple600),
@@ -481,9 +483,9 @@ const _newLotSentinel = '__new_lot__';
 const _kEggFields = ['oac', 'po', 'dj', 'cas', 'sal'];
 const _kEggFieldLabels = {'oac': 'OAC', 'po': 'PO', 'dj': 'DJ', 'cas': 'CAS', 'sal': 'SAL'};
 
-/// Ajout au cumul d'œufs de départ pour une ferme + un lot, salle par salle : les champs
-/// représentent le montant à AJOUTER (pas la valeur totale), remis à zéro après chaque envoi
-/// réussi. Le cumul déjà enregistré par salle reste affiché au-dessus, jamais écrasé.
+/// Cumul d'œufs de départ pour une ferme + un lot, salle par salle : les champs sont
+/// préremplis avec le cumul actuel et représentent la valeur TOTALE voulue — l'enregistrement
+/// REMPLACE le cumul de la salle (l'ancienne valeur reste dans l'historique).
 class AdminEggCumulEditScreen extends StatefulWidget {
   final Farm farm;
 
@@ -536,10 +538,11 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
     super.dispose();
   }
 
+  /// Préremplit les champs avec le cumul actuel (0 si aucun cumul chargé).
   void _resetControllers() {
     for (final room in widget.farm.rooms) {
       for (final f in _kEggFields) {
-        _controllers[room]![f]!.text = '0';
+        _controllers[room]![f]!.text = '${_currentFor(room, f)}';
       }
     }
   }
@@ -551,9 +554,9 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
     }
     setState(() {
       _selectedLot = lot;
+      _existingCumul = null;
       _resetControllers();
       _message = null;
-      _existingCumul = null;
     });
     await _loadExisting();
   }
@@ -584,8 +587,8 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
     setState(() {
       if (!_lotNumbers.contains(number)) _lotNumbers = [number, ..._lotNumbers];
       _selectedLot = number;
-      _resetControllers();
       _existingCumul = null;
+      _resetControllers();
       _message = null;
     });
     await _loadExisting();
@@ -597,6 +600,7 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
     if (!mounted) return;
     setState(() {
       _existingCumul = existing;
+      _resetControllers();
       _message = existing == null ? "Aucun cumul enregistré pour ce lot — première saisie." : null;
     });
   }
@@ -634,14 +638,15 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
     }
     final entries = <MapEntry<String, Map<String, int>>>[];
     for (final room in widget.farm.rooms) {
-      final deltas = {
+      final values = {
         for (final f in _kEggFields) f: int.tryParse(_controllers[room]![f]!.text) ?? 0,
       };
-      if (deltas.values.any((v) => v != 0)) entries.add(MapEntry(room, deltas));
+      // Seules les salles dont au moins une valeur diffère du cumul actuel sont envoyées.
+      if (_kEggFields.any((f) => values[f] != _currentFor(room, f))) entries.add(MapEntry(room, values));
     }
     if (entries.isEmpty) {
       setState(() {
-        _message = 'Saisissez au moins une quantité à ajouter.';
+        _message = 'Aucune modification à enregistrer.';
         _success = false;
       });
       return;
@@ -732,7 +737,7 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
             ),
           ],
           const SizedBox(height: 18),
-          const DailyReportSectionLabel('Ajouter — par salle', icon: Icons.add_circle_outline_rounded),
+          const DailyReportSectionLabel('Cumul de départ — par salle', icon: Icons.edit_outlined),
           for (final room in widget.farm.rooms) _roomCard(room),
           if (_message != null)
             Container(
@@ -765,7 +770,7 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
                 child: Center(
                   child: _saving
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Ajouter au cumul', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 15)),
+                      : const Text('Enregistrer le cumul', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 15)),
                 ),
               ),
             ),
@@ -787,7 +792,7 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Cumul actuel : ${_kEggFields.map((f) => '${_kEggFieldLabels[f]} ${_currentFor(room, f)}').join(' · ')}',
+          'Cumul enregistré : ${_kEggFields.map((f) => '${_kEggFieldLabels[f]} ${_currentFor(room, f)}').join(' · ')}',
           style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
         ),
         const SizedBox(height: 10),
@@ -801,7 +806,7 @@ class _AdminEggCumulEditScreenState extends State<AdminEggCumulEditScreen> {
                 child: TextField(
                   controller: _controllers[room]![f],
                   keyboardType: TextInputType.number,
-                  decoration: InputDecoration(labelText: '+ ${_kEggFieldLabels[f]}', isDense: true, border: const OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: _kEggFieldLabels[f], isDense: true, border: const OutlineInputBorder()),
                 ),
               ),
           ],
@@ -861,7 +866,7 @@ class _MortalityCumulTabState extends State<_MortalityCumulTab> {
                   child: Text(
                     "Le cumul de mortalité (par salle et par sexe) s'incrémente automatiquement à "
                     "chaque rapport journalier validé. Ici, on ne saisit que la valeur de DÉPART "
-                    "(avant le suivi dans l'appli), qui s'additionne à celle déjà existante.",
+                    "(avant le suivi dans l'appli) : une nouvelle saisie REMPLACE la valeur existante.",
                     style: TextStyle(fontSize: 12, color: Colors.red.shade700, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -891,8 +896,8 @@ class _MortalityCumulTabState extends State<_MortalityCumulTab> {
 }
 
 /// Saisie de la valeur de DÉPART du cumul de mortalité — pour une ferme + un lot, par salle
-/// et par sexe. Le champ représente le montant à AJOUTER (pas la valeur totale), remis à zéro
-/// après chaque envoi réussi.
+/// et par sexe. Les champs sont préremplis avec la valeur actuelle et représentent la valeur
+/// TOTALE voulue : l'enregistrement REMPLACE la valeur de la salle.
 class AdminMortalityCumulEditScreen extends StatefulWidget {
   final Farm farm;
 
@@ -945,19 +950,20 @@ class _AdminMortalityCumulEditScreenState extends State<AdminMortalityCumulEditS
     super.dispose();
   }
 
+  /// Préremplit les champs avec la valeur de départ actuelle (0 si aucune chargée).
   void _resetControllers() {
     for (final room in widget.farm.rooms) {
-      _controllers[room]!['femaleCount']!.text = '0';
-      _controllers[room]!['maleCount']!.text = '0';
+      _controllers[room]!['femaleCount']!.text = '${_currentFor(room, 'femaleCount')}';
+      _controllers[room]!['maleCount']!.text = '${_currentFor(room, 'maleCount')}';
     }
   }
 
   Future<void> _onLotSelected(String? lot) async {
     setState(() {
       _selectedLot = lot;
+      _existingCumul = null;
       _resetControllers();
       _message = null;
-      _existingCumul = null;
     });
     await _loadExisting();
   }
@@ -968,6 +974,7 @@ class _AdminMortalityCumulEditScreenState extends State<AdminMortalityCumulEditS
     if (!mounted) return;
     setState(() {
       _existingCumul = existing;
+      _resetControllers();
       _message = existing == null ? "Aucune valeur de départ enregistrée pour ce lot." : null;
     });
   }
@@ -989,15 +996,19 @@ class _AdminMortalityCumulEditScreenState extends State<AdminMortalityCumulEditS
     }
     final entries = <MapEntry<String, Map<String, int>>>[];
     for (final room in widget.farm.rooms) {
-      final deltas = {
+      final values = {
         'femaleCount': int.tryParse(_controllers[room]!['femaleCount']!.text) ?? 0,
         'maleCount': int.tryParse(_controllers[room]!['maleCount']!.text) ?? 0,
       };
-      if (deltas.values.any((v) => v != 0)) entries.add(MapEntry(room, deltas));
+      // Seules les salles dont une valeur diffère de la valeur actuelle sont envoyées.
+      if (values['femaleCount'] != _currentFor(room, 'femaleCount') ||
+          values['maleCount'] != _currentFor(room, 'maleCount')) {
+        entries.add(MapEntry(room, values));
+      }
     }
     if (entries.isEmpty) {
       setState(() {
-        _message = 'Saisissez au moins une quantité à ajouter.';
+        _message = 'Aucune modification à enregistrer.';
         _success = false;
       });
       return;
@@ -1075,7 +1086,7 @@ class _AdminMortalityCumulEditScreenState extends State<AdminMortalityCumulEditS
             ),
           ],
           const SizedBox(height: 18),
-          const DailyReportSectionLabel('Ajouter à la valeur de départ — par salle', icon: Icons.add_circle_outline_rounded),
+          const DailyReportSectionLabel('Valeur de départ — par salle', icon: Icons.edit_outlined),
           for (final room in widget.farm.rooms) _roomCard(room),
           if (_message != null)
             Container(
@@ -1109,7 +1120,7 @@ class _AdminMortalityCumulEditScreenState extends State<AdminMortalityCumulEditS
                 child: Center(
                   child: _saving
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Ajouter', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 15)),
+                      : const Text('Enregistrer', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 15)),
                 ),
               ),
             ),
@@ -1144,7 +1155,7 @@ class _AdminMortalityCumulEditScreenState extends State<AdminMortalityCumulEditS
               child: TextField(
                 controller: _controllers[room]!['femaleCount'],
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '+ Femelles', isDense: true, border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'Femelles', isDense: true, border: OutlineInputBorder()),
               ),
             ),
             SizedBox(
@@ -1152,7 +1163,7 @@ class _AdminMortalityCumulEditScreenState extends State<AdminMortalityCumulEditS
               child: TextField(
                 controller: _controllers[room]!['maleCount'],
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '+ Mâles', isDense: true, border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'Mâles', isDense: true, border: OutlineInputBorder()),
               ),
             ),
           ],
